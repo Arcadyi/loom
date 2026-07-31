@@ -6,6 +6,9 @@ project(@LOOM_TARGET@ VERSION 0.1.0 LANGUAGES CXX)
 # Relying on Quick alone breaks a static Qt build and makes qmllint and
 # qmlcachegen complain about an unresolved import.
 find_package(Qt6 6.11 REQUIRED COMPONENTS Quick QuickControls2 Test)
+# One package for both halves: the styling library behind `import Loom`, and the
+# build and hot-reload tooling. Point CMAKE_PREFIX_PATH at a loom build or
+# install tree if configure cannot find it.
 find_package(loom CONFIG REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.11)
@@ -16,9 +19,16 @@ loom_add_application(@LOOM_TARGET@
     QML_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/qml"
     ASSET_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/assets"
     SOURCES src/main.cpp
+    # Compiled into the binary for release, and watched by `loom dev` so an edit
+    # repaints the running window without recreating the scene.
+    DESIGN "${CMAKE_CURRENT_SOURCE_DIR}/design/tokens.json"
 )
 
-target_link_libraries(@LOOM_TARGET@ PRIVATE Qt6::QuickControls2)
+target_link_libraries(@LOOM_TARGET@ PRIVATE
+    Qt6::QuickControls2
+    loom::loom
+    loom::loomplugin
+)
 
 set_target_properties(@LOOM_TARGET@ PROPERTIES
     MACOSX_BUNDLE TRUE

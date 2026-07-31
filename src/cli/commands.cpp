@@ -333,7 +333,7 @@ int Commands::createProject(const QStringList &arguments)
         .summary = QStringLiteral("Create a Qt/QML application."),
         .usage = QStringLiteral(
             "loom new <name> [--org dev.example] "
-            "[--directory path] [--loom]"),
+            "[--directory path] [--ci github|none]"),
         .options =
             {
                 {QStringLiteral("org"), QStringLiteral("id"),
@@ -344,10 +344,6 @@ int Commands::createProject(const QStringList &arguments)
                  QStringLiteral(
                      "Generate a CI workflow: github, or none "
                      "(default: none).")},
-                {QStringLiteral("loom"), QString(),
-                 QStringLiteral(
-                     "Pre-wire the loom styling library (find_package, "
-                     "linking, a styled starter UI).")},
             },
         .minimumPositional = 1,
         .maximumPositional = 1,
@@ -380,7 +376,6 @@ int Commands::createProject(const QStringList &arguments)
         .organization =
             parsed.value(QStringLiteral("org"), QStringLiteral("dev.example")),
         .githubWorkflow = ci == QStringLiteral("github"),
-        .loom = parsed.isSet(QStringLiteral("loom")),
     };
     const auto destination =
         QFileInfo(
@@ -397,11 +392,6 @@ int Commands::createProject(const QStringList &arguments)
         output << "\nThe generated .github/workflows/ci.yml has one step marked TODO: "
                   "loom has no published release to pin, so you must supply the "
                   "install step yourself.\n";
-    }
-    if (options.loom) {
-        output << "\nThe project links the loom styling library. If configure cannot "
-                  "find it, point CMAKE_PREFIX_PATH at a loom build or install "
-                  "tree.\n";
     }
     return cli::Success;
 }

@@ -216,4 +216,4 @@ void StateCaptureTests::ignoresKeysWithNoMatchingObject()
 }
 
 QTEST_MAIN(StateCaptureTests)
-#include "statecapture_tests.moc"
+#include "tst_statecapture.moc"

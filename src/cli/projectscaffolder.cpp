@@ -166,15 +166,6 @@ bool ProjectScaffolder::create(
             error)) {
         return false;
     }
-    // The loom overlay rewrites whole files over the base output rather than
-    // splicing placeholders into it: the two variants stay readable, at the
-    // cost of keeping the overlay in sync with the base template by hand.
-    if (options.loom
-        && !copyTemplate(
-            QStringLiteral(LOOM_TEMPLATE_LOOM_DIR), destination, replacements, {},
-            error)) {
-        return false;
-    }
 
     // Created empty rather than seeded with a README: the asset root is globbed
     // wholesale into the binary, so any placeholder file ships inside every

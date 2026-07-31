@@ -168,4 +168,4 @@ private slots:
 };
 
 QTEST_APPLESS_MAIN(ProtocolTests)
-#include "protocol_tests.moc"
+#include "tst_protocol.moc"

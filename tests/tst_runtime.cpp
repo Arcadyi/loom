@@ -543,4 +543,4 @@ private slots:
 };
 
 QTEST_MAIN(RuntimeTests)
-#include "runtime_tests.moc"
+#include "tst_runtime.moc"

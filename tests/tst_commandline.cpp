@@ -201,4 +201,4 @@ private slots:
 };
 
 QTEST_GUILESS_MAIN(CommandLineTests)
-#include "commandline_tests.moc"
+#include "tst_commandline.moc"

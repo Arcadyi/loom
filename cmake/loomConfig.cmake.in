@@ -1,12 +1,18 @@
 @PACKAGE_INIT@
 
 include(CMakeFindDependencyMacro)
-find_dependency(Qt6 6.11 COMPONENTS Core Gui Qml Quick)
+# QmlPrivate is loom_runtime's own private dependency, but a STATIC library
+# records even PRIVATE links as $<LINK_ONLY:...> in its interface, so the
+# consumer still has to be able to resolve the imported target.
+find_dependency(Qt6 6.11 COMPONENTS Core Gui Network Qml QmlPrivate Quick)
 
 include("${CMAKE_CURRENT_LIST_DIR}/loomTargets.cmake")
+# loom_add_application, loom_enable_hot_reload, loom_install_application.
+include("${CMAKE_CURRENT_LIST_DIR}/loomFunctions.cmake")
 
 # Where `import Loom` resolves for tooling (qmllint, Qt Creator): the directory
-# containing Loom/qmldir and Loom/loom.qmltypes.
+# containing Loom/qmldir and Loom/loom.qmltypes. loom_add_application defaults
+# its IMPORT_PATHS to this, so a generated application needs no extra plumbing.
 set_and_check(LOOM_QML_IMPORT_DIR "@PACKAGE_CMAKE_INSTALL_LIBDIR@/qml")
 
 check_required_components(loom)

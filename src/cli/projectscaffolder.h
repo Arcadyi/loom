@@ -15,10 +15,6 @@ public:
         // published release, so scaffolding one by default gave every new
         // project a guaranteed red X on its first push.
         bool githubWorkflow = false;
-        // Pre-wires the loom styling library: the loom template overlay
-        // replaces CMakeLists.txt and qml/Main.qml with versions that
-        // find_package(loom), link it, and style the starter UI through it.
-        bool loom = false;
     };
 
     static bool create(

@@ -147,17 +147,26 @@ function(loom_add_application target)
         )
     endforeach()
 
+    # LOOM_QML_IMPORT_DIR comes from loomConfig.cmake and holds Loom/qmldir and
+    # Loom/loom.qmltypes. Defaulting to it means `import Loom` resolves for
+    # qmllint and qmlls in every generated application without the caller
+    # wiring it up; linking loom::loomplugin is what registers the module at
+    # runtime. An explicit IMPORT_PATHS still wins, and extra paths can be
+    # appended to it.
+    set(loom_import_paths ${LOOM_ARG_IMPORT_PATHS})
+    if(NOT loom_import_paths AND DEFINED LOOM_QML_IMPORT_DIR)
+        set(loom_import_paths "${LOOM_QML_IMPORT_DIR}")
+    endif()
+
     # IMPORT_PATHS reaches qt_add_qml_module rather than being set afterwards
     # as a target property: Qt reads QT_QML_IMPORT_PATH eagerly while building
     # the generated qmllint/qmlcachegen command lines here, so a later
-    # set_property never appears in them. This is how an application resolves
-    # `import` of a QML module shipped by a separate package (loom, say) for
-    # tooling; linking that package's plugin is what registers it at runtime.
+    # set_property never appears in them.
     qt_add_qml_module("${target}"
         URI "${LOOM_ARG_URI}"
         QML_FILES ${loom_qml_files}
         RESOURCES ${loom_asset_files}
-        IMPORT_PATH ${LOOM_ARG_IMPORT_PATHS}
+        IMPORT_PATH ${loom_import_paths}
     )
     target_link_libraries("${target}" PRIVATE Qt6::Quick)
     loom_enable_hot_reload(

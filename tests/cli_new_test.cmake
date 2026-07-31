@@ -49,48 +49,43 @@ if(EXISTS "${TEST_DIR}/.github")
     message(FATAL_ERROR "loom new generated a CI workflow without --ci github")
 endif()
 
-# The default template must not reference loom at all: it only appears with
-# an explicit --loom.
-file(READ "${TEST_DIR}/CMakeLists.txt" default_cmake)
-if(default_cmake MATCHES "loom")
-    message(FATAL_ERROR "loom new wired loom without --loom")
+# There is one template and it is loom-styled: the CMake wires the package and
+# the QML imports it. This used to be gated behind --loom, with a plain Qt Quick
+# template as the default and the two kept in sync by hand.
+file(READ "${TEST_DIR}/CMakeLists.txt" generated_cmake)
+if(NOT generated_cmake MATCHES "find_package\\(loom CONFIG REQUIRED\\)"
+    OR NOT generated_cmake MATCHES "loom::loomplugin")
+    message(FATAL_ERROR "loom new did not wire loom into CMakeLists.txt")
+endif()
+if(NOT generated_cmake MATCHES "DESIGN")
+    message(FATAL_ERROR "loom new did not point loom_add_application at a design file")
 endif()
 
-set(LOOM_DIR "${TEST_DIR}-loom")
-file(REMOVE_RECURSE "${LOOM_DIR}")
-execute_process(
-    COMMAND "${LOOM_EXE}" new GeneratedApp
-        --org com.example
-        --directory "${LOOM_DIR}"
-        --loom
-    RESULT_VARIABLE loom_result
-    OUTPUT_VARIABLE loom_output
-    ERROR_VARIABLE loom_error
+file(READ "${TEST_DIR}/qml/Main.qml" generated_main)
+if(NOT generated_main MATCHES "import Loom" OR NOT generated_main MATCHES "Lo\\.style")
+    message(FATAL_ERROR "loom new did not generate a loom-styled Main.qml")
+endif()
+
+# The design file the manifest and CMake both point at has to actually exist,
+# or the first `loom dev` fails on a missing watch path.
+if(NOT EXISTS "${TEST_DIR}/design/tokens.json")
+    message(FATAL_ERROR "loom new did not generate design/tokens.json")
+endif()
+
+# Placeholders are substituted everywhere, not just in the files that happen to
+# be checked above.
+foreach(generated_file
+    CMakeLists.txt
+    qml/Main.qml
+    src/main.cpp
+    README.md
+    design/tokens.json
 )
-if(NOT loom_result EQUAL 0)
-    message(FATAL_ERROR "loom new --loom failed:\n${loom_output}\n${loom_error}")
-endif()
-file(READ "${LOOM_DIR}/CMakeLists.txt" loom_cmake)
-if(NOT loom_cmake MATCHES "find_package\\(loom CONFIG REQUIRED\\)"
-    OR NOT loom_cmake MATCHES "loom::loomplugin")
-    message(FATAL_ERROR "loom new --loom did not wire loom into CMakeLists.txt")
-endif()
-# The overlay replaces whole files, so the placeholders it carries must still
-# be substituted like the base template's.
-if(loom_cmake MATCHES "@LOOM_")
-    message(FATAL_ERROR "loom new --loom left placeholders in CMakeLists.txt")
-endif()
-file(READ "${LOOM_DIR}/qml/Main.qml" loom_main)
-if(NOT loom_main MATCHES "import Loom" OR NOT loom_main MATCHES "Lo\\.style")
-    message(FATAL_ERROR "loom new --loom did not generate a loom-styled Main.qml")
-endif()
-if(loom_main MATCHES "@LOOM_")
-    message(FATAL_ERROR "loom new --loom left placeholders in Main.qml")
-endif()
-if(NOT loom_output MATCHES "CMAKE_PREFIX_PATH")
-    message(FATAL_ERROR
-        "loom new --loom did not say how to make loom findable:\n${loom_output}")
-endif()
+    file(READ "${TEST_DIR}/${generated_file}" generated_contents)
+    if(generated_contents MATCHES "@LOOM_")
+        message(FATAL_ERROR "loom new left placeholders in ${generated_file}")
+    endif()
+endforeach()
 
 set(CI_DIR "${TEST_DIR}-ci")
 file(REMOVE_RECURSE "${CI_DIR}")

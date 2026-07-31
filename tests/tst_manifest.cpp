@@ -137,4 +137,4 @@ private slots:
 };
 
 QTEST_APPLESS_MAIN(ManifestTests)
-#include "manifest_tests.moc"
+#include "tst_manifest.moc"

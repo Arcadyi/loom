@@ -52,4 +52,4 @@ private slots:
 };
 
 QTEST_GUILESS_MAIN(DevSessionTests)
-#include "devsession_tests.moc"
+#include "tst_devsession.moc"
