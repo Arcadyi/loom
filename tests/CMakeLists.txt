@@ -89,6 +89,8 @@ loom_add_test(tst_protocol LINK loom::Protocol)
 
 loom_add_test(tst_runtime
     LINK loom::Runtime
+    # The design reload tests assert on the token registry, which is internal.
+    INCLUDE "${CMAKE_SOURCE_DIR}/src"
     # A private cache root, so a reload test never sweeps or reuses bundle
     # directories belonging to a real development session on this machine.
     ENVIRONMENT "XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/runtime-test-cache"

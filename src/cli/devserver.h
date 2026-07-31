@@ -45,6 +45,13 @@ public:
     // defaults are what a development session uses.
     void setHeartbeat(int intervalMs, int timeoutMs);
 
+    // Absolute path to the project's design token file, from the manifest's
+    // "design" key. Empty (the default) means the project declares none and no
+    // Design frame is ever sent. Watched separately from the QML and asset
+    // roots on purpose: the runtime applies tokens in place, so an edit must
+    // not rebuild the bundle and recreate the scene.
+    void setDesignPath(const QString &absolutePath);
+
     bool start(QString *error = nullptr);
     quint16 port() const;
     QString token() const;
@@ -72,7 +79,10 @@ private:
     void rebuildBundle();
     void resetWatchPaths();
     void resetNativeWatchPaths();
+    // Re-reads the design file and pushes it to every authenticated client.
+    void reloadDesign();
     void sendBundle(QTcpSocket *socket);
+    void sendDesign(QTcpSocket *socket);
     void sendError(QTcpSocket *socket, const QString &message);
     void sendHeartbeats();
     // Reads the module's generated qmldir and strips the directives that only
@@ -86,12 +96,19 @@ private:
     QTcpServer *m_server;
     QFileSystemWatcher *m_watcher;
     QFileSystemWatcher *m_nativeWatcher;
+    QFileSystemWatcher *m_designWatcher;
     QTimer *m_debounce;
     QTimer *m_nativeDebounce;
+    QTimer *m_designDebounce;
     QTimer *m_heartbeat;
     int m_heartbeatTimeoutMs = DefaultHeartbeatTimeoutMs;
     QHash<QTcpSocket *, ClientState> m_clients;
     QByteArray m_encodedBundle;
     QString m_bundleId;
+    QString m_designPath;
+    // The file's current bytes, re-read on change and sent to clients as they
+    // connect, so an application started after an edit gets the same tokens as
+    // one that was running through it.
+    QByteArray m_design;
     QString m_token;
 };

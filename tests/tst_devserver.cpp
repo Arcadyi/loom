@@ -36,6 +36,21 @@ bool writeProjectQml(const QTemporaryDir &project)
     return main.write("import QtQuick\nItem {}\n") > 0;
 }
 
+QString designPathOf(const QTemporaryDir &project)
+{
+    return project.filePath(QStringLiteral("design/tokens.json"));
+}
+
+bool writeDesign(const QTemporaryDir &project, const char *json)
+{
+    if (!QDir().mkpath(project.filePath(QStringLiteral("design"))))
+        return false;
+    QFile tokens(designPathOf(project));
+    if (!tokens.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return false;
+    return tokens.write(json) > 0;
+}
+
 // Stands in for the qmldir qt_add_qml_module writes into the build tree. The
 // "prefer" line is the point: it redirects the engine to the compiled-in copy.
 bool writeGeneratedQmldir(const QTemporaryDir &build, const QString &uriPath)
@@ -113,6 +128,17 @@ public:
         return std::any_of(frames.cbegin(), frames.cend(), [type](const auto &frame) {
             return frame.type == type;
         });
+    }
+
+    // The most recent payload of `type`, so a test can assert on what was sent
+    // rather than only that something was.
+    QByteArray payloadOf(const loom::MessageType type) const
+    {
+        for (auto frame = frames.crbegin(); frame != frames.crend(); ++frame) {
+            if (frame->type == type)
+                return frame->payload;
+        }
+        return {};
     }
 
     bool isDisconnected() const
@@ -194,6 +220,76 @@ private slots:
 
         QTRY_VERIFY_WITH_TIMEOUT(probe.has(loom::MessageType::Bundle), 3000);
         QCOMPARE(server.clientCount(), 1);
+    }
+
+    // Design tokens go out on connect, not only on change: the copy compiled
+    // into the application is whatever the file held at build time, so an
+    // application started after an edit would otherwise be styled with stale
+    // tokens until the next save.
+    void authenticatedClientReceivesTheDesignTokens()
+    {
+        QTemporaryDir project;
+        QVERIFY(project.isValid() && writeProjectQml(project));
+        QVERIFY(writeDesign(project, R"({"colors": {"brand": "#7c5cff"}})"));
+
+        DevServer server(project.path(), testApplication());
+        server.setDesignPath(designPathOf(project));
+        QString error;
+        QVERIFY2(server.start(&error), qPrintable(error));
+
+        ClientProbe probe(server.port());
+        QVERIFY(probe.waitForConnected());
+        probe.sendHello(server.token(), loom::ProtocolVersion);
+
+        QTRY_VERIFY_WITH_TIMEOUT(probe.has(loom::MessageType::Design), 3000);
+        QVERIFY(probe.payloadOf(loom::MessageType::Design).contains("#7c5cff"));
+    }
+
+    // The whole point of the separate watcher: tokens are applied in place by
+    // the runtime, so editing them must not rebuild the bundle and tear the
+    // scene down. A Bundle here would mean every colour tweak costs the user
+    // the state of everything on screen.
+    void designChangeSendsDesignRatherThanRebuildingTheBundle()
+    {
+        QTemporaryDir project;
+        QVERIFY(project.isValid() && writeProjectQml(project));
+        QVERIFY(writeDesign(project, R"({"colors": {"brand": "#7c5cff"}})"));
+
+        DevServer server(project.path(), testApplication());
+        server.setDesignPath(designPathOf(project));
+        QString error;
+        QVERIFY2(server.start(&error), qPrintable(error));
+
+        ClientProbe probe(server.port());
+        QVERIFY(probe.waitForConnected());
+        probe.sendHello(server.token(), loom::ProtocolVersion);
+        QTRY_VERIFY_WITH_TIMEOUT(probe.has(loom::MessageType::Bundle), 3000);
+
+        probe.frames.clear();
+        QVERIFY(writeDesign(project, R"({"colors": {"brand": "#00ff00"}})"));
+
+        QTRY_VERIFY_WITH_TIMEOUT(probe.has(loom::MessageType::Design), 3000);
+        QVERIFY(probe.payloadOf(loom::MessageType::Design).contains("#00ff00"));
+        QVERIFY2(
+            !probe.has(loom::MessageType::Bundle),
+            "a design token edit rebuilt the bundle and reloaded the scene");
+    }
+
+    // A project with no "design" key must behave exactly as before.
+    void projectWithoutDesignTokensSendsNoDesignFrame()
+    {
+        QTemporaryDir project;
+        QVERIFY(project.isValid() && writeProjectQml(project));
+        DevServer server(project.path(), testApplication());
+        server.setDesignPath(QString());
+        QString error;
+        QVERIFY2(server.start(&error), qPrintable(error));
+
+        ClientProbe probe(server.port());
+        QVERIFY(probe.waitForConnected());
+        probe.sendHello(server.token(), loom::ProtocolVersion);
+        QTRY_VERIFY_WITH_TIMEOUT(probe.has(loom::MessageType::Bundle), 3000);
+        QVERIFY(!probe.has(loom::MessageType::Design));
     }
 
     // Without the module declaration, a development scene resolves types

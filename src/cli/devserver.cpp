@@ -76,8 +76,10 @@ DevServer::DevServer(
     , m_server(new QTcpServer(this))
     , m_watcher(new QFileSystemWatcher(this))
     , m_nativeWatcher(new QFileSystemWatcher(this))
+    , m_designWatcher(new QFileSystemWatcher(this))
     , m_debounce(new QTimer(this))
     , m_nativeDebounce(new QTimer(this))
+    , m_designDebounce(new QTimer(this))
     , m_heartbeat(new QTimer(this))
     , m_token(randomToken())
 {
@@ -85,6 +87,10 @@ DevServer::DevServer(
     m_debounce->setInterval(120);
     m_nativeDebounce->setSingleShot(true);
     m_nativeDebounce->setInterval(300);
+    // Same debounce as the QML watcher: an editor's write-truncate-rename lands
+    // as several events for one save.
+    m_designDebounce->setSingleShot(true);
+    m_designDebounce->setInterval(120);
     m_heartbeat->setInterval(DefaultHeartbeatIntervalMs);
     connect(m_heartbeat, &QTimer::timeout, this, &DevServer::sendHeartbeats);
     connect(m_debounce, &QTimer::timeout, this, &DevServer::rebuildBundle);
@@ -105,7 +111,31 @@ DevServer::DevServer(
     connect(
         m_nativeWatcher, &QFileSystemWatcher::directoryChanged, m_nativeDebounce,
         qOverload<>(&QTimer::start));
+    connect(m_designDebounce, &QTimer::timeout, this, &DevServer::reloadDesign);
+    connect(
+        m_designWatcher, &QFileSystemWatcher::fileChanged, m_designDebounce,
+        qOverload<>(&QTimer::start));
     resetNativeWatchPaths();
+}
+
+void DevServer::setDesignPath(const QString &absolutePath)
+{
+    const auto watched = m_designWatcher->files();
+    if (!watched.isEmpty())
+        m_designWatcher->removePaths(watched);
+
+    m_designPath = absolutePath;
+    m_design.clear();
+    if (m_designPath.isEmpty())
+        return;
+    if (!QFileInfo::exists(m_designPath)) {
+        emit logMessage(
+            QStringLiteral("design tokens %1 do not exist; not watching them")
+                .arg(QDir(m_projectRoot).relativeFilePath(m_designPath)));
+        return;
+    }
+    m_designWatcher->addPath(m_designPath);
+    reloadDesign();
 }
 
 void DevServer::setHeartbeat(const int intervalMs, const int timeoutMs)
@@ -219,6 +249,12 @@ bool DevServer::authenticate(
 
     state.authenticated = true;
     emit logMessage(QStringLiteral("application connected"));
+
+    // Unconditionally, and before any bundle short-circuit below: the copy
+    // compiled into the application is whatever the design file held at build
+    // time, so an application started after an edit would otherwise show stale
+    // tokens until the next save.
+    sendDesign(socket);
 
     // The application already has this scene; a multi-megabyte resend on every
     // restart buys nothing.
@@ -443,11 +479,57 @@ void DevServer::resetNativeWatchPaths()
         m_nativeWatcher->addPaths(paths);
 }
 
+void DevServer::reloadDesign()
+{
+    if (m_designPath.isEmpty())
+        return;
+
+    const auto relative = QDir(m_projectRoot).relativeFilePath(m_designPath);
+    QFile file(m_designPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        emit logMessage(
+            QStringLiteral("cannot read %1: %2").arg(relative, file.errorString()));
+        return;
+    }
+    const auto contents = file.readAll();
+    if (contents.size() > loom::MaximumDesignSize) {
+        emit logMessage(
+            QStringLiteral("%1 is %2 bytes, over the %3 byte limit; not sent")
+                .arg(relative)
+                .arg(contents.size())
+                .arg(loom::MaximumDesignSize));
+        return;
+    }
+
+    // An editor that saves by replacing the file leaves the watcher pointed at
+    // a path that no longer exists, so re-add it every time. QFileSystemWatcher
+    // ignores a path it is already watching.
+    if (!m_designWatcher->files().contains(m_designPath))
+        m_designWatcher->addPath(m_designPath);
+
+    if (contents == m_design)
+        return;
+    m_design = contents;
+    emit logMessage(QStringLiteral("design tokens changed: %1").arg(relative));
+
+    for (auto client = m_clients.cbegin(); client != m_clients.cend(); ++client) {
+        if (client.value().authenticated)
+            sendDesign(client.key());
+    }
+}
+
 void DevServer::sendBundle(QTcpSocket *socket)
 {
     if (m_encodedBundle.isEmpty())
         return;
     socket->write(loom::encodeFrame(loom::MessageType::Bundle, m_encodedBundle));
+}
+
+void DevServer::sendDesign(QTcpSocket *socket)
+{
+    if (m_design.isEmpty())
+        return;
+    socket->write(loom::encodeFrame(loom::MessageType::Design, m_design));
 }
 
 void DevServer::sendHeartbeats()

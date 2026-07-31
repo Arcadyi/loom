@@ -75,6 +75,22 @@ LoomStyleAttached::LoomStyleAttached(QObject *parent)
     connect(
         LoomTokenRegistry::instance(), &LoomTokenRegistry::tokensChanged, this,
         &LoomStyleAttached::scheduleApply);
+    // A config load can also change which token names *exist*. m_compiled was
+    // produced when they did not, so it is missing every rule that named one;
+    // re-applying it would faithfully re-apply that gap. The compile cache is
+    // cleared by the loader, so this recompiles from scratch. tokensChanged
+    // follows and applies the result.
+    connect(
+        LoomTokenRegistry::instance(), &LoomTokenRegistry::vocabularyChanged, this,
+        &LoomStyleAttached::recompile);
+}
+
+void LoomStyleAttached::recompile()
+{
+    if (!m_target || m_style.isEmpty())
+        return;
+    m_compiled = LoomStyleCompiler::compile(m_style);
+    updateSubscriptions();
 }
 
 QString LoomStyleAttached::style() const

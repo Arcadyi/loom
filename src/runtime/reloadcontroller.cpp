@@ -1,3 +1,4 @@
+#include <loom/loom.h>
 #include <loom/protocol.h>
 #include <loom/reloadcontroller.h>
 
@@ -610,6 +611,15 @@ void ReloadController::handleSocketData()
             sendResult(success, success ? QStringLiteral("Reloaded") : error);
             if (!success)
                 emit reloadFailed(error);
+        } else if (frame.type == MessageType::Design) {
+            QString error;
+            const bool success = applyDesign(frame.payload, &error);
+            m_lastError = error;
+            sendResult(success, success ? QStringLiteral("Design reloaded") : error);
+            if (success)
+                emit designReloaded();
+            else
+                emit reloadFailed(error);
         } else if (frame.type == MessageType::Ping) {
             socket->write(encodeFrame(MessageType::Ping, {}));
         } else if (frame.type == MessageType::Error) {
@@ -620,6 +630,60 @@ void ReloadController::handleSocketData()
             emit reloadFailed(message);
         }
     }
+}
+
+bool ReloadController::applyDesign(const QByteArray &json, QString *error)
+{
+    if (json.size() > MaximumDesignSize) {
+        if (error) {
+            *error = QStringLiteral("Design tokens are %1 bytes, over the %2 byte limit")
+                         .arg(json.size())
+                         .arg(MaximumDesignSize);
+        }
+        return false;
+    }
+
+    // Parsed here rather than handed straight to the loader so a malformed file
+    // is rejected before anything is touched. The scene is never involved:
+    // tokens live in process-wide C++ that outlives every reload, so this
+    // repaints the running window instead of rebuilding it.
+    QJsonParseError parseError;
+    const auto document = QJsonDocument::fromJson(json, &parseError);
+    if (document.isNull() || !document.isObject()) {
+        if (error) {
+            *error = QStringLiteral("Design tokens are not a JSON object: %1 at offset %2")
+                         .arg(parseError.errorString())
+                         .arg(parseError.offset);
+        }
+        return false;
+    }
+
+    if (!ensureCacheDirectory(error))
+        return false;
+    // loom::reloadConfig takes a path because a config's iconRoot resolves
+    // relative to the file it came from. Writing it into this controller's own
+    // cache directory keeps that behaviour without touching the project.
+    const auto path =
+        QDir(m_cacheDirectory->path()).filePath(QStringLiteral("design.json"));
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        if (error)
+            *error = QStringLiteral("Cannot stage design tokens: %1").arg(file.errorString());
+        return false;
+    }
+    if (file.write(json) != json.size() || !file.flush()) {
+        if (error)
+            *error = QStringLiteral("Cannot write design tokens: %1").arg(file.errorString());
+        return false;
+    }
+    file.close();
+
+    if (!loom::reloadConfig(path)) {
+        if (error)
+            *error = QStringLiteral("Design tokens could not be applied");
+        return false;
+    }
+    return true;
 }
 
 void ReloadController::sendResult(const bool success, const QString &message)

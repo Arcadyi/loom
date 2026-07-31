@@ -25,6 +25,9 @@ public:
     struct Configuration {
         QString projectRoot;
         ApplicationDefinition application;
+        // Absolute path to the project's design token file, or empty when the
+        // manifest declares none. See DevServer::setDesignPath.
+        QString designPath;
         QString buildDirectory;
         QString buildConfiguration;
         QStringList cmakeArguments;

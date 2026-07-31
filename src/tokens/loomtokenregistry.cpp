@@ -15,6 +15,37 @@ LoomTokenRegistry *LoomTokenRegistry::instance()
 
 LoomTokenRegistry::LoomTokenRegistry()
 {
+    seedDefaults();
+}
+
+void LoomTokenRegistry::resetToDefaults()
+{
+    // Deliberately a plain reset, including the active theme going back to
+    // "light": a config's own themes do not exist again until it has been
+    // re-applied, so preserving the active theme here could only ever fail.
+    // The reload path in loomconfigloader.cpp restores it afterwards.
+    m_colors.clear();
+    m_themes.clear();
+    m_space.clear();
+    m_textSizes.clear();
+    m_fontWeights.clear();
+    m_tracking.clear();
+    m_radius.clear();
+    m_shadows.clear();
+    m_opacity.clear();
+    m_durations.clear();
+    m_easing.clear();
+    m_breakpoints.clear();
+
+    seedDefaults();
+}
+
+// Every table in loomtokendata.h, expanded into the stores. Split out of the
+// constructor so a config reload can start from the built-in set again: the
+// config mutators only ever add, so without this a token deleted from a config
+// file would survive the reload that removed it.
+void LoomTokenRegistry::seedDefaults()
+{
 #define LOOM_FILL_COLOR(name, key, value)                                                \
     m_colors.insert(QStringLiteral(key), QColor::fromString(QLatin1String(value)));
     LOOM_PALETTE_COLORS(LOOM_FILL_COLOR)
@@ -272,6 +303,12 @@ bool LoomTokenRegistry::defineTheme(
 
 void LoomTokenRegistry::announceConfigChange()
 {
+    // vocabularyChanged before tokensChanged: a config can introduce a token
+    // name that did not exist, and a style string compiled before it did has
+    // already dropped the rule that referenced it. Re-applying is not enough --
+    // the string has to be compiled again -- so listeners recompile on this
+    // signal and then apply on the next one.
+    emit vocabularyChanged();
     emit tokensChanged();
 }
 

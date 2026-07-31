@@ -36,6 +36,9 @@ signals:
 
 private slots:
     void scheduleApply();
+    // Compiles m_style again, for when a config load changed which token names
+    // exist rather than only what they resolve to.
+    void recompile();
 
 private:
     void applyNow();

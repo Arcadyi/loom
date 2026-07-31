@@ -1,6 +1,10 @@
 #include <loom/protocol.h>
 #include <loom/reloadcontroller.h>
 
+// Design token reload lands in the process-wide registry, which has no public
+// membership query; the styling tests reach it the same way.
+#include "tokens/loomtokenregistry.h"
+
 #include <QCryptographicHash>
 #include <QDir>
 #include <QEventLoop>
@@ -192,6 +196,57 @@ private slots:
         QCoreApplication::processEvents();
         QCOMPARE(controller.rootObject()->objectName(), QStringLiteral("reloaded"));
         QCOMPARE(controller.rootObject()->property("count").toInt(), 42);
+    }
+
+    // The point of applying design tokens outside the bundle path: the scene
+    // object is never replaced, so nothing on screen loses its state. A user
+    // typing in a field while tweaking a colour keeps what they typed.
+    void designTokensApplyWithoutRebuildingTheScene()
+    {
+        QQmlApplicationEngine engine;
+        loom::ReloadController controller(engine);
+        QVERIFY2(
+            controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")),
+            qPrintable(controller.lastError()));
+        QObject *const sceneBefore = controller.rootObject();
+        QVERIFY(sceneBefore);
+        QVERIFY(controller.rootObject()->setProperty("count", 7));
+
+        QString error;
+        QVERIFY2(
+            controller.applyDesign(R"({"colors": {"brand": "#7c5cff"}})", &error),
+            qPrintable(error));
+        QCoreApplication::processEvents();
+
+        QCOMPARE(controller.rootObject(), sceneBefore);
+        QCOMPARE(controller.rootObject()->property("count").toInt(), 7);
+        QVERIFY(LoomTokenRegistry::instance()->hasColor(QStringLiteral("brand")));
+    }
+
+    // A half-typed design file arrives as readily as a finished one. It must
+    // cost nothing: no scene teardown, and the previous tokens stay live.
+    void malformedDesignTokensChangeNothing()
+    {
+        QQmlApplicationEngine engine;
+        loom::ReloadController controller(engine);
+        QVERIFY2(
+            controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")),
+            qPrintable(controller.lastError()));
+        QVERIFY(controller.applyDesign(R"({"colors": {"brand": "#7c5cff"}})"));
+        QObject *const sceneBefore = controller.rootObject();
+
+        QString error;
+        QVERIFY(!controller.applyDesign(R"({"colors": {"brand": )", &error));
+        QVERIFY(!error.isEmpty());
+        QCOMPARE(controller.rootObject(), sceneBefore);
+        QVERIFY2(
+            LoomTokenRegistry::instance()->hasColor(QStringLiteral("brand")),
+            "a malformed design file discarded the tokens that were working");
+
+        // And the size cap, which exists so a stray large file cannot be pushed
+        // into the running process as configuration.
+        QVERIFY(!controller.applyDesign(QByteArray(loom::MaximumDesignSize + 1, 'x')));
+        QCOMPARE(controller.rootObject(), sceneBefore);
     }
 
     void invalidQmlRollsBackToWorkingScene()

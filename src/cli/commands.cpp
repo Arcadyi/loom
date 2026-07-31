@@ -200,6 +200,10 @@ struct ProjectContext {
     QString buildDirectory;
     QStringList cmakeArguments;
     QString generator;
+    // Absolute path to the manifest's design token file, empty when it declares
+    // none. Resolved here rather than at each use so every command anchors it
+    // to the manifest instead of the working directory.
+    QString designPath;
 };
 
 // Every QML file the manifest declares, which is what qmlformat and the
@@ -245,6 +249,7 @@ int resolveProjectContext(
         return reportError(error);
 
     context.root = QFileInfo(manifestPath).absolutePath();
+    context.designPath = manifest.resolvedDesignPath(manifestPath);
     if (!manifest.selectApplication(
             parsed.value(QStringLiteral("app")), context.application, &error)) {
         return reportError(error);
@@ -941,6 +946,7 @@ int Commands::develop(const QStringList &arguments)
         DevSession::Configuration{
             .projectRoot = root,
             .application = app,
+            .designPath = context.designPath,
             .buildDirectory = buildDirectory,
             .buildConfiguration = config,
             .cmakeArguments = extra,

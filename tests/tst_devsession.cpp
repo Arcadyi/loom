@@ -30,6 +30,7 @@ private slots:
                         .assetRoots = {},
                         .platforms = {QStringLiteral("desktop")},
                     },
+                .designPath = {},
                 .buildDirectory = project.filePath(QStringLiteral("build")),
                 .buildConfiguration = QStringLiteral("Debug"),
                 .cmakeArguments = {},

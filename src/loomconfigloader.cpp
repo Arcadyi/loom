@@ -112,7 +112,9 @@ void loadThemes(LoomTokenRegistry *registry, const QJsonObject &themes)
 
 } // namespace
 
-bool loomLoadConfigFile(const QString &filePath)
+namespace {
+
+bool applyConfigFile(const QString &filePath, bool reset)
 {
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
@@ -145,6 +147,13 @@ bool loomLoadConfigFile(const QString &filePath)
     }
 
     auto *registry = LoomTokenRegistry::instance();
+    // Captured before the reset, restored after the file's themes are back.
+    const QString previousTheme = registry->theme();
+    // Only once the document has parsed: a reload that reset first and then hit
+    // a syntax error would leave the application with the built-in tokens and
+    // none of its own, which is a worse outcome than keeping the last good set.
+    if (reset)
+        registry->resetToDefaults();
     // Colors first: theme entries may reference config-defined palette keys.
     loadColors(registry, root.value(QLatin1String("colors")).toObject());
     loadSpace(registry, root.value(QLatin1String("space")).toObject());
@@ -171,7 +180,26 @@ bool loomLoadConfigFile(const QString &filePath)
     }
 
     const QString defaultTheme = root.value(QLatin1String("defaultTheme")).toString();
-    if (!defaultTheme.isEmpty())
+    if (reset && registry->themeNames().contains(previousTheme)) {
+        // On a reload the session wins over the file's defaultTheme. Someone
+        // who switched to dark to look at it, then saved the design file, meant
+        // to restyle dark -- not to be thrown back to the default. Only when
+        // the theme they were on no longer exists does defaultTheme apply.
+        registry->setTheme(previousTheme);
+    } else if (!defaultTheme.isEmpty()) {
         registry->setTheme(defaultTheme);
+    }
     return true;
+}
+
+} // namespace
+
+bool loomLoadConfigFile(const QString &filePath)
+{
+    return applyConfigFile(filePath, /*reset=*/false);
+}
+
+bool loomReloadConfigFile(const QString &filePath)
+{
+    return applyConfigFile(filePath, /*reset=*/true);
 }

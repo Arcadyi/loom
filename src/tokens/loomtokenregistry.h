@@ -63,6 +63,14 @@ public:
 
     // Config mutators (used by LoomConfigLoader). None of them emit change
     // signals; call announceConfigChange() once after a batch of updates.
+
+    // Drops every token back to the built-in set from loomtokendata.h,
+    // including the active theme going back to "light". The mutators below only
+    // ever add, so reloading an edited config without this would keep tokens
+    // the file no longer defines. The active theme is deliberately not
+    // preserved here -- a config's own themes do not exist again until it has
+    // been re-applied -- so the reload path restores it afterwards.
+    void resetToDefaults();
     void addColor(const QString &key, const QColor &color);
     void addSpace(const QString &key, qreal px);
     bool setBreakpoint(const QString &key, int px);
@@ -82,9 +90,16 @@ signals:
     void tokensChanged();
     // The active theme name / darkness changed.
     void themeChanged();
+    // The set of *known* token names changed, not just their values -- only a
+    // config load does this. A style string compiled earlier dropped any rule
+    // naming a token that did not exist yet, so re-applying it is not enough:
+    // listeners have to compile the string again. Emitted just before
+    // tokensChanged, so a recompile is always followed by an apply.
+    void vocabularyChanged();
 
 private:
     LoomTokenRegistry();
+    void seedDefaults();
 
     struct Theme {
         QHash<QString, QColor> semantic;

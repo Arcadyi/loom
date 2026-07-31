@@ -18,6 +18,7 @@ bool isKnownMessageType(const quint8 value)
     case MessageType::ReloadResult:
     case MessageType::Error:
     case MessageType::Ping:
+    case MessageType::Design:
         return true;
     }
     return false;

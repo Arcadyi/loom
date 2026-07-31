@@ -23,6 +23,13 @@ QString theme();
 // cannot be read or parsed. Also available from QML: Loom.loadConfig(url).
 bool loadConfig(const QString &filePath);
 
+// Replaces the active config instead of merging into it: tokens reset to the
+// built-in set before the file is applied, so a token deleted from the file
+// stops resolving. `loom dev` calls this on every save of the project's design
+// file, which is what lets an edit repaint the running window without the scene
+// being recreated. A file that fails to parse changes nothing.
+bool reloadConfig(const QString &filePath);
+
 // Directory that a relative `Loom.icon()` source resolves against. Set it
 // before the engine loads the scene: icon() bindings track colors, not this,
 // so a later change will not repaint icons already on screen. Also reachable

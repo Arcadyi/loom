@@ -53,6 +53,7 @@ DevSession::DevSession(Configuration configuration, QObject *parent)
           m_configuration.projectRoot, m_configuration.application,
           m_configuration.buildDirectory, this)
 {
+    m_server.setDesignPath(m_configuration.designPath);
 }
 
 DevSession::~DevSession()

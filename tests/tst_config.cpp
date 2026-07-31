@@ -23,6 +23,10 @@ private slots:
     void malformedJsonFails();
     void badEntriesWarnAndSkip();
     void unknownExtendsWarns();
+    void reloadDropsTokensTheFileNoLongerDefines();
+    void reloadKeepsTheActiveTheme();
+    void failedReloadKeepsThePreviousTokens();
+    void reloadRecompilesLiveStyles();
 
 private:
     QString writeConfig(const char *json);
@@ -179,6 +183,113 @@ void ConfigTests::unknownExtendsWarns()
     QVERIFY(loom::loadConfig(path));
     QVERIFY(
         !LoomTokenRegistry::instance()->themeNames().contains(QStringLiteral("exotic")));
+}
+
+// loadConfig only ever adds, so `loom dev` re-applying an edited design file
+// would keep tokens the edit deleted. reloadConfig resets to the built-ins
+// first.
+void ConfigTests::reloadDropsTokensTheFileNoLongerDefines()
+{
+    auto *registry = LoomTokenRegistry::instance();
+    const QString before = writeConfig(R"({
+        "colors": {"brand": "#7c5cff", "legacy": "#ff0000"},
+        "space": {"18": 72}
+    })");
+    QVERIFY(loom::loadConfig(before));
+    QVERIFY(registry->hasColor(QStringLiteral("legacy")));
+    QVERIFY(registry->hasSpace(QStringLiteral("18")));
+
+    // The same file with "legacy" and the custom space step removed.
+    const QString after = writeConfig(R"({"colors": {"brand": "#7c5cff"}})");
+    QVERIFY(loom::reloadConfig(after));
+    QVERIFY2(
+        registry->hasColor(QStringLiteral("brand")),
+        "reload dropped a token the file still defines");
+    QVERIFY2(
+        !registry->hasColor(QStringLiteral("legacy")),
+        "reload kept a color the edited file no longer defines");
+    QVERIFY2(
+        !registry->hasSpace(QStringLiteral("18")),
+        "reload kept a space step the edited file no longer defines");
+
+    // The built-ins survive the reset that removed the config's own tokens.
+    QVERIFY(registry->hasColor(QStringLiteral("blue-500")));
+    QCOMPARE(registry->space(QStringLiteral("4")), 16.0);
+}
+
+// Resetting the registry must not throw the user back to "light" mid-session.
+void ConfigTests::reloadKeepsTheActiveTheme()
+{
+    auto *registry = LoomTokenRegistry::instance();
+    const QString path = writeConfig(R"({
+        "themes": {"oled": {"extends": "dark", "surface": "#000000"}}
+    })");
+    QVERIFY(loom::loadConfig(path));
+    loom::setTheme(QStringLiteral("oled"));
+    QCOMPARE(loom::theme(), QStringLiteral("oled"));
+
+    QVERIFY(loom::reloadConfig(path));
+    QCOMPARE(loom::theme(), QStringLiteral("oled"));
+
+    // A theme only the previous file defined is gone after a reload without it,
+    // so the active theme falls back to one that still exists rather than
+    // naming a theme the registry no longer has.
+    const QString without = writeConfig(R"({"colors": {"brand": "#7c5cff"}})");
+    QVERIFY(loom::reloadConfig(without));
+    QVERIFY(!registry->themeNames().contains(QStringLiteral("oled")));
+    QVERIFY(registry->themeNames().contains(loom::theme()));
+}
+
+// A syntax error mid-keystroke must not strip the application down to the
+// built-in tokens: keeping the last good set is the better failure.
+void ConfigTests::failedReloadKeepsThePreviousTokens()
+{
+    auto *registry = LoomTokenRegistry::instance();
+    const QString good = writeConfig(R"({"colors": {"brand": "#7c5cff"}})");
+    QVERIFY(loom::loadConfig(good));
+    QVERIFY(registry->hasColor(QStringLiteral("brand")));
+
+    const QString broken = writeConfig(R"({"colors": {"brand": )");
+    QTest::ignoreMessage(
+        QtWarningMsg, QRegularExpression(QStringLiteral("not a JSON object")));
+    QVERIFY(!loom::reloadConfig(broken));
+    QVERIFY2(
+        registry->hasColor(QStringLiteral("brand")),
+        "a failed reload reset the tokens instead of keeping the last good set");
+
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("cannot open")));
+    QVERIFY(!loom::reloadConfig(m_dir.filePath(QStringLiteral("nope.json"))));
+    QVERIFY(registry->hasColor(QStringLiteral("brand")));
+}
+
+// The case that motivated vocabularyChanged: an item already on screen whose
+// Lo.style names a token the config has just introduced. Its compiled style was
+// produced when that token did not exist, so it dropped the rule -- re-applying
+// the same compiled object would faithfully re-apply the gap.
+void ConfigTests::reloadRecompilesLiveStyles()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(
+        "import QtQuick\nimport Loom\n"
+        "Rectangle { width: 10; height: 10; Lo.style: \"bg-brand\" }",
+        QUrl(QStringLiteral("qrc:/tst_config/live.qml")));
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY2(!object.isNull(), qPrintable(component.errorString()));
+    auto *item = qobject_cast<QQuickItem *>(object.data());
+    QVERIFY(item);
+
+    // bg-brand does not resolve yet, so the rectangle keeps its own color.
+    QVERIFY(item->property("color").value<QColor>() != QColor(0x7c, 0x5c, 0xff));
+
+    const QString path = writeConfig(R"({"colors": {"brand": "#7c5cff"}})");
+    QVERIFY(loom::reloadConfig(path));
+    QTRY_COMPARE(item->property("color").value<QColor>(), QColor(0x7c, 0x5c, 0xff));
+
+    // And the reverse: dropping the token stops the rule resolving again.
+    const QString without = writeConfig(R"({"colors": {"other": "#123456"}})");
+    QVERIFY(loom::reloadConfig(without));
+    QTRY_VERIFY(item->property("color").value<QColor>() != QColor(0x7c, 0x5c, 0xff));
 }
 
 QTEST_MAIN(ConfigTests)

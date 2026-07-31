@@ -50,6 +50,18 @@ public:
     ///         constructed successfully.
     bool applyBundle(const QByteArray &payload, QString *error = nullptr);
 
+    /// Applies design tokens -- the JSON of a project's design file -- to the
+    /// process-wide token registry, replacing rather than merging, so a token
+    /// the file no longer defines stops resolving.
+    ///
+    /// The scene is not involved. Tokens live in C++ that outlives every
+    /// reload, so this repaints the running window instead of rebuilding it,
+    /// and nothing on screen loses its state. Malformed JSON, or more than
+    /// MaximumDesignSize bytes, changes nothing and leaves the previous tokens
+    /// live.
+    /// \return false on failure, with the reason in \a error.
+    bool applyDesign(const QByteArray &json, QString *error = nullptr);
+
     /// The live root scene, or null if none could be constructed.
     QObject *rootObject() const;
 
@@ -62,6 +74,8 @@ signals:
     void sceneReloaded(const QString &bundleId);
     /// A bundle was rejected. The previous scene is still running.
     void reloadFailed(const QString &message);
+    /// New design tokens are live. The scene was not rebuilt.
+    void designReloaded();
 
 private:
     // A dev server that is restarting comes back in seconds; one that is gone

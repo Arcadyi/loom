@@ -35,7 +35,17 @@ enum class MessageType : quint8 {
     ReloadResult = 3,
     Error = 4,
     Ping = 5,
+    // Raw design token JSON, applied in place without rebuilding the scene.
+    // Additive, so ProtocolVersion stays 1: a runtime built before this existed
+    // rejects the type as unknown and keeps running, which is the right outcome
+    // for a message it cannot act on.
+    Design = 6,
 };
+
+// Largest design token document the server will send or the runtime accept.
+// Design files are hand-written configuration, not assets; anything approaching
+// this is a mistake worth reporting rather than applying.
+inline constexpr qsizetype MaximumDesignSize = 1024 * 1024;
 
 bool isKnownMessageType(quint8 value);
 
