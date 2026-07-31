@@ -1,20 +1,51 @@
 # Configuration
 
-Loom's equivalent of `tailwind.config`: a JSON file loaded explicitly —
-there is no implicit file discovery.
+Loom's equivalent of `tailwind.config`: a JSON file of design tokens.
+
+In a `loom` project, name it in the manifest and the rest is automatic:
+
+```json
+// loom.json
+{ "design": "design/tokens.json", … }
+```
+
+`loom new` scaffolds exactly this. The file is then compiled into release
+builds, **hot-reloaded by `loom dev`**, and loaded by `loom style` and
+`loom lint` so project-defined classes are recognised. See
+[manifest.md](manifest.md#design).
+
+Outside a project, or to load an additional file, load it yourself:
 
 ```cpp
 // C++, ideally before the engine loads (flicker-free):
-loom::loadConfig(":/config/loom.json");
+loom::loadConfig(":/config/tokens.json");
 ```
 
 ```qml
 // Or from QML at any point; everything re-resolves live:
-Component.onCompleted: Loom.loadConfig(Qt.resolvedUrl("loom.json"))
+Component.onCompleted: Loom.loadConfig(Qt.resolvedUrl("tokens.json"))
 ```
 
 Returns false when the file cannot be read or parsed. Individually bad
 entries warn (logging category `loom.config`) and are skipped.
+
+## Loading versus reloading
+
+`loadConfig()` **merges** into what is already defined, which is what you want
+when layering a config over the built-in set.
+
+`loom::reloadConfig()` **replaces**: every token resets to the built-in set
+before the file is applied, so a token deleted from the file stops resolving.
+This is what `loom dev` drives on each save, and it is why removing a colour
+takes effect immediately rather than lingering until the next restart.
+
+Either way a file that fails to parse changes nothing — the tokens that were
+working stay live. Under `loom dev` that means a half-typed file mid-keystroke
+costs you nothing.
+
+On a reload the active theme is preserved when it still exists, and beats the
+file's `defaultTheme`: if you switched to dark to look at it and then saved,
+you meant to restyle dark, not to be thrown back to the default.
 
 ## Schema
 

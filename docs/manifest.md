@@ -32,6 +32,7 @@ validates a freshly generated manifest against it.
     "qt": {
         "version": "6.11"
     },
+    "design": "design/tokens.json",
     "applications": {
         "MyApp": {
             "name": "MyApp",
@@ -57,7 +58,29 @@ validates a freshly generated manifest against it.
 | `project` | yes | See below. |
 | `qt` | yes | `{ "version": "6.11" }`. Only `6.11` is accepted. |
 | `applications` | yes | Map of target name to application. At least one. |
+| `design` | no | Path to a design token file, relative to this manifest. See below. |
 | `$schema` | no | Informational. |
+
+### `design`
+
+Names the project's design token file — colours, spacing, breakpoints and
+themes. A separate file rather than a section of this one, so a design system
+can be shared between projects and loaded on its own with `loom::loadConfig()`.
+Its own schema is `share/loom/schemas/design-v1.schema.json`, and its contents
+are documented in [configuration.md](configuration.md).
+
+Three things read it, and they must agree:
+
+- `loom_add_application(... DESIGN <path>)` compiles it into the application's
+  resources for release builds.
+- `loom dev` watches it, and pushes changes to the running application. Tokens
+  are applied in place: the window repaints without the scene being recreated,
+  so nothing on screen loses its state.
+- `loom style` and `loom lint` load it before checking, so classes built from
+  project-defined tokens (`bg-brand-500`) are not reported as unknown.
+
+Omit the key entirely if the project has no custom tokens; the built-in set is
+always available.
 
 ### `project`
 

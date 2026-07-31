@@ -5,11 +5,17 @@
 `loom` is deliberately split so production applications do not depend on the
 project-management CLI.
 
-- `loom` is a QtCore/QtNetwork host executable. It owns manifests, project
-  generation, toolchain diagnostics, builds, file watching, and development
-  connections.
+- `loom::loom` is the styling library: the token registry, the typed `Loom`
+  singleton and the `Lo.style` compiler. Usable entirely on its own.
+- `loom` (the `loom_cli` target, installed as `bin/loom`) is a QCoreApplication
+  host executable. It owns manifests, project generation, toolchain
+  diagnostics, builds, file watching, and development connections. It links the
+  styling library for the offline class checker behind `loom style`, but never
+  creates a QML engine.
 - `loom::Protocol` contains the versioned framed transport and bundle validation.
-- `loom::Runtime` owns the QML engine bootstrap and development reload controller.
+- `loom::Runtime` owns the QML engine bootstrap and development reload
+  controller. It links `loom::loom` publicly, which is what lets design tokens
+  be reloaded in the running process.
 - `loomFunctions.cmake` provides the starter application wrapper and an
   integration function for conventional Qt targets.
 
@@ -41,6 +47,33 @@ project-management CLI.
 
 Complete bundles make file deletion and rapid editor writes deterministic. A
 120 ms debounce coalesces common save sequences.
+
+## Design token reload
+
+Design tokens do **not** go through the bundle path. The token registry is a
+process-wide singleton in C++ that outlives every scene reload, so a change to
+the manifest's `design` file can be applied to the running process directly:
+
+1. The CLI watches the design file on its own watcher, with the same 120 ms
+   debounce, and sends its raw bytes as `MessageType::Design`. It also sends it
+   on connect, because the copy compiled into the application is only as fresh
+   as the last build.
+2. The runtime validates the size and parses the JSON *before* touching
+   anything, then applies it with `loom::reloadConfig`, which resets every token
+   to the built-in set before merging the file in. Without the reset, a token
+   deleted from the file would survive the reload that removed it.
+3. The registry emits `vocabularyChanged` and then `tokensChanged`. Attached
+   styles recompile on the first and re-apply on the second -- a compiled style
+   string dropped any rule naming a token that did not exist when it was
+   compiled, so re-applying alone would faithfully re-apply that gap.
+
+The scene is never rebuilt, so nothing on screen loses state: text stays typed,
+scroll positions stay put. A malformed file changes nothing and leaves the
+previous tokens live, which matters because a file is malformed for most of the
+time someone is typing in it.
+
+`MessageType::Design` is additive, so `ProtocolVersion` stays at 1: a runtime
+built before it existed rejects the type as unknown and keeps running.
 
 Changes beneath `src/` or `cmake/`, plus the root `CMakeLists.txt` and
 `loom.json`, use a separate 300 ms watcher. The CLI terminates the child,

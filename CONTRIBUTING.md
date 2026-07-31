@@ -31,22 +31,30 @@ that reason.
 cmake -S . -B build-werror -G Ninja -DLOOM_WERROR=ON
 cmake --build build-werror
 
-# Sanitizers, no leak suppressions
+# Sanitizers (one narrow leak suppression, see below)
 cmake -S . -B build-asan -G Ninja -DLOOM_SANITIZE=ON -DLOOM_BUILD_E2E_TESTS=OFF
 cmake --build build-asan
-ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build-asan
+ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build-asan -LE e2e
 
 # Formatting
-find src include tests -name '*.cpp' -o -name '*.h' | xargs clang-format --dry-run --Werror
+find src include tests examples -name '*.cpp' -o -name '*.h' | xargs clang-format --dry-run --Werror
 ```
 
 The schema test needs `jsonschema`; without it the test skips rather than failing, so CI
 installs it.
 
-There are **no leak suppressions**, deliberately. A leaked QML root object allocates through
-Qt frames, so a `leak:libQt6` suppression hides the exact bug the sanitizer job exists to
-catch — measured: it turned a reproduced root-object leak back into a pass. If Qt ever forces
-one, suppress the narrowest possible frame.
+There is **exactly one leak suppression**, and a second needs the same justification. A
+leaked QML root object allocates through Qt frames, so a broad `leak:libQt6` suppression
+hides the exact bug the sanitizer job exists to catch — measured: it turned a reproduced
+root-object leak back into a pass.
+
+The exception is `tests/lsan.supp`, `leak:libQt6QuickEffects`. That library leaks internally
+on any `RectangularShadow` create/destroy, reproduced with no Loom code involved. It is wired
+in through the test `ENVIRONMENT` in `tests/CMakeLists.txt` rather than globally, so it covers
+that one library. Leaks through QtQuick and QtQml frames still fail the job.
+
+If Qt ever forces another, reproduce it without Loom first, suppress the narrowest possible
+frame, and record it here.
 
 Never run `clang-format` on a `.cmake` file. It is a C++ formatter and will destroy it.
 
@@ -107,15 +115,34 @@ and a comment is what stops the next person removing it.
 
 ## Layout
 
+Loom is two halves that ship as one package: a styling layer (`import Loom`) and the build
+and hot-reload tooling (the `loom` command).
+
 | Path | Contents |
 | --- | --- |
+| `src/tokens/` | The token registry and typed `Loom` singleton. `loomtokendata.h` is the X-macro source of truth for every token |
+| `src/style/` | The `Lo.style` compiler and the per-item apply engine |
 | `src/protocol/` | Wire format and bundle validation (`loom::Protocol`) |
 | `src/runtime/` | Engine bootstrap and reload controller (`loom::Runtime`), linked into user applications |
 | `src/cli/` | The `loom` tool; all of it in `loom_cli_core` so tests can link it |
-| `cmake/` | The installed CMake package |
+| `cmake/` | The installed CMake package: targets, `loomFunctions.cmake` |
+| `schemas/` | JSON Schema for `loom.json` and for a design token file |
 | `templates/app/` | What `loom new` generates, embedded as a Qt resource |
+| `examples/gallery/` | The `loomgallery` demo, and the fixture the qmllint test runs against |
 | `tests/` | Unit tests plus `.cmake` driver scripts for the CLI and end-to-end tests |
 | `docs/` | Reference documentation |
+
+The two halves meet in three places worth knowing about:
+
+- `loom_runtime` links `loom` publicly, so an application with hot reload also has the
+  styling layer. That is what lets design tokens reload in-process.
+- `loom_cli_core` links `loom` for the style catalogue behind `loom style` and `loom lint`.
+  The CLI stays a `QCoreApplication` — the catalogue needs no QML engine.
+- The manifest's `design` key names a token file that `loom dev` watches and pushes over the
+  reload connection as `MessageType::Design`, applied without recreating the scene.
+
+The library target is named `loom`, so the CLI executable target is `loom_cli` with
+`OUTPUT_NAME loom`. The installed binary is still `bin/loom`.
 
 `loom::Runtime` is a **static** library installed with its headers, so any header change
 forces a user rebuild and there is no detection for a stale `.a` against new headers. Treat

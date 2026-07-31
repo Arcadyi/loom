@@ -27,6 +27,7 @@ loom_add_application(MyApp
     ENTRY Main
     QML_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/qml"
     ASSET_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+    DESIGN "${CMAKE_CURRENT_SOURCE_DIR}/design/tokens.json"
     SOURCES src/main.cpp
     SINGLETONS Theme.qml
 )
@@ -39,9 +40,25 @@ loom_add_application(MyApp
 | `ENTRY` | yes | Root QML type, without `.qml`. `Main` by convention. |
 | `QML_ROOT` | yes | Directory globbed for `*.qml`, `*.js`, `*.mjs`. Paths are aliased relative to it. |
 | `ASSET_ROOT` | no | Directory globbed wholesale and aliased under `assets/`. Skipped if absent. |
+| `DESIGN` | no | Design token file. Compiled into the module's resources and loaded before the scene. See below. |
 | `SOURCES` | no | C++ sources for the executable. |
 | `SINGLETONS` | no | QML files, relative to `QML_ROOT`, to register as singletons. |
 | `IMPORT_PATHS` | no | Extra QML import paths for tooling (qmllint, qmlls). |
+
+### `DESIGN`
+
+The file is aliased into the module's resources as `loom-design.json` and the
+path is baked in as `LOOM_APP_DESIGN`, which `loom::Application::run` loads
+before the engine initializer and before the scene. Tokens resolved during a
+binding's first evaluation are the ones the window paints with, so loading later
+would show as a repaint on the first frame.
+
+Configuration fails if the file does not exist, rather than producing an
+application that silently starts with default tokens.
+
+Point it at the same file the manifest's `design` key names. Under `loom dev`
+the on-disk file supersedes the compiled copy on every save, applied without
+recreating the scene — see [architecture.md](architecture.md#design-token-reload).
 
 ### `SINGLETONS`
 
@@ -88,15 +105,19 @@ find_package(loom CONFIG REQUIRED)
 
 loom_add_application(MyApp
     ...
-    IMPORT_PATHS "${LOOM_QML_IMPORT_DIR}"
 )
 target_link_libraries(MyApp PRIVATE loom::loom loom::loomplugin)
 ```
 
+`IMPORT_PATHS` defaults to `LOOM_QML_IMPORT_DIR`, which `loomConfig.cmake` sets
+to the directory holding `Loom/qmldir` and `Loom/loom.qmltypes`, so `import
+Loom` resolves for qmllint and qmlls with nothing to wire up. Pass it
+explicitly only to add paths for *other* QML packages.
+
 The paths reach `qt_add_qml_module` itself rather than being appended to the
 target afterwards: Qt reads `QT_QML_IMPORT_PATH` while it builds the qmllint
 and qmlcachegen command lines, so a later `set_property` never shows up in
-them. `loom new --loom` generates exactly this wiring.
+them.
 
 ### Output location
 

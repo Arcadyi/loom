@@ -62,6 +62,7 @@ jobs:
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
           -DLOOM_SANITIZE=ON
+          -DLOOM_BUILD_E2E_TESTS=OFF
 
       - name: Build
         run: cmake --build build

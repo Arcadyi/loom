@@ -1,6 +1,61 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
+
+**loom absorbed respin.** The two projects — utility-first styling, and the
+Qt/QML build and hot-reload tooling — are now one framework, one package, one
+binary. The name `respin` is gone: what was `respin new` is `loom new`,
+`respin.json` is `loom.json`, `respin::Application` is `loom::Application`,
+`respin_add_application` is `loom_add_application`, and `RESPIN_DEV_*` is
+`LOOM_DEV_*`. A project runs `find_package(loom)` once and gets both halves.
+
+### Live design tokens
+
+The capability the merge existed for. `loom dev` already kept C++ services alive
+across a QML reload; the token registry lives in that same surviving C++, so a
+design file edit now **repaints the running window without recreating the scene
+at all**. Nothing on screen loses its state — text stays typed, scroll positions
+stay put.
+
+- `loom.json` gains a `design` key naming a token file. `loom dev` watches it,
+  `loom_add_application(... DESIGN ...)` compiles it into release builds, and
+  `loom style` / `loom lint` load it so project-defined classes resolve.
+- `loom::reloadConfig()` replaces rather than merges: tokens reset to the
+  built-in set first, so a token deleted from the file stops resolving. A file
+  that fails to parse changes nothing — which matters, because a file is
+  malformed for most of the time someone is typing in it.
+- Attached styles now **recompile**, not just re-apply, when a config changes
+  which token names exist. A style string compiled before a token existed had
+  already dropped the rule naming it, so re-applying alone re-applied the gap.
+- On reload the active theme wins over the file's `defaultTheme`: someone who
+  switched to dark to look at it and then saved meant to restyle dark.
+
+### Tooling
+
+- `loomstyle` is folded into the CLI as `loom style --check` / `--catalogue`.
+- `loom lint` runs `qmllint` **and** the utility-class check — always both, so a
+  `Lo.style` typo is never hidden behind an unrelated qmllint complaint.
+- `loom doctor` reports on both halves, including the Loom QML module's
+  `qmldir` and `qmltypes`.
+- One scaffold template, and it is loom-styled. The `--loom` flag and the
+  hand-synced `templates/app-loom/` overlay are gone.
+
+### Packaging
+
+- One `loomTargets` export and one `loomConfig.cmake` replace the two packages,
+  exporting `loom::loom`, `loom::loomplugin`, `loom::Runtime` and
+  `loom::Protocol`.
+- `loom_add_application` defaults `IMPORT_PATHS` to `LOOM_QML_IMPORT_DIR`, so
+  `import Loom` resolves for qmllint in a generated project with no wiring.
+- New options `LOOM_BUILD_CLI` and `LOOM_BUILD_E2E_TESTS`. `LOOM_BUILD_CLI=OFF`
+  still produces a usable styling-only package.
+- `MessageType::Design` is additive, so `ProtocolVersion` stays at 1.
+
+---
+
+Everything below shipped while loom was a styling library only.
+
+## Unreleased (pre-merge)
 
 - **Colour opacity modifier**: `bg-surface/70`, `text-foreground/50`,
   `border-outline/25` — Tailwind's trailing `/0`–`/100` on the three colour
