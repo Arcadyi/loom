@@ -67,7 +67,7 @@ endfunction()
 
 function(loom_add_application target)
     set(options)
-    set(oneValueArgs URI ENTRY QML_ROOT ASSET_ROOT)
+    set(oneValueArgs URI ENTRY QML_ROOT ASSET_ROOT DESIGN)
     set(multiValueArgs SOURCES SINGLETONS IMPORT_PATHS)
     cmake_parse_arguments(LOOM_ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
@@ -131,6 +131,22 @@ function(loom_add_application target)
         set_source_files_properties("${source}" PROPERTIES QT_RESOURCE_ALIAS "assets/${alias}")
     endforeach()
 
+    # The design tokens ride into the module's resources under a fixed alias, so
+    # loom::Application can load them with no path configuration. In development
+    # `loom dev` pushes the on-disk file instead, which is what makes an edit
+    # repaint the running window; this copy is what a release build reads.
+    if(LOOM_ARG_DESIGN)
+        if(NOT EXISTS "${LOOM_ARG_DESIGN}")
+            message(FATAL_ERROR
+                "loom_add_application DESIGN points at '${LOOM_ARG_DESIGN}', which "
+                "does not exist")
+        endif()
+        set_source_files_properties("${LOOM_ARG_DESIGN}" PROPERTIES
+            QT_RESOURCE_ALIAS "loom-design.json"
+        )
+        list(APPEND loom_asset_files "${LOOM_ARG_DESIGN}")
+    endif()
+
     qt_add_executable("${target}" ${LOOM_ARG_SOURCES})
 
     # Keep application binaries in bin/ so that an application name can never
@@ -176,6 +192,20 @@ function(loom_add_application target)
         QML_ROOT "${LOOM_ARG_QML_ROOT}"
         ASSET_ROOT "${LOOM_ARG_ASSET_ROOT}"
     )
+
+    # Where the compiled-in copy landed, resolved against the module URI rather
+    # than hardcoded: qt_add_qml_module roots module resources at
+    # :/qt/qml/<uri-as-path>/. loom::Application loads this before the scene, so
+    # a themed application starts themed instead of repainting on first frame.
+    #
+    # A ":/" resource path rather than a "qrc:" URL: loom::loadConfig opens it
+    # with QFile, which understands the former and not the latter.
+    if(LOOM_ARG_DESIGN)
+        string(REPLACE "." "/" loom_uri_path "${LOOM_ARG_URI}")
+        target_compile_definitions("${target}" PRIVATE
+            LOOM_APP_DESIGN=":/qt/qml/${loom_uri_path}/loom-design.json"
+        )
+    endif()
 endfunction()
 
 # Installs an application built with loom_add_application into a prefix that

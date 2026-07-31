@@ -1,5 +1,6 @@
 #include "projectmanifest.h"
 
+#include <QDir>
 #include <QFile>
 #include <QJsonDocument>
 #include <QTemporaryDir>
@@ -25,6 +26,43 @@ private slots:
         QCOMPARE(decoded.qtVersion(), QStringLiteral("6.11"));
         QCOMPARE(decoded.primaryApplication().uri, QStringLiteral("com.acme.SampleApp"));
         QCOMPARE(decoded.primaryApplication().entry, QStringLiteral("Main"));
+    }
+
+    // The scaffolder writes design/tokens.json, the generated CMakeLists.txt
+    // passes the same path to loom_add_application as DESIGN, and `loom dev`
+    // watches whatever this says. All three have to agree.
+    void designPathRoundTrips()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const auto path = temporary.filePath(QStringLiteral("loom.json"));
+        const auto source = ProjectManifest::createDefault(
+            QStringLiteral("Sample App"), QStringLiteral("com.acme"));
+        QCOMPARE(source.designPath(), QStringLiteral("design/tokens.json"));
+        QString error;
+        QVERIFY2(source.save(path, &error), qPrintable(error));
+
+        ProjectManifest decoded;
+        QVERIFY2(ProjectManifest::load(path, decoded, &error), qPrintable(error));
+        QCOMPARE(decoded.designPath(), QStringLiteral("design/tokens.json"));
+        // Resolved against the manifest's directory, not the working directory:
+        // every command that reads this runs from wherever the user happened to
+        // be when they typed it.
+        QCOMPARE(
+            decoded.resolvedDesignPath(path),
+            QDir(temporary.path()).filePath(QStringLiteral("design/tokens.json")));
+    }
+
+    // A project that declares no design tokens must not gain a "design": ""
+    // key, which the schema rejects and which would resolve to the project
+    // directory itself.
+    void unsetDesignPathIsNotSerialized()
+    {
+        ProjectManifest manifest = ProjectManifest::createDefault(
+            QStringLiteral("Sample App"), QStringLiteral("com.acme"));
+        manifest.setDesignPath(QString());
+        QVERIFY(!manifest.toJson().contains(QStringLiteral("design")));
+        QVERIFY(manifest.resolvedDesignPath(QStringLiteral("/tmp/loom.json")).isEmpty());
     }
 
     void rejectsUnknownSchema()

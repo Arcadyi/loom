@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Arcadyi/loom/main/schemas/design-v1.schema.json",
+  "title": "loom design tokens",
+  "description": "Loom's equivalent of tailwind.config: custom colors, spacing, breakpoint thresholds and themes. Everything merges into the built-in token set rather than replacing it. Referenced from loom.json via its `design` key, and loadable on its own with loom::loadConfig().",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "colors": {
+      "type": "object",
+      "description": "Nested hue objects become `hue-shade` keys (brand-500); flat entries keep their name. Merged into the built-in palette.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string",
+            "description": "A color literal, e.g. #ffcc00."
+          },
+          {
+            "type": "object",
+            "description": "Shade map, e.g. { \"500\": \"#7c5cff\" }.",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "space": {
+      "type": "object",
+      "description": "Extra spacing steps in pixels, usable everywhere {n} is (p-18, w-18, gap-18).",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "breakpoints": {
+      "type": "object",
+      "description": "Moves the sm/md/lg/xl thresholds. The four tiers are structural; new tier names are rejected.",
+      "additionalProperties": false,
+      "properties": {
+        "sm": { "type": "integer" },
+        "md": { "type": "integer" },
+        "lg": { "type": "integer" },
+        "xl": { "type": "integer" }
+      }
+    },
+    "themes": {
+      "type": "object",
+      "description": "Semantic-token overrides. Merging into light/dark adjusts the built-ins in place; any other name defines a new theme.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "extends": {
+            "type": "string",
+            "description": "Theme to copy from before applying these overrides. Any already-known theme."
+          },
+          "dark": {
+            "type": "boolean",
+            "description": "Feeds Loom.dark and the dark: variant. Inherited from the base theme otherwise."
+          }
+        },
+        "additionalProperties": {
+          "type": "string",
+          "description": "A palette key (config-defined included) or a color literal."
+        }
+      }
+    },
+    "defaultTheme": {
+      "type": "string",
+      "description": "Theme to switch to after loading."
+    },
+    "iconRoot": {
+      "type": "string",
+      "description": "Directory a relative Loom.icon() source resolves against, relative to this file."
+    }
+  }
+}

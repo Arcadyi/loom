@@ -35,6 +35,11 @@
         }
       }
     },
+    "design": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Path to the design token file, relative to this manifest. `loom dev` watches it and pushes changes to the running application without recreating the scene; `loom style` resolves project-defined tokens through it. See design-v1.schema.json."
+    },
     "qt": {
       "type": "object",
       "additionalProperties": false,

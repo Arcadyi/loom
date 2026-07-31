@@ -30,6 +30,18 @@ public:
     QJsonObject toJson() const;
     QString projectName() const;
     QString qtVersion() const;
+
+    // Path to the design token file (colors, space, breakpoints, themes),
+    // relative to the manifest, or empty when the project defines none. A
+    // separate file rather than a section of this one, so a design system can be
+    // shared between projects and loaded on its own.
+    QString designPath() const;
+    void setDesignPath(const QString &path);
+    // Absolute path to the design file, or empty when there is none.
+    // `manifestPath` is the loom.json the relative path is anchored to, so
+    // callers cannot accidentally resolve it against the current directory.
+    QString resolvedDesignPath(const QString &manifestPath) const;
+
     QList<ApplicationDefinition> applications() const;
     QStringList applicationTargets() const;
     // Only valid where the manifest is known to hold exactly one application,
@@ -55,6 +67,7 @@ private:
     QString m_projectName;
     QString m_qtVersion = QStringLiteral("6.11");
     QString m_defaultApplication;
+    QString m_design;
     QList<ApplicationDefinition> m_applications;
 };
 

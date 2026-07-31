@@ -85,3 +85,23 @@ if(NOT loom_e2e_output MATCHES "tests passed")
     message(FATAL_ERROR
         "loom test did not report a passing test run:\n${loom_e2e_output}")
 endif()
+
+# The design tokens have to be reachable at exactly the path
+# loom_add_application bakes into LOOM_APP_DESIGN, or loom::Application warns at
+# startup and the application silently runs with default tokens. Both sides are
+# derived from the module URI independently -- CMake replaces . with / for the
+# definition, Qt roots module resources the same way -- so this asserts they
+# still agree rather than trusting that they do.
+set(design_qrc "${project_dir}/.loom/build/desktop-debug/.qt/rcc/${APP_NAME}_raw_res_0.qrc")
+if(NOT EXISTS "${design_qrc}")
+    message(FATAL_ERROR
+        "No generated resource file at ${design_qrc}; the design tokens are not "
+        "being compiled into the application")
+endif()
+file(READ "${design_qrc}" design_qrc_contents)
+if(NOT design_qrc_contents MATCHES "prefix=\"/qt/qml/com/example/${APP_NAME}/\""
+    OR NOT design_qrc_contents MATCHES "alias=\"loom-design.json\"")
+    message(FATAL_ERROR
+        "The design tokens are not aliased where LOOM_APP_DESIGN expects them "
+        "(/qt/qml/com/example/${APP_NAME}/loom-design.json):\n${design_qrc_contents}")
+endif()

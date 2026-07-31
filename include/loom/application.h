@@ -61,6 +61,11 @@ public:
     /// Loads \a entryType from \a moduleUri, connects the development runtime if
     /// it was enabled, and runs the event loop.
     ///
+    /// If loom_add_application was given a DESIGN file, its compiled-in copy is
+    /// loaded first -- before the engine initializer and before the scene -- so
+    /// the first frame is already themed. Under `loom dev` the on-disk file
+    /// supersedes it on every save.
+    ///
     /// \return the event loop's exit code, or 1 if the scene could not be
     ///         loaded, in which case the QML errors are printed to stderr.
     int run(const QString &moduleUri, const QString &entryType);
@@ -74,6 +79,9 @@ public:
 
 private:
     void connectDevelopmentRuntime();
+    // Loads the design tokens loom_add_application compiled into the module's
+    // resources, when the project declared a DESIGN file.
+    void loadCompiledDesign();
 
     QGuiApplication m_application;
     QQmlApplicationEngine m_engine;

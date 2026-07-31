@@ -59,6 +59,10 @@ ProjectManifest::createDefault(const QString &projectName, const QString &organi
     }
 
     manifest.m_projectName = projectName;
+    // Matches templates/app/design/tokens.json, which the scaffolder writes and
+    // the generated CMakeLists.txt passes to loom_add_application as DESIGN.
+    // The three have to agree or `loom dev` watches a file that is not there.
+    manifest.m_design = QStringLiteral("design/tokens.json");
     manifest.m_applications.append(
         ApplicationDefinition{
             .name = projectName,
@@ -131,6 +135,7 @@ bool ProjectManifest::load(
                                        .toObject()
                                        .value(QStringLiteral("defaultApplication"))
                                        .toString();
+    decoded.m_design = root.value(QStringLiteral("design")).toString();
 
     const auto applications = root.value(QStringLiteral("applications")).toObject();
     for (auto iterator = applications.begin(); iterator != applications.end();
@@ -281,7 +286,7 @@ QJsonObject ProjectManifest::toJson() const
                 {QStringLiteral("platforms"), stringArray(application.platforms)},
             });
     }
-    return QJsonObject{
+    QJsonObject root{
         {QStringLiteral("$schema"),
          QStringLiteral("https://raw.githubusercontent.com/Arcadyi/loom/main/schemas/project-v1.schema.json")},
         {QStringLiteral("schemaVersion"), 1},
@@ -292,6 +297,33 @@ QJsonObject ProjectManifest::toJson() const
          }},
         {QStringLiteral("applications"), applications},
     };
+    // Omitted rather than written empty, for the same reason as
+    // project.defaultApplication: the schema forbids unknown keys and an empty
+    // string is not a usable path.
+    if (!m_design.isEmpty())
+        root.insert(QStringLiteral("design"), m_design);
+    return root;
+}
+
+QString ProjectManifest::designPath() const
+{
+    return m_design;
+}
+
+void ProjectManifest::setDesignPath(const QString &path)
+{
+    m_design = path;
+}
+
+QString ProjectManifest::resolvedDesignPath(const QString &manifestPath) const
+{
+    if (m_design.isEmpty())
+        return {};
+    // Anchored at the manifest's directory, never the working directory: every
+    // command that reads this runs from wherever the user happened to be.
+    // An absolute path in the manifest is honoured as-is.
+    return QFileInfo(QFileInfo(manifestPath).absolutePath(), m_design)
+        .absoluteFilePath();
 }
 
 QString ProjectManifest::projectName() const

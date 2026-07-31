@@ -1,4 +1,5 @@
 #include <loom/application.h>
+#include <loom/loom.h>
 #include <loom/reloadcontroller.h>
 
 #include <QByteArray>
@@ -46,6 +47,17 @@ void Application::connectDevelopmentRuntime()
         host, static_cast<quint16>(port), token);
 }
 
+void Application::loadCompiledDesign()
+{
+#ifdef LOOM_APP_DESIGN
+    // LOOM_APP_DESIGN is defined by loom_add_application when the project has a
+    // DESIGN file, so its absence means the project declared no design tokens
+    // rather than that something went wrong. loadConfig warns on its own if the
+    // resource is somehow missing.
+    loom::loadConfig(QStringLiteral(LOOM_APP_DESIGN));
+#endif
+}
+
 Application::Application(int &argc, char **argv)
     : m_application(argc, argv)
 {
@@ -65,6 +77,11 @@ void Application::enableDevelopmentRuntime(const bool enabled)
 
 int Application::run(const QString &moduleUri, const QString &entryType)
 {
+    // Before the initializer and before the scene: tokens resolved during the
+    // first evaluation of a binding are the ones the window paints with, so a
+    // config loaded later shows up as a visible repaint on the first frame.
+    loadCompiledDesign();
+
     if (m_initializer)
         m_initializer(m_engine);
 
