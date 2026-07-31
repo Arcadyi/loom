@@ -1,5 +1,4 @@
-# Same style as respin, so the two projects read as one codebase. The CI
-# `clang-format --dry-run --Werror` check is a drift guard rather than a
+# The CI `clang-format --dry-run --Werror` check is a drift guard rather than a
 # reformat.
 Language: Cpp
 BasedOnStyle: LLVM

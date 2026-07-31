@@ -1,12 +1,12 @@
-# Validates a freshly generated respin.json against the schema respin installs.
+# Validates a freshly generated loom.json against the schema loom installs.
 # Without this the schema is a promise: nothing ever checked that the manifest
 # writer and the published schema agree, so they could drift silently.
 #
 # Skips rather than fails when no JSON Schema validator is available, because
 # requiring one would make the whole suite depend on a Python package.
 
-if(NOT RESPIN_EXE OR NOT TEST_DIR OR NOT SCHEMA)
-    message(FATAL_ERROR "RESPIN_EXE, TEST_DIR and SCHEMA are required")
+if(NOT LOOM_EXE OR NOT TEST_DIR OR NOT SCHEMA)
+    message(FATAL_ERROR "LOOM_EXE, TEST_DIR and SCHEMA are required")
 endif()
 
 find_program(PYTHON_EXE NAMES python3 python)
@@ -27,13 +27,13 @@ endif()
 
 file(REMOVE_RECURSE "${TEST_DIR}")
 execute_process(
-    COMMAND "${RESPIN_EXE}" new SchemaProbe --org com.example --directory "${TEST_DIR}"
+    COMMAND "${LOOM_EXE}" new SchemaProbe --org com.example --directory "${TEST_DIR}"
     RESULT_VARIABLE result
     OUTPUT_VARIABLE output
     ERROR_VARIABLE error
 )
 if(NOT result EQUAL 0)
-    message(FATAL_ERROR "respin new failed:\n${output}\n${error}")
+    message(FATAL_ERROR "loom new failed:\n${output}\n${error}")
 endif()
 
 execute_process(
@@ -43,14 +43,14 @@ execute_process(
          doc=json.load(open(sys.argv[2])); \
          jsonschema.validate(doc, schema); \
          print('valid')"
-        "${SCHEMA}" "${TEST_DIR}/respin.json"
+        "${SCHEMA}" "${TEST_DIR}/loom.json"
     RESULT_VARIABLE validation
     OUTPUT_VARIABLE validation_output
     ERROR_VARIABLE validation_error
 )
 if(NOT validation EQUAL 0)
     message(FATAL_ERROR
-        "A freshly generated respin.json does not satisfy the shipped schema:\n"
+        "A freshly generated loom.json does not satisfy the shipped schema:\n"
         "${validation_error}")
 endif()
 
@@ -66,7 +66,7 @@ execute_process(
          doc=json.load(open(sys.argv[2])); \
          doc['project']['defaultApplication']=next(iter(doc['applications'])); \
          jsonschema.validate(doc, json.load(open(sys.argv[1])))"
-        "${SCHEMA}" "${TEST_DIR}/respin.json"
+        "${SCHEMA}" "${TEST_DIR}/loom.json"
     RESULT_VARIABLE default_validation
     ERROR_VARIABLE default_error
 )
@@ -83,7 +83,7 @@ execute_process(
          doc=json.load(open(sys.argv[2])); \
          doc['project']['notAThing']=True; \
          jsonschema.validate(doc, json.load(open(sys.argv[1])))"
-        "${SCHEMA}" "${TEST_DIR}/respin.json"
+        "${SCHEMA}" "${TEST_DIR}/loom.json"
     RESULT_VARIABLE unknown_validation
     ERROR_QUIET
 )

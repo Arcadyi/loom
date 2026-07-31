@@ -4,11 +4,11 @@ Item {
     objectName: "embedded"
     property int count: 1
 
-    function respinSaveState() {
+    function loomSaveState() {
         return { "count": count }
     }
 
-    function respinRestoreState(state) {
+    function loomRestoreState(state) {
         count = state.count
     }
 }

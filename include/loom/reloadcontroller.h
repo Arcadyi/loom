@@ -11,13 +11,13 @@ class QTcpSocket;
 class QTimer;
 class QTemporaryDir;
 
-namespace respin {
+namespace loom {
 
 struct Bundle;
 
 /// Loads the root QML scene and replaces it on request from a development
-/// server. Use it directly only when not using respin::Application -- for
-/// instance when embedding respin in an application that owns its own engine.
+/// server. Use it directly only when not using loom::Application -- for
+/// instance when embedding loom in an application that owns its own engine.
 ///
 /// Bundles are written to a cache directory private to this controller, which
 /// is removed on destruction; directories left by processes that are gone are
@@ -113,4 +113,4 @@ private:
     QString m_lastError;
 };
 
-} // namespace respin
+} // namespace loom

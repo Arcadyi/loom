@@ -72,7 +72,7 @@ bool loadCurrentProject(QString &manifestPath, ProjectManifest &manifest, QStrin
     if (manifestPath.isEmpty()) {
         if (error)
             *error =
-                QStringLiteral("No respin.json found in this directory or its parents");
+                QStringLiteral("No loom.json found in this directory or its parents");
         return false;
     }
     return ProjectManifest::load(manifestPath, manifest, error);
@@ -87,7 +87,7 @@ QString
 buildDirectoryFor(const QString &root, const QString &target, const QString &config)
 {
     return QDir(root).filePath(
-        QStringLiteral(".respin/build/%1-%2").arg(target, config.toLower()));
+        QStringLiteral(".loom/build/%1-%2").arg(target, config.toLower()));
 }
 
 // Release and RelWithDebInfo both define NDEBUG, and the generated
@@ -100,10 +100,10 @@ bool definesNDebug(const QString &configuration)
         || configuration == QStringLiteral("MinSizeRel");
 }
 
-// respin_add_application routes application binaries into bin/ so that a target
+// loom_add_application routes application binaries into bin/ so that a target
 // name never collides with a build-tree directory such as CTest's Testing/.
 // The legacy top-level location is still accepted for build trees configured by
-// an older respin.
+// an older loom.
 QString executablePathFor(const QString &buildDirectory, const QString &target)
 {
     auto name = target;
@@ -131,17 +131,17 @@ QString executablePathFor(const QString &buildDirectory, const QString &target)
     return preferred;
 }
 
-// The prefix respin itself was installed into, or an empty string when running
+// The prefix loom itself was installed into, or an empty string when running
 // from a build tree where no CMake package exists. Generated projects do
-// find_package(respin CONFIG REQUIRED), so without this every build in a fresh
+// find_package(loom CONFIG REQUIRED), so without this every build in a fresh
 // tree fails unless the user passes --prefix by hand.
 QString installedPackagePrefix()
 {
     const QDir binaryDirectory(QCoreApplication::applicationDirPath());
     const auto prefix = QDir::cleanPath(binaryDirectory.filePath(QStringLiteral("..")));
     const auto config = QDir(prefix).filePath(
-        QStringLiteral(RESPIN_RELATIVE_CMAKE_DIR)
-        + QStringLiteral("/respinConfig.cmake"));
+        QStringLiteral(LOOM_RELATIVE_CMAKE_DIR)
+        + QStringLiteral("/loomConfig.cmake"));
     if (!QFileInfo(config).isFile())
         return {};
     return prefix;
@@ -171,7 +171,7 @@ QList<OptionSpec> buildOptions()
         {QStringLiteral("config"), QStringLiteral("configuration"),
          QStringLiteral("CMake build type (default: Debug).")},
         {QStringLiteral("prefix"), QStringLiteral("path"),
-         QStringLiteral("Extra CMake prefix path. respin finds its own package.")},
+         QStringLiteral("Extra CMake prefix path. loom finds its own package.")},
         {QStringLiteral("app"), QStringLiteral("target"),
          QStringLiteral("Application to act on in a multi-application project.")},
         {QStringLiteral("generator"), QStringLiteral("name"),
@@ -293,7 +293,7 @@ int Commands::execute(const QStringList &arguments)
     }
     if (arguments.first() == QStringLiteral("--version")
         || arguments.first() == QStringLiteral("-v")) {
-        QTextStream(stdout) << "respin " << RESPIN_VERSION << Qt::endl;
+        QTextStream(stdout) << "loom " << LOOM_VERSION_STR << Qt::endl;
         return cli::Success;
     }
 
@@ -321,8 +321,8 @@ int Commands::execute(const QStringList &arguments)
         return develop(tail);
     if (command == QStringLiteral("deploy"))
         return deploy(tail);
-    QTextStream(stderr) << "respin: unknown command '" << command
-                        << "'; run 'respin help'" << Qt::endl;
+    QTextStream(stderr) << "loom: unknown command '" << command
+                        << "'; run 'loom help'" << Qt::endl;
     return cli::UsageError;
 }
 
@@ -332,7 +332,7 @@ int Commands::createProject(const QStringList &arguments)
         .name = QStringLiteral("new"),
         .summary = QStringLiteral("Create a Qt/QML application."),
         .usage = QStringLiteral(
-            "respin new <name> [--org dev.example] "
+            "loom new <name> [--org dev.example] "
             "[--directory path] [--loom]"),
         .options =
             {
@@ -392,10 +392,10 @@ int Commands::createProject(const QStringList &arguments)
     QTextStream output(stdout);
     output << "Created " << name << " in " << destination << "\n\n  cd "
            << QDir::toNativeSeparators(destination)
-           << "\n  respin doctor\n  respin dev\n";
+           << "\n  loom doctor\n  loom dev\n";
     if (options.githubWorkflow) {
         output << "\nThe generated .github/workflows/ci.yml has one step marked TODO: "
-                  "respin has no published release to pin, so you must supply the "
+                  "loom has no published release to pin, so you must supply the "
                   "install step yourself.\n";
     }
     if (options.loom) {
@@ -410,8 +410,8 @@ int Commands::initializeProject(const QStringList &arguments)
 {
     const CommandSpec spec{
         .name = QStringLiteral("init"),
-        .summary = QStringLiteral("Add a respin manifest to an existing CMake project."),
-        .usage = QStringLiteral("respin init [options] [--apply]"),
+        .summary = QStringLiteral("Add a loom manifest to an existing CMake project."),
+        .usage = QStringLiteral("loom init [options] [--apply]"),
         .options =
             {
                 {QStringLiteral("name"), QStringLiteral("name"),
@@ -430,7 +430,7 @@ int Commands::initializeProject(const QStringList &arguments)
                  QStringLiteral("Reverse-DNS application identifier.")},
                 {QStringLiteral("app"), QStringLiteral("target"),
                  QStringLiteral(
-                     "Application to emit CMake for, when respin.json "
+                     "Application to emit CMake for, when loom.json "
                      "already defines several.")},
                 {QStringLiteral("apply"),
                  {},
@@ -452,10 +452,10 @@ int Commands::initializeProject(const QStringList &arguments)
 
     const auto destination = QDir::currentPath();
     const auto cmakePath = QDir(destination).filePath(QStringLiteral("CMakeLists.txt"));
-    const auto manifestPath = QDir(destination).filePath(QStringLiteral("respin.json"));
+    const auto manifestPath = QDir(destination).filePath(QStringLiteral("loom.json"));
     if (!QFileInfo::exists(cmakePath)) {
         return reportError(
-            QStringLiteral("respin init requires an existing CMakeLists.txt"));
+            QStringLiteral("loom init requires an existing CMakeLists.txt"));
     }
 
     QFile cmakeInput(cmakePath);
@@ -465,10 +465,10 @@ int Commands::initializeProject(const QStringList &arguments)
     cmakeInput.close();
 
     const auto alreadyIntegrated =
-        cmakeContents.contains(QStringLiteral("# respin: begin"));
+        cmakeContents.contains(QStringLiteral("# loom: begin"));
     const auto manifestExists = QFileInfo::exists(manifestPath);
     if (manifestExists && alreadyIntegrated) {
-        QTextStream(stdout) << "respin is already initialized in " << destination
+        QTextStream(stdout) << "loom is already initialized in " << destination
                             << Qt::endl;
         return cli::Success;
     }
@@ -478,7 +478,7 @@ int Commands::initializeProject(const QStringList &arguments)
     if (manifestExists) {
         // An existing manifest is the source of truth. Re-inferring from a
         // CMakeLists regex could append a block naming a different target than
-        // the one `respin dev` reads out of respin.json.
+        // the one `loom dev` reads out of loom.json.
         ProjectManifest existing;
         QString error;
         if (!ProjectManifest::load(manifestPath, existing, &error))
@@ -488,7 +488,7 @@ int Commands::initializeProject(const QStringList &arguments)
                 parsed.value(QStringLiteral("app")), application, &error)) {
             return reportError(error);
         }
-        QTextStream(stdout) << "Using the existing respin.json for target "
+        QTextStream(stdout) << "Using the existing loom.json for target "
                             << application.target << Qt::endl;
     } else {
         const QRegularExpression qmlModulePattern(QStringLiteral(
@@ -536,9 +536,9 @@ int Commands::initializeProject(const QStringList &arguments)
         : application.qmlRoots.constFirst();
     QString block =
         QStringLiteral(
-            "\n# respin: begin\n"
-            "find_package(respin CONFIG REQUIRED)\n"
-            "respin_enable_hot_reload(\n"
+            "\n# loom: begin\n"
+            "find_package(loom CONFIG REQUIRED)\n"
+            "loom_enable_hot_reload(\n"
             "    TARGET %1\n"
             "    URI %2\n"
             "    ENTRY %3\n"
@@ -548,7 +548,7 @@ int Commands::initializeProject(const QStringList &arguments)
         block += QStringLiteral("    ASSET_ROOT \"${CMAKE_CURRENT_SOURCE_DIR}/%1\"\n")
                      .arg(application.assetRoots.constFirst());
     }
-    block += QStringLiteral(")\n# respin: end\n");
+    block += QStringLiteral(")\n# loom: end\n");
 
     QTextStream output(stdout);
     output << "CMake integration preview:\n" << block << Qt::endl;
@@ -556,7 +556,7 @@ int Commands::initializeProject(const QStringList &arguments)
         output
             << (manifestExists ? QStringLiteral("Left CMakeLists.txt unchanged. ")
                                : QStringLiteral(
-                                     "Created respin.json without "
+                                     "Created loom.json without "
                                      "changing CMakeLists.txt. "))
             << "Re-run with --apply to append the marked integration block.\n";
         return cli::Success;
@@ -574,7 +574,7 @@ int Commands::initializeProject(const QStringList &arguments)
     const auto updated = (cmakeContents + block).toUtf8();
     if (cmakeOutput.write(updated) != updated.size() || !cmakeOutput.commit())
         return reportError(cmakeOutput.errorString());
-    output << "Initialized respin for target " << application.target << ".\n";
+    output << "Initialized loom for target " << application.target << ".\n";
     return cli::Success;
 }
 
@@ -583,7 +583,7 @@ int Commands::doctor(const QStringList &arguments)
     const CommandSpec spec{
         .name = QStringLiteral("doctor"),
         .summary = QStringLiteral("Check the selected platform toolchain."),
-        .usage = QStringLiteral("respin doctor [--target platform] [--json]"),
+        .usage = QStringLiteral("loom doctor [--target platform] [--json]"),
         .options =
             {
                 buildOptions().constFirst(),
@@ -619,7 +619,7 @@ int Commands::setup(const QStringList &arguments)
     const CommandSpec spec{
         .name = QStringLiteral("setup"),
         .summary = QStringLiteral("Show the confirmed setup plan."),
-        .usage = QStringLiteral("respin setup [--target platform]"),
+        .usage = QStringLiteral("loom setup [--target platform]"),
         .options = {buildOptions().constFirst()},
     };
     ParsedCommand parsed;
@@ -647,7 +647,7 @@ int Commands::build(const QStringList &arguments)
     const CommandSpec spec{
         .name = QStringLiteral("build"),
         .summary = QStringLiteral("Configure and build the application."),
-        .usage = QStringLiteral("respin build [options]"),
+        .usage = QStringLiteral("loom build [options]"),
         .options = buildOptions(),
     };
     ParsedCommand parsed;
@@ -681,7 +681,7 @@ int Commands::lint(const QStringList &arguments)
     const CommandSpec spec{
         .name = QStringLiteral("lint"),
         .summary = QStringLiteral("Run qmllint over the project's QML."),
-        .usage = QStringLiteral("respin lint [options]"),
+        .usage = QStringLiteral("loom lint [options]"),
         .options = buildOptions(),
     };
     ParsedCommand parsed;
@@ -723,7 +723,7 @@ int Commands::format(const QStringList &arguments)
     const CommandSpec spec{
         .name = QStringLiteral("fmt"),
         .summary = QStringLiteral("Format the project's QML with qmlformat."),
-        .usage = QStringLiteral("respin fmt [--check] [options]"),
+        .usage = QStringLiteral("loom fmt [--check] [options]"),
         .options = options,
     };
     ParsedCommand parsed;
@@ -744,7 +744,7 @@ int Commands::format(const QStringList &arguments)
     const auto qmlformat = QStandardPaths::findExecutable(QStringLiteral("qmlformat"));
     if (qmlformat.isEmpty()) {
         return reportError(QStringLiteral(
-            "qmlformat was not found on PATH; it ships with Qt (run 'respin doctor')"));
+            "qmlformat was not found on PATH; it ships with Qt (run 'loom doctor')"));
     }
 
     const auto files = qmlFilesOf(context);
@@ -786,9 +786,9 @@ int Commands::format(const QStringList &arguments)
             QStringLiteral("%1 QML files are formatted").arg(files.size()));
         return cli::Success;
     }
-    QTextStream(stderr) << "respin: these files are not formatted:\n  "
+    QTextStream(stderr) << "loom: these files are not formatted:\n  "
                         << unformatted.join(QStringLiteral("\n  ")) << "\n"
-                        << "run 'respin fmt' to rewrite them" << Qt::endl;
+                        << "run 'loom fmt' to rewrite them" << Qt::endl;
     return cli::Failure;
 }
 
@@ -802,8 +802,8 @@ int Commands::clean(const QStringList &arguments)
 
     const CommandSpec spec{
         .name = QStringLiteral("clean"),
-        .summary = QStringLiteral("Remove respin's build and deploy trees."),
-        .usage = QStringLiteral("respin clean [--all] [options]"),
+        .summary = QStringLiteral("Remove loom's build and deploy trees."),
+        .usage = QStringLiteral("loom clean [--all] [options]"),
         .options = options,
     };
     ParsedCommand parsed;
@@ -821,16 +821,16 @@ int Commands::clean(const QStringList &arguments)
     if (const auto status = resolveProjectContext(parsed, spec, context))
         return status;
 
-    // Only ever respin's own directory: never the source tree, and never a
+    // Only ever loom's own directory: never the source tree, and never a
     // build tree somebody configured elsewhere.
     QStringList targets;
     if (parsed.isSet(QStringLiteral("all"))) {
-        targets.append(QDir(context.root).filePath(QStringLiteral(".respin")));
+        targets.append(QDir(context.root).filePath(QStringLiteral(".loom")));
     } else {
         targets.append(context.buildDirectory);
         targets.append(
             QDir(context.root)
-                .filePath(QStringLiteral(".respin/dist/%1-%2")
+                .filePath(QStringLiteral(".loom/dist/%1-%2")
                               .arg(context.target, context.configuration.toLower())));
     }
 
@@ -853,7 +853,7 @@ int Commands::test(const QStringList &arguments)
     const CommandSpec spec{
         .name = QStringLiteral("test"),
         .summary = QStringLiteral("Build and run the project's tests."),
-        .usage = QStringLiteral("respin test [options]"),
+        .usage = QStringLiteral("loom test [options]"),
         .options = buildOptions(),
     };
     ParsedCommand parsed;
@@ -873,7 +873,7 @@ int Commands::test(const QStringList &arguments)
 
     // The generated template gates its tests on BUILD_TESTING, which
     // include(CTest) defaults to ON -- but only if nothing has already cached it
-    // OFF. Setting it explicitly is what makes `respin test` mean "with tests".
+    // OFF. Setting it explicitly is what makes `loom test` mean "with tests".
     auto configureArguments = context.cmakeArguments;
     configureArguments.append(QStringLiteral("-DBUILD_TESTING=ON"));
     if (const auto status = BuildRunner::configure(
@@ -899,7 +899,7 @@ int Commands::develop(const QStringList &arguments)
     const CommandSpec spec{
         .name = QStringLiteral("dev"),
         .summary = QStringLiteral("Build, run, watch, and hot-reload the application."),
-        .usage = QStringLiteral("respin dev [options] [-- <app arguments>]"),
+        .usage = QStringLiteral("loom dev [options] [-- <app arguments>]"),
         .options = buildOptions(),
         .acceptsPassthrough = true,
     };
@@ -923,7 +923,7 @@ int Commands::develop(const QStringList &arguments)
     const auto config = context.configuration;
     if (definesNDebug(config)) {
         QTextStream(stderr)
-            << "respin: warning: " << config
+            << "loom: warning: " << config
             << " defines NDEBUG, and the generated src/main.cpp enables the "
                "development runtime only when NDEBUG is undefined. This build will "
                "run and serve bundles but will not hot-reload.\n";
@@ -969,7 +969,7 @@ int Commands::deploy(const QStringList &arguments)
     auto options = buildOptions();
     options.append(
         {QStringLiteral("output"), QStringLiteral("path"),
-         QStringLiteral("Install prefix (default: .respin/dist/<target>-<config>).")});
+         QStringLiteral("Install prefix (default: .loom/dist/<target>-<config>).")});
     options.append(
         {QStringLiteral("package"),
          {},
@@ -978,7 +978,7 @@ int Commands::deploy(const QStringList &arguments)
     const CommandSpec spec{
         .name = QStringLiteral("deploy"),
         .summary = QStringLiteral("Build and install the application into a prefix."),
-        .usage = QStringLiteral("respin deploy [options]"),
+        .usage = QStringLiteral("loom deploy [options]"),
         .options = options,
     };
     ParsedCommand parsed;
@@ -998,11 +998,11 @@ int Commands::deploy(const QStringList &arguments)
 
     // Qt's deploy script writes RPATHs and resolves runtime dependencies
     // relative to the prefix, and fails outright on a relative one. Making it
-    // absolute here means `respin deploy --output dist` behaves.
+    // absolute here means `loom deploy --output dist` behaves.
     auto output = parsed.value(QStringLiteral("output"));
     if (output.isEmpty()) {
         output = QDir(context.root)
-                     .filePath(QStringLiteral(".respin/dist/%1-%2")
+                     .filePath(QStringLiteral(".loom/dist/%1-%2")
                                    .arg(context.target, context.configuration.toLower()));
     }
     output = QFileInfo(output).absoluteFilePath();
@@ -1042,31 +1042,31 @@ int Commands::deploy(const QStringList &arguments)
     // Said plainly rather than left for the user to discover on another machine.
     output_stream << "Qt is not bundled: this tree needs Qt " << QStringLiteral("6.11")
                   << " installed on the target host. "
-                  << "See respin_install_application in respinFunctions.cmake.\n";
+                  << "See loom_install_application in loomFunctions.cmake.\n";
     return cli::Success;
 }
 
 void Commands::printHelp() const
 {
     QTextStream(stdout)
-        << "respin " << RESPIN_VERSION
+        << "loom " << LOOM_VERSION_STR
         << " — fast Qt/QML projects\n\n"
-           "Usage: respin <command> [options]\n\n"
+           "Usage: loom <command> [options]\n\n"
            "Commands:\n"
            "  new <name>  Create a Qt/QML application\n"
-           "  init        Add a respin manifest to an existing CMake project\n"
+           "  init        Add a loom manifest to an existing CMake project\n"
            "  doctor      Check the selected platform toolchain\n"
            "  setup       Show the confirmed setup plan\n"
            "  dev         Build, run, watch, and hot-reload\n"
            "  build       Configure and build the application\n"
            "  lint        Run qmllint over the project's QML\n"
            "  fmt         Format the project's QML with qmlformat\n"
-           "  clean       Remove respin's build and deploy trees\n"
+           "  clean       Remove loom's build and deploy trees\n"
            "  test        Build and run the project's tests\n"
            "  deploy      Package and deploy for a target\n\n"
            "Common options:\n"
            "  --target <desktop|android|ios|embedded>\n"
            "  --config <Debug|Release|RelWithDebInfo|MinSizeRel>\n"
            "  --prefix <extra CMake prefix path>\n\n"
-           "Run 'respin <command> --help' for a command's own options.\n";
+           "Run 'loom <command> --help' for a command's own options.\n";
 }

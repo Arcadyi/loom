@@ -2,7 +2,7 @@
 
 #include "projectmanifest.h"
 
-#include <respin/protocol.h>
+#include <loom/protocol.h>
 
 #include <QByteArray>
 #include <QHash>
@@ -30,7 +30,7 @@ public:
     // a connect loop cannot grow the client table without bound.
     static constexpr int MaximumClients = 8;
     // A client that has not proved itself within this long is dropped. Combined
-    // with respin::MaximumPreAuthFrameSize this bounds what an unauthenticated
+    // with loom::MaximumPreAuthFrameSize this bounds what an unauthenticated
     // peer can hold: a few KiB, for a couple of seconds.
     static constexpr int AuthenticationTimeoutMs = 2000;
     // A half-open connection -- a suspended laptop, a hung application -- is
@@ -68,7 +68,7 @@ private:
     void acceptConnection();
     void readClient(QTcpSocket *socket);
     void dropClient(QTcpSocket *socket, const QString &reason);
-    bool authenticate(QTcpSocket *socket, ClientState &state, const respin::Frame &frame);
+    bool authenticate(QTcpSocket *socket, ClientState &state, const loom::Frame &frame);
     void rebuildBundle();
     void resetWatchPaths();
     void resetNativeWatchPaths();

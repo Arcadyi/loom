@@ -10,7 +10,7 @@ cli::CommandSpec buildLikeSpec()
     return cli::CommandSpec{
         .name = QStringLiteral("build"),
         .summary = QStringLiteral("Configure and build."),
-        .usage = QStringLiteral("respin build [options]"),
+        .usage = QStringLiteral("loom build [options]"),
         .options =
             {
                 {QStringLiteral("target"), QStringLiteral("platform"),
@@ -63,7 +63,7 @@ private slots:
         QVERIFY(parsed.isSet(QStringLiteral("apply")));
     }
 
-    // Previously ignored outright: "respin build --targt android" built desktop
+    // Previously ignored outright: "loom build --targt android" built desktop
     // and exited 0.
     void unknownOptionIsRejected()
     {
@@ -131,7 +131,7 @@ private slots:
         QCOMPARE(parsed.value(QStringLiteral("config")), QStringLiteral("Release"));
     }
 
-    // "respin dev --help" used to start a dev server: help was only recognized
+    // "loom dev --help" used to start a dev server: help was only recognized
     // as the very first argument of the whole command line.
     void helpIsRecognizedPerCommand()
     {

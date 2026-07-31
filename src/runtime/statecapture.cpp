@@ -11,7 +11,7 @@
 
 #include <private/qqmlproperty_p.h>
 
-namespace respin {
+namespace loom {
 namespace {
 
 // Bundles are unpacked into a fresh directory on every reload, so the object's
@@ -71,7 +71,7 @@ QList<QObject *> sceneObjects(QObject *root)
     return objects;
 }
 
-// The directory the scene's own QML lives in. respin stages every qmlRoot into
+// The directory the scene's own QML lives in. loom stages every qmlRoot into
 // one bundle directory, so this is what separates the application's files from
 // the QML that ships inside Qt.
 QString sceneDirectory(QObject *root)
@@ -88,7 +88,7 @@ QString sceneDirectory(QObject *root)
 // Qt's controls are QML too, and their internals carry ids and declared
 // properties -- a TextField alone contributes selectionStartHandle and
 // friends. Restoring a control's private state from a previous scene is not
-// respin's business, and the file name it would be keyed under is not even
+// loom's business, and the file name it would be keyed under is not even
 // the application's to keep unique.
 bool belongsToScene(QObject *object, const QString &directory)
 {
@@ -183,4 +183,4 @@ void applySceneState(QObject *root, const QVariantMap &state)
     }
 }
 
-} // namespace respin
+} // namespace loom

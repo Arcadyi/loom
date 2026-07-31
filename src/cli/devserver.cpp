@@ -1,6 +1,6 @@
 #include "devserver.h"
 
-#include <respin/protocol.h>
+#include <loom/protocol.h>
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -192,23 +192,23 @@ void DevServer::dropClient(QTcpSocket *socket, const QString &reason)
 }
 
 bool DevServer::authenticate(
-    QTcpSocket *socket, ClientState &state, const respin::Frame &frame)
+    QTcpSocket *socket, ClientState &state, const loom::Frame &frame)
 {
-    if (frame.type != respin::MessageType::Hello)
+    if (frame.type != loom::MessageType::Hello)
         return false;
 
     const auto hello = QJsonDocument::fromJson(frame.payload).object();
-    if (hello.value(QStringLiteral("version")).toInt() != respin::ProtocolVersion) {
-        // respin_runtime is a static library baked into the application, so an
+    if (hello.value(QStringLiteral("version")).toInt() != loom::ProtocolVersion) {
+        // loom_runtime is a static library baked into the application, so an
         // upgraded CLI regularly meets an older runtime. Saying so beats
         // "unauthorized" followed by silence on both ends.
         sendError(
             socket,
             QStringLiteral(
-                "protocol version mismatch: this respin speaks v%1, the application "
+                "protocol version mismatch: this loom speaks v%1, the application "
                 "was built against v%2. Rebuild the application against the "
-                "installed respin.")
-                .arg(respin::ProtocolVersion)
+                "installed loom.")
+                .arg(loom::ProtocolVersion)
                 .arg(hello.value(QStringLiteral("version")).toInt()));
         return false;
     }
@@ -242,11 +242,11 @@ void DevServer::readClient(QTcpSocket *socket)
     state.buffer.append(socket->readAll());
     state.lastSeenMs = QDateTime::currentMSecsSinceEpoch();
     while (true) {
-        respin::Frame frame;
+        loom::Frame frame;
         QString error;
-        const auto limit = state.authenticated ? respin::MaximumFrameSize
-                                               : respin::MaximumPreAuthFrameSize;
-        if (!respin::takeFrame(state.buffer, frame, &error, limit)) {
+        const auto limit = state.authenticated ? loom::MaximumFrameSize
+                                               : loom::MaximumPreAuthFrameSize;
+        if (!loom::takeFrame(state.buffer, frame, &error, limit)) {
             // A set error is a framing error, which is unrecoverable: takeFrame
             // consumed nothing and there is no way to resynchronize.
             if (!error.isEmpty())
@@ -258,7 +258,7 @@ void DevServer::readClient(QTcpSocket *socket)
                 dropClient(socket, QStringLiteral("failed authentication"));
                 break;
             }
-        } else if (frame.type == respin::MessageType::ReloadResult) {
+        } else if (frame.type == loom::MessageType::ReloadResult) {
             const auto result = QJsonDocument::fromJson(frame.payload).object();
             emit logMessage(
                 result.value(QStringLiteral("success")).toBool()
@@ -266,7 +266,7 @@ void DevServer::readClient(QTcpSocket *socket)
                           .arg(result.value(QStringLiteral("bundleId")).toString())
                     : QStringLiteral("reload failed: %1")
                           .arg(result.value(QStringLiteral("message")).toString()));
-        } else if (frame.type == respin::MessageType::Error) {
+        } else if (frame.type == loom::MessageType::Error) {
             const auto payload = QJsonDocument::fromJson(frame.payload).object();
             emit logMessage(
                 QStringLiteral("application reported: %1")
@@ -306,7 +306,7 @@ QByteArray DevServer::developmentQmldir() const
 
 void DevServer::rebuildBundle()
 {
-    respin::Bundle bundle;
+    loom::Bundle bundle;
     QCryptographicHash aggregate(QCryptographicHash::Sha256);
     const auto uriPath =
         QString(m_application.uri).replace(QLatin1Char('.'), QLatin1Char('/'));
@@ -324,7 +324,7 @@ void DevServer::rebuildBundle()
                 + QLatin1Char('/') + resourcePrefix + relative;
             const auto hash =
                 QCryptographicHash::hash(contents, QCryptographicHash::Sha256);
-            bundle.files.append(respin::BundleFile{resourcePath, contents, hash});
+            bundle.files.append(loom::BundleFile{resourcePath, contents, hash});
             aggregate.addData(resourcePath.toUtf8());
             aggregate.addData(hash);
         }
@@ -343,7 +343,7 @@ void DevServer::rebuildBundle()
         const auto resourcePath =
             QStringLiteral("qt/qml/") + uriPath + QStringLiteral("/qmldir");
         const auto hash = QCryptographicHash::hash(qmldir, QCryptographicHash::Sha256);
-        bundle.files.append(respin::BundleFile{resourcePath, qmldir, hash});
+        bundle.files.append(loom::BundleFile{resourcePath, qmldir, hash});
         aggregate.addData(resourcePath.toUtf8());
         aggregate.addData(hash);
     }
@@ -362,13 +362,13 @@ void DevServer::rebuildBundle()
     // encodeFrame, which returns {} and makes write() a silent no-op while the
     // application waits forever. Committing m_bundleId first also meant the
     // same oversized bundle was never retried.
-    const auto encoded = respin::encodeBundle(bundle);
-    if (encoded.size() + 1 > respin::MaximumFrameSize) {
+    const auto encoded = loom::encodeBundle(bundle);
+    if (encoded.size() + 1 > loom::MaximumFrameSize) {
         const auto message = QStringLiteral(
                                  "bundle is %1 MiB, over the %2 MiB "
                                  "development protocol limit; not sent")
                                  .arg(encoded.size() / (1024 * 1024))
-                                 .arg(respin::MaximumFrameSize / (1024 * 1024));
+                                 .arg(loom::MaximumFrameSize / (1024 * 1024));
         emit logMessage(message);
         for (auto client = m_clients.cbegin(); client != m_clients.cend(); ++client) {
             if (client.value().authenticated)
@@ -422,7 +422,7 @@ void DevServer::resetNativeWatchPaths()
     QStringList paths;
     for (const auto &relative : {
              QStringLiteral("CMakeLists.txt"),
-             QStringLiteral("respin.json"),
+             QStringLiteral("loom.json"),
              QStringLiteral("src"),
              QStringLiteral("cmake"),
          }) {
@@ -447,7 +447,7 @@ void DevServer::sendBundle(QTcpSocket *socket)
 {
     if (m_encodedBundle.isEmpty())
         return;
-    socket->write(respin::encodeFrame(respin::MessageType::Bundle, m_encodedBundle));
+    socket->write(loom::encodeFrame(loom::MessageType::Bundle, m_encodedBundle));
 }
 
 void DevServer::sendHeartbeats()
@@ -471,15 +471,15 @@ void DevServer::sendHeartbeats()
             socket, QStringLiteral("no response for %1 ms").arg(m_heartbeatTimeoutMs));
     }
     for (auto *socket : alive)
-        socket->write(respin::encodeFrame(respin::MessageType::Ping, {}));
+        socket->write(loom::encodeFrame(loom::MessageType::Ping, {}));
 }
 
 void DevServer::sendError(QTcpSocket *socket, const QString &message)
 {
     const QJsonObject payload{{QStringLiteral("message"), message}};
     socket->write(
-        respin::encodeFrame(
-            respin::MessageType::Error,
+        loom::encodeFrame(
+            loom::MessageType::Error,
             QJsonDocument(payload).toJson(QJsonDocument::Compact)));
     // The caller usually disconnects immediately afterwards, and an unflushed
     // write dies with the socket.

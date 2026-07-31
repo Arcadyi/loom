@@ -20,12 +20,12 @@ constexpr int TerminateTimeoutMs = 3000;
 
 void logEvent(const QString &message)
 {
-    QTextStream(stdout) << "[respin] " << message << Qt::endl;
+    QTextStream(stdout) << "[loom] " << message << Qt::endl;
 }
 
 void logProblem(const QString &message)
 {
-    QTextStream(stderr) << "[respin] " << message << Qt::endl;
+    QTextStream(stderr) << "[loom] " << message << Qt::endl;
 }
 
 #if defined(Q_OS_UNIX)
@@ -73,10 +73,10 @@ int DevSession::run(QString *error)
 
     m_process.setProcessChannelMode(QProcess::ForwardedChannels);
     auto environment = QProcessEnvironment::systemEnvironment();
-    environment.insert(QStringLiteral("RESPIN_DEV_HOST"), QStringLiteral("127.0.0.1"));
+    environment.insert(QStringLiteral("LOOM_DEV_HOST"), QStringLiteral("127.0.0.1"));
     environment.insert(
-        QStringLiteral("RESPIN_DEV_PORT"), QString::number(m_server.port()));
-    environment.insert(QStringLiteral("RESPIN_DEV_TOKEN"), m_server.token());
+        QStringLiteral("LOOM_DEV_PORT"), QString::number(m_server.port()));
+    environment.insert(QStringLiteral("LOOM_DEV_TOKEN"), m_server.token());
     m_process.setProcessEnvironment(environment);
     connect(&m_process, &QProcess::finished, this, &DevSession::handleProcessFinished);
     connect(&m_process, &QProcess::errorOccurred, this, &DevSession::handleProcessError);
@@ -203,7 +203,7 @@ void DevSession::installSignalHandlers()
     ::sigaction(SIGTERM, &action, nullptr);
 #else
     // Interactive Ctrl-C reaches the whole process group, which masks the
-    // problem; a signal sent to respin dev alone would not be handled here.
+    // problem; a signal sent to loom dev alone would not be handled here.
     logEvent(QStringLiteral(
         "signal handling is not implemented on this platform; stop the session "
         "with Ctrl-C"));

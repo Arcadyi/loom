@@ -6,7 +6,7 @@
 
 #include "statecapture.h"
 
-using namespace respin;
+using namespace loom;
 
 namespace {
 

@@ -151,18 +151,18 @@ bool ProjectScaffolder::create(
     // The identifier goes into project() and the target name; the display name
     // survives only in QML and the README, and is escaped for its context.
     const QList<Replacement> replacements{
-        Replacement{QStringLiteral("@RESPIN_DISPLAY_NAME@"), qmlStringLiteral(name)},
-        Replacement{QStringLiteral("@RESPIN_PROJECT_NAME@"), name},
-        Replacement{QStringLiteral("@RESPIN_TARGET@"), identifierFromName(name)},
-        Replacement{QStringLiteral("@RESPIN_APP_ID@"), application.id},
-        Replacement{QStringLiteral("@RESPIN_URI@"), application.uri},
+        Replacement{QStringLiteral("@LOOM_DISPLAY_NAME@"), qmlStringLiteral(name)},
+        Replacement{QStringLiteral("@LOOM_PROJECT_NAME@"), name},
+        Replacement{QStringLiteral("@LOOM_TARGET@"), identifierFromName(name)},
+        Replacement{QStringLiteral("@LOOM_APP_ID@"), application.id},
+        Replacement{QStringLiteral("@LOOM_URI@"), application.uri},
     };
 
     QStringList skipped;
     if (!options.githubWorkflow)
         skipped.append(QStringLiteral(".github/"));
     if (!copyTemplate(
-            QStringLiteral(RESPIN_TEMPLATE_DIR), destination, replacements, skipped,
+            QStringLiteral(LOOM_TEMPLATE_DIR), destination, replacements, skipped,
             error)) {
         return false;
     }
@@ -171,7 +171,7 @@ bool ProjectScaffolder::create(
     // cost of keeping the overlay in sync with the base template by hand.
     if (options.loom
         && !copyTemplate(
-            QStringLiteral(RESPIN_TEMPLATE_LOOM_DIR), destination, replacements, {},
+            QStringLiteral(LOOM_TEMPLATE_LOOM_DIR), destination, replacements, {},
             error)) {
         return false;
     }
@@ -185,5 +185,5 @@ bool ProjectScaffolder::create(
         return false;
     }
     return manifest.save(
-        QDir(destination).filePath(QStringLiteral("respin.json")), error);
+        QDir(destination).filePath(QStringLiteral("loom.json")), error);
 }

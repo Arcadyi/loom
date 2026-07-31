@@ -63,7 +63,7 @@ ParseOutcome parseCommand(
 void printCommandHelp(const CommandSpec &spec);
 
 // The single error channel. Previously there were three: printError,
-// BuildRunner's direct stderr write, and the "[respin]" dev-log writes, which
+// BuildRunner's direct stderr write, and the "[loom]" dev-log writes, which
 // additionally did not affect the exit code.
 int reportError(const QString &message);
 int reportUsageError(const CommandSpec &spec, const QString &message);

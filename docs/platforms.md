@@ -13,7 +13,7 @@ them as unsupported until CI covers them.
 
 ### Deployment
 
-`respin deploy` performs an ordinary `cmake --install` into a prefix and can
+`loom deploy` performs an ordinary `cmake --install` into a prefix and can
 produce a CPack archive. It does **not** bundle Qt; see the README for the
 measurements behind that decision. Producing a self-contained artifact is left
 to a dedicated packaging tool.

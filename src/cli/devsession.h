@@ -9,14 +9,14 @@
 
 class QSocketNotifier;
 
-// Owns the whole `respin dev` loop: the reload server, the application process,
+// Owns the whole `loom dev` loop: the reload server, the application process,
 // the rebuild-on-native-change cycle, and shutdown.
 //
 // Extracted from a pile of lambdas inside Commands::develop, which is why three
 // bugs coexisted there: the rebuild lambda captured a raw QProcess* that the
 // finished handler had already deleteLater()'d; a restart that could not start
 // emitted no finished signal and so hung in exec() forever with no application
-// and no nonzero exit; and a signalled respin dev left an orphaned child holding
+// and no nonzero exit; and a signalled loom dev left an orphaned child holding
 // a bound port.
 class DevSession final : public QObject {
     Q_OBJECT
@@ -37,7 +37,7 @@ public:
     ~DevSession() override;
 
     // Starts everything and runs the event loop. Returns the application's exit
-    // code, or a respin exit code if the session could not start.
+    // code, or a loom exit code if the session could not start.
     int run(QString *error = nullptr);
 
 private:

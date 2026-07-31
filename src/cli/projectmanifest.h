@@ -44,7 +44,7 @@ public:
     // --app value, empty when the user did not pass one. Previously every
     // command used constFirst(), which after load is the *alphabetically* first
     // target, so adding an "Admin" app to a "Viewer" project silently changed
-    // what `respin dev` ran.
+    // what `loom dev` ran.
     bool selectApplication(
         const QString &requested, ApplicationDefinition &application,
         QString *error = nullptr) const;
@@ -62,6 +62,6 @@ QString findManifest(const QString &startingDirectory);
 
 // Turns a display name into a C++/CMake identifier. Lives here, and is used by
 // the scaffolder too, because the two had character-identical private copies:
-// the moment they diverged, `respin dev` would look for a target the generated
+// the moment they diverged, `loom dev` would look for a target the generated
 // CMakeLists.txt never defined.
 QString identifierFromName(QString name);

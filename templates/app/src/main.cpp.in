@@ -1,14 +1,14 @@
-#include <respin/application.h>
+#include <loom/application.h>
 
 int main(int argc, char *argv[])
 {
-    respin::Application application(argc, argv);
+    loom::Application application(argc, argv);
 #ifndef NDEBUG
     application.enableDevelopmentRuntime();
 #endif
-    // RESPIN_APP_URI and RESPIN_APP_ENTRY come from respin_enable_hot_reload, so
+    // LOOM_APP_URI and LOOM_APP_ENTRY come from loom_enable_hot_reload, so
     // the URI has one definition. It used to be hardcoded here as well, leaving
     // two sources of truth with the CMake one referenced by nothing.
     return application.run(
-        QStringLiteral(RESPIN_APP_URI), QStringLiteral(RESPIN_APP_ENTRY));
+        QStringLiteral(LOOM_APP_URI), QStringLiteral(LOOM_APP_ENTRY));
 }

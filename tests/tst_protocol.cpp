@@ -1,4 +1,4 @@
-#include <respin/protocol.h>
+#include <loom/protocol.h>
 
 #include <QCryptographicHash>
 #include <QtTest>
@@ -10,13 +10,13 @@ private slots:
     void frameWaitsForCompletePayload()
     {
         const auto encoded =
-            respin::encodeFrame(respin::MessageType::Ping, QByteArrayLiteral("hello"));
+            loom::encodeFrame(loom::MessageType::Ping, QByteArrayLiteral("hello"));
         QByteArray partial = encoded.first(6);
-        respin::Frame frame;
-        QVERIFY(!respin::takeFrame(partial, frame));
+        loom::Frame frame;
+        QVERIFY(!loom::takeFrame(partial, frame));
         partial.append(encoded.sliced(6));
-        QVERIFY(respin::takeFrame(partial, frame));
-        QCOMPARE(frame.type, respin::MessageType::Ping);
+        QVERIFY(loom::takeFrame(partial, frame));
+        QCOMPARE(frame.type, loom::MessageType::Ping);
         QCOMPARE(frame.payload, QByteArrayLiteral("hello"));
         QVERIFY(partial.isEmpty());
     }
@@ -30,12 +30,12 @@ private slots:
         buffer.resize(4);
         qToBigEndian<quint32>(0, reinterpret_cast<uchar *>(buffer.data()));
         buffer.append(
-            respin::encodeFrame(respin::MessageType::Ping, QByteArrayLiteral("queued")));
+            loom::encodeFrame(loom::MessageType::Ping, QByteArrayLiteral("queued")));
         const auto originalSize = buffer.size();
 
-        respin::Frame frame;
+        loom::Frame frame;
         QString error;
-        QVERIFY(!respin::takeFrame(buffer, frame, &error));
+        QVERIFY(!loom::takeFrame(buffer, frame, &error));
         QVERIFY2(!error.isEmpty(), "a zero-length frame was accepted");
         QCOMPARE(buffer.size(), originalSize); // nothing consumed, nothing discarded
     }
@@ -45,12 +45,12 @@ private slots:
         QByteArray buffer;
         buffer.resize(4);
         qToBigEndian<quint32>(
-            static_cast<quint32>(respin::MaximumFrameSize + 1),
+            static_cast<quint32>(loom::MaximumFrameSize + 1),
             reinterpret_cast<uchar *>(buffer.data()));
 
-        respin::Frame frame;
+        loom::Frame frame;
         QString error;
-        QVERIFY(!respin::takeFrame(buffer, frame, &error));
+        QVERIFY(!loom::takeFrame(buffer, frame, &error));
         QVERIFY(error.contains(QStringLiteral("frame size")));
     }
 
@@ -58,41 +58,41 @@ private slots:
     // receiver buffer a declared 64 MiB before its type is even known.
     void preAuthLimitRejectsFramesTheFullLimitAccepts()
     {
-        const QByteArray payload(respin::MaximumPreAuthFrameSize + 1, 'x');
-        auto encoded = respin::encodeFrame(respin::MessageType::Hello, payload);
+        const QByteArray payload(loom::MaximumPreAuthFrameSize + 1, 'x');
+        auto encoded = loom::encodeFrame(loom::MessageType::Hello, payload);
 
-        respin::Frame frame;
+        loom::Frame frame;
         QString error;
         auto restricted = encoded;
-        QVERIFY(!respin::takeFrame(
-            restricted, frame, &error, respin::MaximumPreAuthFrameSize));
+        QVERIFY(!loom::takeFrame(
+            restricted, frame, &error, loom::MaximumPreAuthFrameSize));
         QVERIFY(error.contains(QStringLiteral("frame size")));
 
         error.clear();
-        QVERIFY2(respin::takeFrame(encoded, frame, &error), qPrintable(error));
+        QVERIFY2(loom::takeFrame(encoded, frame, &error), qPrintable(error));
         QCOMPARE(frame.payload.size(), payload.size());
     }
 
     void rejectsUnknownMessageType()
     {
         auto encoded =
-            respin::encodeFrame(respin::MessageType::Ping, QByteArrayLiteral("x"));
+            loom::encodeFrame(loom::MessageType::Ping, QByteArrayLiteral("x"));
         encoded[4] = static_cast<char>(99);
 
-        respin::Frame frame;
+        loom::Frame frame;
         QString error;
-        QVERIFY(!respin::takeFrame(encoded, frame, &error));
+        QVERIFY(!loom::takeFrame(encoded, frame, &error));
         QVERIFY(error.contains(QStringLiteral("message type")));
     }
 
     void bundleRoundTrip()
     {
         const QByteArray contents = "import QtQuick\nItem {}\n";
-        respin::Bundle source{
+        loom::Bundle source{
             .id = QStringLiteral("abc123"),
             .files =
                 {
-                    respin::BundleFile{
+                    loom::BundleFile{
                         .path = QStringLiteral("qt/qml/dev/example/App/Main.qml"),
                         .contents = contents,
                         .sha256 = QCryptographicHash::hash(
@@ -100,10 +100,10 @@ private slots:
                     },
                 },
         };
-        respin::Bundle decoded;
+        loom::Bundle decoded;
         QString error;
         QVERIFY2(
-            respin::decodeBundle(respin::encodeBundle(source), decoded, &error),
+            loom::decodeBundle(loom::encodeBundle(source), decoded, &error),
             qPrintable(error));
         QCOMPARE(decoded.id, source.id);
         QCOMPARE(decoded.files.size(), 1);
@@ -122,17 +122,17 @@ private slots:
     void rejectsUnsafePaths()
     {
         QFETCH(QString, path);
-        QVERIFY(!respin::isSafeBundlePath(path));
+        QVERIFY(!loom::isSafeBundlePath(path));
     }
 
     void rejectsUnsafeBundleId()
     {
         const QByteArray contents = "Item {}";
-        auto bundle = respin::Bundle{
+        auto bundle = loom::Bundle{
             .id = QStringLiteral("../../outside"),
             .files =
                 {
-                    respin::BundleFile{
+                    loom::BundleFile{
                         .path = QStringLiteral("qt/qml/App/Main.qml"),
                         .contents = contents,
                         .sha256 = QCryptographicHash::hash(
@@ -140,25 +140,25 @@ private slots:
                     },
                 },
         };
-        respin::Bundle decoded;
+        loom::Bundle decoded;
         QString error;
-        QVERIFY(!respin::decodeBundle(respin::encodeBundle(bundle), decoded, &error));
+        QVERIFY(!loom::decodeBundle(loom::encodeBundle(bundle), decoded, &error));
         QVERIFY(error.contains(QStringLiteral("id")));
     }
 
     void rejectsDuplicateBundlePath()
     {
         const QByteArray contents = "Item {}";
-        const auto file = respin::BundleFile{
+        const auto file = loom::BundleFile{
             .path = QStringLiteral("qt/qml/App/Main.qml"),
             .contents = contents,
             .sha256 = QCryptographicHash::hash(contents, QCryptographicHash::Sha256),
         };
-        respin::Bundle decoded;
+        loom::Bundle decoded;
         QString error;
-        QVERIFY(!respin::decodeBundle(
-            respin::encodeBundle(
-                respin::Bundle{
+        QVERIFY(!loom::decodeBundle(
+            loom::encodeBundle(
+                loom::Bundle{
                     .id = QStringLiteral("duplicate"),
                     .files = {file, file},
                 }),

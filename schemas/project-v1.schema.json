@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.respin.dev/project/v1.json",
-  "title": "respin project manifest",
+  "$id": "https://raw.githubusercontent.com/Arcadyi/loom/main/schemas/project-v1.schema.json",
+  "title": "loom project manifest",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -1,28 +1,28 @@
 # Runtime API
 
-`respin::Runtime` is a static library installed with its headers. A generated `src/main.cpp`
+`loom::Runtime` is a static library installed with its headers. A generated `src/main.cpp`
 is the whole of the API most applications need:
 
 ```cpp
-#include <respin/application.h>
+#include <loom/application.h>
 
 int main(int argc, char *argv[])
 {
-    respin::Application application(argc, argv);
+    loom::Application application(argc, argv);
 #ifndef NDEBUG
     application.enableDevelopmentRuntime();
 #endif
     return application.run(
-        QStringLiteral(RESPIN_APP_URI), QStringLiteral(RESPIN_APP_ENTRY));
+        QStringLiteral(LOOM_APP_URI), QStringLiteral(LOOM_APP_ENTRY));
 }
 ```
 
-`RESPIN_APP_URI` and `RESPIN_APP_ENTRY` are defined by `respin_enable_hot_reload`, so the
+`LOOM_APP_URI` and `LOOM_APP_ENTRY` are defined by `loom_enable_hot_reload`, so the
 module URI has one definition rather than being repeated in C++.
 
 ---
 
-## `respin::Application`
+## `loom::Application`
 
 Owns a `QGuiApplication` and a `QQmlApplicationEngine`, loads the entry scene, and
 optionally connects to a development server.
@@ -33,7 +33,7 @@ Allows the runtime to connect to a development server. Without it the applicatio
 opens a socket, whatever the environment says.
 
 The generated `main.cpp` gates this on `#ifndef NDEBUG`, so `Release`, `RelWithDebInfo` and
-`MinSizeRel` builds have no reload path compiled in at all. `respin dev` warns when you
+`MinSizeRel` builds have no reload path compiled in at all. `loom dev` warns when you
 select such a configuration.
 
 ### `void setEngineInitializer(EngineInitializer initializer)`
@@ -44,7 +44,7 @@ Called with the engine before the scene is loaded, and the place to register C++
 context properties, singletons and import paths:
 
 ```cpp
-respin::Application application(argc, argv);
+loom::Application application(argc, argv);
 application.setEngineInitializer([](QQmlApplicationEngine &engine) {
     qmlRegisterType<Backend>("com.example.MyApp", 1, 0, "Backend");
     engine.rootContext()->setContextProperty("buildStamp", QStringLiteral(__DATE__));
@@ -53,7 +53,7 @@ application.setEngineInitializer([](QQmlApplicationEngine &engine) {
 
 C++ types registered here survive hot reload: only the QML scene is rebuilt, and the engine,
 its registrations and every C++ object outlive it. Changing the C++ itself requires a
-rebuild, which `respin dev` performs automatically when anything under `src/` changes.
+rebuild, which `loom dev` performs automatically when anything under `src/` changes.
 
 ### `int run(const QString &moduleUri, const QString &entryType)`
 
@@ -111,18 +111,18 @@ property — give the root object either or both of these functions. They run in
 automatic capture, and win wherever the two overlap:
 
 ```qml
-function respinSaveState() {
+function loomSaveState() {
     return { "route": currentRoute, "query": search.text }
 }
 
-function respinRestoreState(state) {
+function loomRestoreState(state) {
     currentRoute = state.route ?? "home"
     search.text = state.query ?? ""
 }
 ```
 
 Both are optional; a missing hook now means automatic capture alone rather than a clean
-scene. `respinRestoreState` is looked up on the whole type hierarchy, so inheriting it from a
+scene. `loomRestoreState` is looked up on the whole type hierarchy, so inheriting it from a
 base QML type works.
 
 ### What survives
@@ -139,7 +139,7 @@ and handing those back would be a use-after-free. In practice:
 | `undefined`, or something with no JSON form | nothing from the hook, with a warning; captured properties are unaffected |
 | more than 1 MiB of state | nothing; the scene reloads clean, with a warning |
 
-`respinRestoreState` is called **synchronously**, immediately after the new root is created
+`loomRestoreState` is called **synchronously**, immediately after the new root is created
 and before the first frame. A queued call would show one frame of un-restored state.
 
 ---
@@ -151,7 +151,7 @@ compiled-in resources if there is no previous bundle.
 
 "Last known good" means **constructed successfully** — not "runs without warnings". A bundle
 that compiles and builds its object tree is accepted even if it then logs QML errors at run
-time. Those errors are reported over the wire and appear in the `respin dev` terminal, but
+time. Those errors are reported over the wire and appear in the `loom dev` terminal, but
 they do not trigger a rollback: a warning means the scene is up and something in it
 misbehaved, and rolling back on that would undo working reloads.
 
@@ -162,14 +162,14 @@ mid-edit.
 
 ---
 
-## `respin::ReloadController`
+## `loom::ReloadController`
 
 The engine bootstrap and reload machinery behind `Application`. Use it directly only when
-you are not using `respin::Application` — for instance when embedding respin in an existing
+you are not using `loom::Application` — for instance when embedding loom in an existing
 application that owns its own engine.
 
 ```cpp
-respin::ReloadController controller(engine);
+loom::ReloadController controller(engine);
 controller.load(QStringLiteral("com.example.MyApp"), QStringLiteral("Main"));
 controller.connectToDevelopmentServer(host, port, token);
 ```
@@ -185,19 +185,19 @@ controller.connectToDevelopmentServer(host, port, token);
 Signals: `sceneReloaded(bundleId)` and `reloadFailed(message)`.
 
 The controller owns its bundle cache — a private directory under
-`<CacheLocation>/respin/bundles/<pid>-XXXXXX` — and removes it on destruction. Directories
+`<CacheLocation>/loom/bundles/<pid>-XXXXXX` — and removes it on destruction. Directories
 belonging to processes that are gone are swept on the next start.
 
 ---
 
 ## Version skew
 
-`respin::Runtime` is a **static** library, so the runtime is baked into your binary at link
-time. Upgrading the respin CLI does not upgrade the runtime inside an already-built
+`loom::Runtime` is a **static** library, so the runtime is baked into your binary at link
+time. Upgrading the loom CLI does not upgrade the runtime inside an already-built
 application.
 
 A protocol mismatch is reported rather than left silent: the development server sends an
 error naming both versions and telling you to rebuild.
 
-A stale `librespin_runtime.a` combined with newer headers is **not** currently detected. If
-you upgrade respin, rebuild the application.
+A stale `libloom_runtime.a` combined with newer headers is **not** currently detected. If
+you upgrade loom, rebuild the application.

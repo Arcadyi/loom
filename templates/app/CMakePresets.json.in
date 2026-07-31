@@ -5,7 +5,7 @@
       "name": "debug",
       "displayName": "Desktop Debug",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/.respin/build/preset-debug",
+      "binaryDir": "${sourceDir}/.loom/build/preset-debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
@@ -15,7 +15,7 @@
       "name": "release",
       "displayName": "Desktop Release",
       "inherits": "debug",
-      "binaryDir": "${sourceDir}/.respin/build/preset-release",
+      "binaryDir": "${sourceDir}/.loom/build/preset-release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }

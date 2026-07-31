@@ -13,7 +13,7 @@ private slots:
     {
         QTemporaryDir temporary;
         QVERIFY(temporary.isValid());
-        const auto path = temporary.filePath(QStringLiteral("respin.json"));
+        const auto path = temporary.filePath(QStringLiteral("loom.json"));
         const auto source = ProjectManifest::createDefault(
             QStringLiteral("Sample App"), QStringLiteral("com.acme"));
         QString error;
@@ -30,7 +30,7 @@ private slots:
     void rejectsUnknownSchema()
     {
         QTemporaryDir temporary;
-        const auto path = temporary.filePath(QStringLiteral("respin.json"));
+        const auto path = temporary.filePath(QStringLiteral("loom.json"));
         QFile output(path);
         QVERIFY(output.open(QIODevice::WriteOnly));
         output.write(R"({"schemaVersion": 99})");
@@ -42,14 +42,14 @@ private slots:
         QVERIFY(error.contains(QStringLiteral("schemaVersion")));
     }
 
-    // Adding a second application used to silently change what `respin dev`
+    // Adding a second application used to silently change what `loom dev`
     // ran: every command took constFirst(), which after load is the
     // alphabetically first target because QJsonObject sorts its keys.
     void multipleApplicationsRequireAChoice()
     {
         QTemporaryDir temporary;
         QVERIFY(temporary.isValid());
-        const auto path = temporary.filePath(QStringLiteral("respin.json"));
+        const auto path = temporary.filePath(QStringLiteral("loom.json"));
         QFile output(path);
         QVERIFY(output.open(QIODevice::WriteOnly));
         output.write(R"({
@@ -95,7 +95,7 @@ private slots:
     {
         QTemporaryDir temporary;
         QVERIFY(temporary.isValid());
-        const auto path = temporary.filePath(QStringLiteral("respin.json"));
+        const auto path = temporary.filePath(QStringLiteral("loom.json"));
         auto manifest = ProjectManifest::createDefault(
             QStringLiteral("Suite"), QStringLiteral("com.example"));
         manifest.setDefaultApplication(QStringLiteral("Suite"));
@@ -129,7 +129,7 @@ private slots:
         QTemporaryDir temporary;
         const auto nested = temporary.filePath(QStringLiteral("a/b"));
         QVERIFY(QDir().mkpath(nested));
-        QFile manifest(temporary.filePath(QStringLiteral("respin.json")));
+        QFile manifest(temporary.filePath(QStringLiteral("loom.json")));
         QVERIFY(manifest.open(QIODevice::WriteOnly));
         manifest.close();
         QCOMPARE(findManifest(nested), QFileInfo(manifest).absoluteFilePath());

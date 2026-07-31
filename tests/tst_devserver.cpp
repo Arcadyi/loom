@@ -1,6 +1,6 @@
 #include "devserver.h"
 
-#include <respin/protocol.h>
+#include <loom/protocol.h>
 
 #include <QFile>
 #include <QJsonDocument>
@@ -65,9 +65,9 @@ public:
         QObject::connect(&socket, &QTcpSocket::readyRead, &socket, [this] {
             buffer.append(socket.readAll());
             while (true) {
-                respin::Frame frame;
+                loom::Frame frame;
                 QString error;
-                if (!respin::takeFrame(buffer, frame, &error)) {
+                if (!loom::takeFrame(buffer, frame, &error)) {
                     if (!error.isEmpty())
                         framingError = error;
                     break;
@@ -92,8 +92,8 @@ public:
             {QStringLiteral("currentBundle"), currentBundle},
         };
         socket.write(
-            respin::encodeFrame(
-                respin::MessageType::Hello,
+            loom::encodeFrame(
+                loom::MessageType::Hello,
                 QJsonDocument(hello).toJson(QJsonDocument::Compact)));
     }
 
@@ -104,11 +104,11 @@ public:
         header.resize(4);
         qToBigEndian(
             static_cast<quint32>(declaredSize), reinterpret_cast<uchar *>(header.data()));
-        header.append(static_cast<char>(respin::MessageType::Hello));
+        header.append(static_cast<char>(loom::MessageType::Hello));
         socket.write(header);
     }
 
-    bool has(const respin::MessageType type) const
+    bool has(const loom::MessageType type) const
     {
         return std::any_of(frames.cbegin(), frames.cend(), [type](const auto &frame) {
             return frame.type == type;
@@ -122,7 +122,7 @@ public:
 
     QTcpSocket socket;
     QByteArray buffer;
-    QList<respin::Frame> frames;
+    QList<loom::Frame> frames;
     QString framingError;
 };
 
@@ -190,9 +190,9 @@ private slots:
 
         ClientProbe probe(server.port());
         QVERIFY(probe.waitForConnected());
-        probe.sendHello(server.token(), respin::ProtocolVersion);
+        probe.sendHello(server.token(), loom::ProtocolVersion);
 
-        QTRY_VERIFY_WITH_TIMEOUT(probe.has(respin::MessageType::Bundle), 3000);
+        QTRY_VERIFY_WITH_TIMEOUT(probe.has(loom::MessageType::Bundle), 3000);
         QCOMPARE(server.clientCount(), 1);
     }
 
@@ -215,15 +215,15 @@ private slots:
 
         ClientProbe probe(server.port());
         QVERIFY(probe.waitForConnected());
-        probe.sendHello(server.token(), respin::ProtocolVersion);
-        QTRY_VERIFY_WITH_TIMEOUT(probe.has(respin::MessageType::Bundle), 3000);
+        probe.sendHello(server.token(), loom::ProtocolVersion);
+        QTRY_VERIFY_WITH_TIMEOUT(probe.has(loom::MessageType::Bundle), 3000);
 
         const auto frame =
             *std::find_if(probe.frames.cbegin(), probe.frames.cend(), [](const auto &f) {
-                return f.type == respin::MessageType::Bundle;
+                return f.type == loom::MessageType::Bundle;
             });
-        respin::Bundle bundle;
-        QVERIFY2(respin::decodeBundle(frame.payload, bundle, &error), qPrintable(error));
+        loom::Bundle bundle;
+        QVERIFY2(loom::decodeBundle(frame.payload, bundle, &error), qPrintable(error));
 
         const auto qmldirPath =
             QStringLiteral("qt/qml/") + uriPath + QStringLiteral("/qmldir");
@@ -261,21 +261,21 @@ private slots:
 
         ClientProbe probe(server.port());
         QVERIFY(probe.waitForConnected());
-        probe.sendHello(server.token(), respin::ProtocolVersion);
-        QTRY_VERIFY_WITH_TIMEOUT(probe.has(respin::MessageType::Bundle), 3000);
+        probe.sendHello(server.token(), loom::ProtocolVersion);
+        QTRY_VERIFY_WITH_TIMEOUT(probe.has(loom::MessageType::Bundle), 3000);
 
         const auto frame =
             *std::find_if(probe.frames.cbegin(), probe.frames.cend(), [](const auto &f) {
-                return f.type == respin::MessageType::Bundle;
+                return f.type == loom::MessageType::Bundle;
             });
-        respin::Bundle bundle;
+        loom::Bundle bundle;
         QString error;
-        QVERIFY2(respin::decodeBundle(frame.payload, bundle, &error), qPrintable(error));
+        QVERIFY2(loom::decodeBundle(frame.payload, bundle, &error), qPrintable(error));
         QCOMPARE(bundle.files.size(), 1);
     }
 
     // Ping was answered by the runtime but never sent by anyone, and neither
-    // side had a timeout: a half-open connection left respin dev reporting
+    // side had a timeout: a half-open connection left loom dev reporting
     // "application connected" while every reload went nowhere.
     void authenticatedClientIsPinged()
     {
@@ -287,13 +287,13 @@ private slots:
 
         ClientProbe probe(server.port());
         QVERIFY(probe.waitForConnected());
-        probe.sendHello(server.token(), respin::ProtocolVersion);
-        QTRY_VERIFY_WITH_TIMEOUT(probe.has(respin::MessageType::Bundle), 3000);
+        probe.sendHello(server.token(), loom::ProtocolVersion);
+        QTRY_VERIFY_WITH_TIMEOUT(probe.has(loom::MessageType::Bundle), 3000);
 
         QTRY_VERIFY_WITH_TIMEOUT(
-            probe.has(respin::MessageType::Ping), HeartbeatIntervalMs + 3000);
+            probe.has(loom::MessageType::Ping), HeartbeatIntervalMs + 3000);
         // Answering keeps it alive; the drop path is the next test.
-        probe.socket.write(respin::encodeFrame(respin::MessageType::Ping, {}));
+        probe.socket.write(loom::encodeFrame(loom::MessageType::Ping, {}));
         QTest::qWait(HeartbeatIntervalMs * 2);
         QCOMPARE(server.clientCount(), 1);
         QVERIFY(!probe.isDisconnected());
@@ -310,7 +310,7 @@ private slots:
 
         ClientProbe probe(server.port());
         QVERIFY(probe.waitForConnected());
-        probe.sendHello(server.token(), respin::ProtocolVersion);
+        probe.sendHello(server.token(), loom::ProtocolVersion);
         QTRY_COMPARE_WITH_TIMEOUT(server.clientCount(), 1, 3000);
 
         // Authenticates, then never speaks again. It stays connected at the TCP
@@ -335,15 +335,15 @@ private slots:
 
         ClientProbe probe(server.port());
         QVERIFY(probe.waitForConnected());
-        probe.sendHello(QString(64, QLatin1Char('0')), respin::ProtocolVersion);
+        probe.sendHello(QString(64, QLatin1Char('0')), loom::ProtocolVersion);
 
         QTRY_VERIFY_WITH_TIMEOUT(probe.isDisconnected(), 3000);
         QVERIFY2(
-            !probe.has(respin::MessageType::Bundle),
+            !probe.has(loom::MessageType::Bundle),
             "an unauthenticated client was sent the bundle");
     }
 
-    // respin_runtime is a static library baked into the application, so an
+    // loom_runtime is a static library baked into the application, so an
     // upgraded CLI routinely meets an older runtime. That used to surface as
     // "rejected an unauthorized reload client" and then silence on both sides.
     void versionMismatchIsExplainedRatherThanSilent()
@@ -355,12 +355,12 @@ private slots:
 
         ClientProbe probe(server.port());
         QVERIFY(probe.waitForConnected());
-        probe.sendHello(server.token(), respin::ProtocolVersion + 99);
+        probe.sendHello(server.token(), loom::ProtocolVersion + 99);
 
-        QTRY_VERIFY_WITH_TIMEOUT(probe.has(respin::MessageType::Error), 3000);
+        QTRY_VERIFY_WITH_TIMEOUT(probe.has(loom::MessageType::Error), 3000);
         const auto frame =
             *std::find_if(probe.frames.cbegin(), probe.frames.cend(), [](const auto &f) {
-                return f.type == respin::MessageType::Error;
+                return f.type == loom::MessageType::Error;
             });
         const auto message = QJsonDocument::fromJson(frame.payload)
                                  .object()
@@ -429,7 +429,7 @@ private slots:
         for (int index = 0; index < DevServer::MaximumClients + 4; ++index) {
             auto probe = std::make_unique<ClientProbe>(server.port());
             probe->waitForConnected();
-            probe->sendHello(server.token(), respin::ProtocolVersion);
+            probe->sendHello(server.token(), loom::ProtocolVersion);
             probes.push_back(std::move(probe));
         }
         QTest::qWait(500);
@@ -450,7 +450,7 @@ private slots:
         {
             ClientProbe probe(server.port());
             QVERIFY(probe.waitForConnected());
-            probe.sendHello(server.token(), respin::ProtocolVersion);
+            probe.sendHello(server.token(), loom::ProtocolVersion);
             QTRY_COMPARE_WITH_TIMEOUT(server.clientCount(), 1, 3000);
         }
         // The table is keyed by a raw socket pointer, so a missed prune leaves a
@@ -471,27 +471,27 @@ private slots:
         {
             ClientProbe probe(server.port());
             QVERIFY(probe.waitForConnected());
-            probe.sendHello(server.token(), respin::ProtocolVersion);
-            QTRY_VERIFY_WITH_TIMEOUT(probe.has(respin::MessageType::Bundle), 3000);
+            probe.sendHello(server.token(), loom::ProtocolVersion);
+            QTRY_VERIFY_WITH_TIMEOUT(probe.has(loom::MessageType::Bundle), 3000);
             const auto frame = *std::find_if(
                 probe.frames.cbegin(), probe.frames.cend(),
-                [](const auto &f) { return f.type == respin::MessageType::Bundle; });
-            respin::Bundle bundle;
+                [](const auto &f) { return f.type == loom::MessageType::Bundle; });
+            loom::Bundle bundle;
             QString error;
             QVERIFY2(
-                respin::decodeBundle(frame.payload, bundle, &error), qPrintable(error));
+                loom::decodeBundle(frame.payload, bundle, &error), qPrintable(error));
             bundleId = bundle.id;
         }
         QVERIFY(!bundleId.isEmpty());
 
         ClientProbe rejoin(server.port());
         QVERIFY(rejoin.waitForConnected());
-        rejoin.sendHello(server.token(), respin::ProtocolVersion, bundleId);
+        rejoin.sendHello(server.token(), loom::ProtocolVersion, bundleId);
         QTRY_COMPARE_WITH_TIMEOUT(server.clientCount(), 1, 3000);
         QTest::qWait(300);
 
         QVERIFY2(
-            !rejoin.has(respin::MessageType::Bundle),
+            !rejoin.has(loom::MessageType::Bundle),
             "the server resent a bundle the application said it already had");
         QVERIFY(!rejoin.isDisconnected());
     }

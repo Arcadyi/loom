@@ -4,16 +4,16 @@
 #include <QList>
 #include <QString>
 
-/// Framed transport between `respin dev` and the runtime inside an application.
+/// Framed transport between `loom dev` and the runtime inside an application.
 /// A frame is a 4-byte big-endian length, a 1-byte type, then the payload; the
 /// length counts the type byte. There is no resynchronisation marker, so a
 /// framing error is fatal to the connection.
 ///
 /// \sa docs/protocol.md
-namespace respin {
+namespace loom {
 
 /// Bumping this strands every already-built application until it is rebuilt,
-/// because respin::Runtime is statically linked. Additive changes -- a new
+/// because loom::Runtime is statically linked. Additive changes -- a new
 /// message type an older peer ignores, a new optional field -- do not need one.
 inline constexpr quint16 ProtocolVersion = 1;
 inline constexpr qsizetype MaximumFrameSize = 64 * 1024 * 1024;
@@ -22,7 +22,7 @@ inline constexpr qsizetype MaximumFrameSize = 64 * 1024 * 1024;
 // unauthenticated connection can make the receiver buffer a declared 64 MiB,
 // and a handful of sockets exhaust memory before anyone proves who they are.
 inline constexpr qsizetype MaximumPreAuthFrameSize = 8 * 1024;
-// Largest scene state respinSaveState() may return; anything larger is discarded
+// Largest scene state loomSaveState() may return; anything larger is discarded
 // and the scene reloads clean.
 inline constexpr qsizetype MaximumStateSize = 1024 * 1024;
 // Bounds the per-file bookkeeping a single bundle can force. The frame cap
@@ -69,4 +69,4 @@ bool decodeBundle(const QByteArray &payload, Bundle &bundle, QString *error = nu
 
 bool isSafeBundlePath(const QString &path);
 
-} // namespace respin
+} // namespace loom

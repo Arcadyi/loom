@@ -18,5 +18,5 @@ Checks: >
   -bugprone-narrowing-conversions
 
 WarningsAsErrors: ''
-HeaderFilterRegex: '.*/(include/respin|src)/.*'
+HeaderFilterRegex: '.*/(include/loom|src)/.*'
 FormatStyle: file

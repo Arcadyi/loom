@@ -7,7 +7,7 @@ ApplicationWindow {
 
     property int count: 0
 
-    function respinSaveState() {
+    function loomSaveState() {
         return {
             "count": count,
             "width": width,
@@ -15,7 +15,7 @@ ApplicationWindow {
         };
     }
 
-    function respinRestoreState(state) {
+    function loomRestoreState(state) {
         count = state.count ?? 0;
         width = state.width ?? width;
         height = state.height ?? height;
@@ -24,7 +24,7 @@ ApplicationWindow {
     width: 960
     height: 640
     visible: true
-    title: qsTr("@RESPIN_DISPLAY_NAME@")
+    title: qsTr("@LOOM_DISPLAY_NAME@")
 
     ColumnLayout {
         anchors.centerIn: parent
@@ -32,7 +32,7 @@ ApplicationWindow {
 
         Label {
             Layout.alignment: Qt.AlignHCenter
-            text: qsTr("Your respin app is ready")
+            text: qsTr("Your loom app is ready")
             font.pixelSize: 30
             font.weight: Font.DemiBold
         }

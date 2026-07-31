@@ -11,7 +11,7 @@ public:
 
     struct Options {
         QString organization = QStringLiteral("dev.example");
-        // Off by default. The generated workflow cannot install respin without a
+        // Off by default. The generated workflow cannot install loom without a
         // published release, so scaffolding one by default gave every new
         // project a guaranteed red X on its first push.
         bool githubWorkflow = false;

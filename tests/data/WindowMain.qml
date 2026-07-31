@@ -9,11 +9,11 @@ Window {
 
     property int count: 0
 
-    function respinSaveState() {
+    function loomSaveState() {
         return { "count": count }
     }
 
-    function respinRestoreState(state) {
+    function loomRestoreState(state) {
         count = state.count ?? 0
     }
 }

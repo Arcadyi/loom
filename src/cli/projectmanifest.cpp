@@ -114,7 +114,7 @@ bool ProjectManifest::load(
     const auto root = document.object();
     if (root.value(QStringLiteral("schemaVersion")).toInt() != 1) {
         if (error)
-            *error = QStringLiteral("Unsupported respin.json schemaVersion");
+            *error = QStringLiteral("Unsupported loom.json schemaVersion");
         return false;
     }
 
@@ -185,7 +185,7 @@ bool ProjectManifest::validate(QString *error) const
     }
     if (m_qtVersion != QStringLiteral("6.11")) {
         if (error)
-            *error = QStringLiteral("respin v1 requires qt.version \"6.11\"");
+            *error = QStringLiteral("loom v1 requires qt.version \"6.11\"");
         return false;
     }
     if (m_applications.isEmpty()) {
@@ -283,7 +283,7 @@ QJsonObject ProjectManifest::toJson() const
     }
     return QJsonObject{
         {QStringLiteral("$schema"),
-         QStringLiteral("https://schemas.respin.dev/project/v1.json")},
+         QStringLiteral("https://raw.githubusercontent.com/Arcadyi/loom/main/schemas/project-v1.schema.json")},
         {QStringLiteral("schemaVersion"), 1},
         {QStringLiteral("project"), projectObject()},
         {QStringLiteral("qt"),
@@ -350,7 +350,7 @@ bool ProjectManifest::selectApplication(
             return fail(
                 QStringLiteral(
                     "this project defines %1 applications (%2); choose one with "
-                    "--app <target>, or set project.defaultApplication in respin.json")
+                    "--app <target>, or set project.defaultApplication in loom.json")
                     .arg(m_applications.size())
                     .arg(applicationTargets().join(QStringLiteral(", "))));
         }
@@ -370,7 +370,7 @@ bool ProjectManifest::selectApplication(
 
 QString findManifest(const QString &startingDirectory)
 {
-    // Bounded on purpose. An unbounded walk meant a stray respin.json in $HOME
+    // Bounded on purpose. An unbounded walk meant a stray loom.json in $HOME
     // became "your project" from anywhere on the filesystem, so a mistyped cd
     // could build something entirely unrelated.
     static const QStringList repositoryMarkers{
@@ -383,7 +383,7 @@ QString findManifest(const QString &startingDirectory)
 
     QDir directory(startingDirectory);
     while (true) {
-        const auto candidate = directory.filePath(QStringLiteral("respin.json"));
+        const auto candidate = directory.filePath(QStringLiteral("loom.json"));
         if (QFileInfo::exists(candidate))
             return QFileInfo(candidate).absoluteFilePath();
 

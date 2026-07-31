@@ -1,28 +1,28 @@
 # CMake API
 
-respin installs a CMake package. `find_package(respin CONFIG REQUIRED)` brings in three
+loom installs a CMake package. `find_package(loom CONFIG REQUIRED)` brings in three
 functions and two imported targets.
 
-Generated projects call `respin_add_application` and `respin_install_application`.
+Generated projects call `loom_add_application` and `loom_install_application`.
 Existing projects that already have their own `qt_add_qml_module` call
-`respin_enable_hot_reload` instead.
+`loom_enable_hot_reload` instead.
 
 Imported targets:
 
 | Target | Contents |
 | --- | --- |
-| `respin::Runtime` | The QML engine bootstrap and the development reload controller. Static. |
-| `respin::Protocol` | The framed transport and bundle validation. Static; a dependency of `respin::Runtime`. |
+| `loom::Runtime` | The QML engine bootstrap and the development reload controller. Static. |
+| `loom::Protocol` | The framed transport and bundle validation. Static; a dependency of `loom::Runtime`. |
 
 ---
 
-## `respin_add_application`
+## `loom_add_application`
 
 Creates a Qt/QML application: the executable, its QML module, the resource aliases, the
 `bin/` output location, and hot reload.
 
 ```cmake
-respin_add_application(MyApp
+loom_add_application(MyApp
     URI com.example.MyApp
     ENTRY Main
     QML_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/qml"
@@ -46,11 +46,11 @@ respin_add_application(MyApp
 ### `SINGLETONS`
 
 Each named file gets `QT_QML_SINGLETON_TYPE`, which Qt records in the module's generated
-qmldir. respin bundles that qmldir for development too, so a singleton behaves the same in
+qmldir. loom bundles that qmldir for development too, so a singleton behaves the same in
 both builds:
 
 ```cmake
-respin_add_application(MyApp
+loom_add_application(MyApp
     ...
     SINGLETONS Theme.qml Settings.qml
 )
@@ -79,14 +79,14 @@ fails.
 ### `IMPORT_PATHS`
 
 QML modules shipped by another package — a styling library, a shared component
-set — register themselves at runtime when you link their plugin, but `respin
+set — register themselves at runtime when you link their plugin, but `loom
 lint` and qmlls resolve imports statically and need to be told where the
 module's `qmldir` and `.qmltypes` live:
 
 ```cmake
 find_package(loom CONFIG REQUIRED)
 
-respin_add_application(MyApp
+loom_add_application(MyApp
     ...
     IMPORT_PATHS "${LOOM_QML_IMPORT_DIR}"
 )
@@ -96,12 +96,12 @@ target_link_libraries(MyApp PRIVATE loom::loom loom::loomplugin)
 The paths reach `qt_add_qml_module` itself rather than being appended to the
 target afterwards: Qt reads `QT_QML_IMPORT_PATH` while it builds the qmllint
 and qmlcachegen command lines, so a later `set_property` never shows up in
-them. `respin new --loom` generates exactly this wiring.
+them. `loom new --loom` generates exactly this wiring.
 
 ### Output location
 
 Application and test binaries are written to `<build>/bin/`. This is a contract:
-`respin dev` resolves the executable from exactly that path.
+`loom dev` resolves the executable from exactly that path.
 
 It exists because a target whose name matches a directory the build tree creates cannot be
 linked — `ctest` creates `Testing/` on every run, so an application called `Testing` failed
@@ -109,14 +109,14 @@ with `cannot open output file Testing: Is a directory`.
 
 ---
 
-## `respin_enable_hot_reload`
+## `loom_enable_hot_reload`
 
 Adds hot reload to a target that already has its own `qt_add_qml_module`. It does not
 replace `qt_add_qml_module`; it augments the target.
 
 ```cmake
-find_package(respin CONFIG REQUIRED)
-respin_enable_hot_reload(
+find_package(loom CONFIG REQUIRED)
+loom_enable_hot_reload(
     TARGET my_app
     URI com.example.MyApp
     ENTRY Main
@@ -132,22 +132,22 @@ respin_enable_hot_reload(
 | `QML_ROOT` | yes | Directory the development server watches. |
 | `ASSET_ROOT` | no | Additional directory to watch and bundle. |
 
-It links `respin::Runtime`, defines `RESPIN_APP_URI` and `RESPIN_APP_ENTRY` for the target,
+It links `loom::Runtime`, defines `LOOM_APP_URI` and `LOOM_APP_ENTRY` for the target,
 and records the roots as target properties.
 
 It also warns when the target name collides with a directory the build tree creates
-(`Testing`, `CMakeFiles`, `bin`, `lib`, …). Unlike `respin_add_application` it cannot fix
+(`Testing`, `CMakeFiles`, `bin`, `lib`, …). Unlike `loom_add_application` it cannot fix
 this for you — your project owns its output paths — so set `RUNTIME_OUTPUT_DIRECTORY`
 yourself or rename the target.
 
 ---
 
-## `respin_install_application`
+## `loom_install_application`
 
-Installs the application into a prefix that can be packaged. `respin deploy` drives it.
+Installs the application into a prefix that can be packaged. `loom deploy` drives it.
 
 ```cmake
-respin_install_application(TARGET MyApp)
+loom_install_application(TARGET MyApp)
 ```
 
 | Argument | Required | Meaning |
@@ -169,7 +169,7 @@ artifact.
 All three functions reject unknown arguments and missing values rather than ignoring them:
 
 ```
-respin_add_application received unknown arguments: SOURCE;src/main.cpp
+loom_add_application received unknown arguments: SOURCE;src/main.cpp
 ```
 
 That message is the result of writing `SOURCE` instead of `SOURCES`, which previously

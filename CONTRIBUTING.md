@@ -15,7 +15,7 @@ ctest --test-dir build -LE e2e    # fast: under 10 seconds
 ctest --test-dir build -L  e2e    # end to end: installs, scaffolds, compiles, runs
 ```
 
-The end-to-end tests install respin to a throwaway prefix, scaffold a project, build it with
+The end-to-end tests install loom to a throwaway prefix, scaffold a project, build it with
 a real compiler, and run the result. They are the only tests that compile generated output.
 One of them scaffolds an application named `Testing` on purpose — that name collides with the
 directory `ctest` creates, and shipping that collision is what started this work.
@@ -28,11 +28,11 @@ that reason.
 
 ```sh
 # Warnings are errors in CI
-cmake -S . -B build-werror -G Ninja -DRESPIN_WERROR=ON
+cmake -S . -B build-werror -G Ninja -DLOOM_WERROR=ON
 cmake --build build-werror
 
 # Sanitizers, no leak suppressions
-cmake -S . -B build-asan -G Ninja -DRESPIN_SANITIZE=ON -DRESPIN_BUILD_E2E_TESTS=OFF
+cmake -S . -B build-asan -G Ninja -DLOOM_SANITIZE=ON -DLOOM_BUILD_E2E_TESTS=OFF
 cmake --build build-asan
 ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build-asan
 
@@ -109,14 +109,14 @@ and a comment is what stops the next person removing it.
 
 | Path | Contents |
 | --- | --- |
-| `src/protocol/` | Wire format and bundle validation (`respin::Protocol`) |
-| `src/runtime/` | Engine bootstrap and reload controller (`respin::Runtime`), linked into user applications |
-| `src/cli/` | The `respin` tool; all of it in `respin_cli_core` so tests can link it |
+| `src/protocol/` | Wire format and bundle validation (`loom::Protocol`) |
+| `src/runtime/` | Engine bootstrap and reload controller (`loom::Runtime`), linked into user applications |
+| `src/cli/` | The `loom` tool; all of it in `loom_cli_core` so tests can link it |
 | `cmake/` | The installed CMake package |
-| `templates/app/` | What `respin new` generates, embedded as a Qt resource |
+| `templates/app/` | What `loom new` generates, embedded as a Qt resource |
 | `tests/` | Unit tests plus `.cmake` driver scripts for the CLI and end-to-end tests |
 | `docs/` | Reference documentation |
 
-`respin::Runtime` is a **static** library installed with its headers, so any header change
+`loom::Runtime` is a **static** library installed with its headers, so any header change
 forces a user rebuild and there is no detection for a stale `.a` against new headers. Treat
-`include/respin/` as a public surface.
+`include/loom/` as a public surface.

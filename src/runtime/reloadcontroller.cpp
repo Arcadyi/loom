@@ -1,5 +1,5 @@
-#include <respin/protocol.h>
-#include <respin/reloadcontroller.h>
+#include <loom/protocol.h>
+#include <loom/reloadcontroller.h>
 
 #include "statecapture.h"
 
@@ -36,7 +36,7 @@ namespace {
 // Written into a bundle directory once every file is on disk, and the last
 // thing written before the directory is renamed into place. A directory without
 // it is a partial write from a run that died mid-stage, and is never loadable.
-constexpr auto CompleteMarkerName = ".respin-complete";
+constexpr auto CompleteMarkerName = ".loom-complete";
 
 QString errorsToString(const QList<QQmlError> &errors)
 {
@@ -58,7 +58,7 @@ bool removePath(const QString &path)
         info.isDir() ? QDir(path).removeRecursively() : QFile::remove(path);
     if (!removed)
         qWarning(
-            "respin: could not remove %s from the bundle cache", qUtf8Printable(path));
+            "loom: could not remove %s from the bundle cache", qUtf8Printable(path));
     return removed;
 }
 
@@ -90,7 +90,7 @@ bool processIsRunning(const qint64 pid)
 
 // Bundle roots are named "<pid>-XXXXXX". Anything whose owning process is gone
 // is this run's to clean up, as is anything not following that scheme at all --
-// staging leftovers, and the flat "<cache>/respin/bundles/<id>" directories
+// staging leftovers, and the flat "<cache>/loom/bundles/<id>" directories
 // written before the cache was scoped per process.
 void sweepAbandonedBundleRoots(const QString &base)
 {
@@ -112,7 +112,7 @@ void sweepAbandonedBundleRoots(const QString &base)
 
 } // namespace
 
-namespace respin {
+namespace loom {
 
 ReloadController::ReloadController(QQmlApplicationEngine &engine, QObject *parent)
     : QObject(parent)
@@ -150,7 +150,7 @@ void ReloadController::connectToDevelopmentServer(
     m_reconnectAttempts = 0;
 
     // Engine warnings are forwarded to the dev server so they appear in the
-    // terminal running `respin dev` rather than only in the application's own
+    // terminal running `loom dev` rather than only in the application's own
     // output. They never trigger a rollback -- see the note on handleEngineWarnings.
     if (!m_warningsConnected) {
         connect(
@@ -218,7 +218,7 @@ void ReloadController::handleServerSilence()
     if (!m_socket || m_socket->state() != QAbstractSocket::ConnectedState)
         return;
     qWarning(
-        "respin: no word from the development server for %d seconds; reconnecting",
+        "loom: no word from the development server for %d seconds; reconnecting",
         ServerSilenceTimeoutMs / 1000);
     m_socket->abort();
     scheduleReconnect(QStringLiteral("server stopped responding"));
@@ -232,7 +232,7 @@ void ReloadController::scheduleReconnect(const QString &reason)
         if (m_reconnectAttempts == MaximumReconnectAttempts) {
             ++m_reconnectAttempts; // report once, then stay quiet
             qWarning(
-                "respin: giving up on the development server at %s:%u after %d "
+                "loom: giving up on the development server at %s:%u after %d "
                 "attempts (%s); hot reload is off for this run",
                 qUtf8Printable(m_host), m_port, MaximumReconnectAttempts,
                 qUtf8Printable(reason));
@@ -247,7 +247,7 @@ void ReloadController::scheduleReconnect(const QString &reason)
     ++m_reconnectAttempts;
     if (m_reconnectAttempts == 1) {
         qWarning(
-            "respin: lost the development server at %s:%u (%s); retrying",
+            "loom: lost the development server at %s:%u (%s); retrying",
             qUtf8Printable(m_host), m_port, qUtf8Printable(reason));
     }
     QTimer::singleShot(delay, this, &ReloadController::openConnection);
@@ -259,7 +259,7 @@ void ReloadController::scheduleReconnect(const QString &reason)
 // therefore means "constructed successfully", not "runs without warnings".
 void ReloadController::reportEngineWarnings(const QString &text)
 {
-    qWarning("respin: QML warning:\n%s", qUtf8Printable(text));
+    qWarning("loom: QML warning:\n%s", qUtf8Printable(text));
     if (!m_socket || m_socket->state() != QAbstractSocket::ConnectedState)
         return;
     const QJsonObject payload{{QStringLiteral("message"), text}};
@@ -301,7 +301,7 @@ bool ReloadController::loadUrl(const QUrl &url, const QVariant &state, QString *
 
 // Bundle directories are private to this ReloadController. Two instances of the
 // same application previously shared a deterministic
-// "<cache>/respin/bundles/<id>" path and called removeRecursively() on each
+// "<cache>/loom/bundles/<id>" path and called removeRecursively() on each
 // other's live directories mid-write.
 bool ReloadController::ensureCacheDirectory(QString *error)
 {
@@ -309,10 +309,10 @@ bool ReloadController::ensureCacheDirectory(QString *error)
         return true;
 
     const auto base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
-        + QStringLiteral("/respin/bundles");
+        + QStringLiteral("/loom/bundles");
     if (!QDir().mkpath(base)) {
         if (error)
-            *error = QStringLiteral("Could not create respin bundle cache");
+            *error = QStringLiteral("Could not create loom bundle cache");
         return false;
     }
 
@@ -327,7 +327,7 @@ bool ReloadController::ensureCacheDirectory(QString *error)
         + QStringLiteral("-XXXXXX"));
     if (!directory->isValid()) {
         if (error) {
-            *error = QStringLiteral("Could not create respin bundle cache: %1")
+            *error = QStringLiteral("Could not create loom bundle cache: %1")
                          .arg(directory->errorString());
         }
         return false;
@@ -496,7 +496,7 @@ QVariant ReloadController::saveState() const
 
     // Two halves in one envelope: every id-bearing object's declared
     // properties, captured with no cooperation from the scene, plus whatever
-    // the root's respinSaveState() hook chose to return. The hook stays
+    // the root's loomSaveState() hook chose to return. The hook stays
     // because automatic capture deliberately skips bound properties and
     // objects with no id, and because a scene may want to carry something that
     // is not a property at all.
@@ -506,10 +506,10 @@ QVariant ReloadController::saveState() const
     if (!properties.isEmpty())
         envelope.insert(QStringLiteral("properties"), properties);
 
-    if (m_rootObject->metaObject()->indexOfMethod("respinSaveState()") >= 0) {
+    if (m_rootObject->metaObject()->indexOfMethod("loomSaveState()") >= 0) {
         QVariant hookState;
         if (QMetaObject::invokeMethod(
-                m_rootObject, "respinSaveState", Qt::DirectConnection,
+                m_rootObject, "loomSaveState", Qt::DirectConnection,
                 Q_RETURN_ARG(QVariant, hookState))) {
             if (hookState.metaType() == QMetaType::fromType<QJSValue>())
                 hookState = hookState.value<QJSValue>().toVariant();
@@ -517,7 +517,7 @@ QVariant ReloadController::saveState() const
                 // Only the hook's half is dropped. The captured properties owe
                 // it nothing and are still good.
                 qWarning(
-                    "respin: respinSaveState() returned a value that is not "
+                    "loom: loomSaveState() returned a value that is not "
                     "JSON-compatible; that hook's state was discarded");
             } else {
                 envelope.insert(QStringLiteral("hook"), hookState);
@@ -534,13 +534,13 @@ QVariant ReloadController::saveState() const
     if (QJsonDocument(jsonValue.toObject()).toJson(QJsonDocument::Compact).size()
         > MaximumStateSize) {
         qWarning(
-            "respin: scene state came to more than %lld bytes; it was discarded",
+            "loom: scene state came to more than %lld bytes; it was discarded",
             static_cast<long long>(MaximumStateSize));
         return {};
     }
     // Return the JSON-normalized value rather than the original variant. The
     // original may hold QML QObject pointers, which the caller carries across
-    // the scene teardown that follows and would hand back to respinRestoreState
+    // the scene teardown that follows and would hand back to loomRestoreState
     // as dangling pointers.
     return jsonValue.toVariant();
 }
@@ -562,10 +562,10 @@ void ReloadController::restoreState(QObject *root, const QVariant &state)
 
     bool hasRestoreMethod = false;
     const auto *metaObject = root->metaObject();
-    // Scan from 0, not methodOffset(), so a respinRestoreState inherited from a
+    // Scan from 0, not methodOffset(), so a loomRestoreState inherited from a
     // base QML type is still found.
     for (int index = 0; index < metaObject->methodCount(); ++index) {
-        if (metaObject->method(index).name() == QByteArrayLiteral("respinRestoreState")) {
+        if (metaObject->method(index).name() == QByteArrayLiteral("loomRestoreState")) {
             hasRestoreMethod = true;
             break;
         }
@@ -573,7 +573,7 @@ void ReloadController::restoreState(QObject *root, const QVariant &state)
     if (!hasRestoreMethod)
         return;
     QMetaObject::invokeMethod(
-        root, "respinRestoreState", Qt::DirectConnection, Q_ARG(QVariant, hookState));
+        root, "loomRestoreState", Qt::DirectConnection, Q_ARG(QVariant, hookState));
 }
 
 void ReloadController::handleSocketData()
@@ -596,7 +596,7 @@ void ReloadController::handleSocketData()
             // only correct move is to drop the connection and start over.
             if (!frameError.isEmpty()) {
                 qWarning(
-                    "respin: development server sent an unreadable frame (%s); "
+                    "loom: development server sent an unreadable frame (%s); "
                     "reconnecting",
                     qUtf8Printable(frameError));
                 socket->abort();
@@ -616,7 +616,7 @@ void ReloadController::handleSocketData()
             const auto payload = QJsonDocument::fromJson(frame.payload).object();
             const auto message = payload.value(QStringLiteral("message")).toString();
             m_lastError = message;
-            qWarning("respin: %s", qUtf8Printable(message));
+            qWarning("loom: %s", qUtf8Printable(message));
             emit reloadFailed(message);
         }
     }
@@ -643,4 +643,4 @@ QUrl ReloadController::resourceEntryUrl() const
         + QStringLiteral(".qml"));
 }
 
-} // namespace respin
+} // namespace loom

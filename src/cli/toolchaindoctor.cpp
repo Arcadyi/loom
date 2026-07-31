@@ -162,22 +162,22 @@ ToolCheck qtCheck()
 }
 
 // The failure the owner actually hit: generated projects do
-// find_package(respin CONFIG REQUIRED), so doctor should say when respin cannot
+// find_package(loom CONFIG REQUIRED), so doctor should say when loom cannot
 // find its own CMake package rather than leaving it to a raw CMake error.
 ToolCheck packageCheck()
 {
     const QDir binaryDirectory(QCoreApplication::applicationDirPath());
     const auto prefix = QDir::cleanPath(binaryDirectory.filePath(QStringLiteral("..")));
     const auto config = QDir(prefix).filePath(
-        QStringLiteral(RESPIN_RELATIVE_CMAKE_DIR)
-        + QStringLiteral("/respinConfig.cmake"));
+        QStringLiteral(LOOM_RELATIVE_CMAKE_DIR)
+        + QStringLiteral("/loomConfig.cmake"));
     const bool found = QFileInfo(config).isFile();
     return ToolCheck{
-        .name = QStringLiteral("respin CMake package"),
+        .name = QStringLiteral("loom CMake package"),
         .available = found,
         .detail = found ? config : QStringLiteral("not found at ") + config,
         .remediation = QStringLiteral(
-            "Install respin (cmake --install <build> --prefix <prefix>) and run the "
+            "Install loom (cmake --install <build> --prefix <prefix>) and run the "
             "installed binary, or pass --prefix <prefix> to build/test/dev."),
     };
 }
@@ -275,7 +275,7 @@ int ToolchainDoctor::printReport(const QString &target, const bool asJson)
 
     QTextStream output(stdout);
     QTextStream errors(stderr);
-    output << "respin doctor — " << target << Qt::endl;
+    output << "loom doctor — " << target << Qt::endl;
     for (const auto &check : checks) {
         output << (check.available ? "[ok]      " : "[missing] ") << check.name;
         if (!check.detail.isEmpty())
@@ -292,7 +292,7 @@ int ToolchainDoctor::printReport(const QString &target, const bool asJson)
 int ToolchainDoctor::printSetupPlan(const QString &target)
 {
     QTextStream output(stdout);
-    output << "respin setup plan — " << target << "\n\n";
+    output << "loom setup plan — " << target << "\n\n";
     bool hasActions = false;
     for (const auto &check : inspect(target)) {
         if (check.available)

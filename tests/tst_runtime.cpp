@@ -1,5 +1,5 @@
-#include <respin/protocol.h>
-#include <respin/reloadcontroller.h>
+#include <loom/protocol.h>
+#include <loom/reloadcontroller.h>
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -14,14 +14,14 @@
 
 namespace {
 
-respin::Bundle
+loom::Bundle
 bundleAt(const QString &id, const QString &path, const QByteArray &contents)
 {
-    return respin::Bundle{
+    return loom::Bundle{
         .id = id,
         .files =
             {
-                respin::BundleFile{
+                loom::BundleFile{
                     .path = path,
                     .contents = contents,
                     .sha256 =
@@ -31,12 +31,12 @@ bundleAt(const QString &id, const QString &path, const QByteArray &contents)
     };
 }
 
-respin::Bundle bundleWithMain(const QString &id, const QByteArray &contents)
+loom::Bundle bundleWithMain(const QString &id, const QByteArray &contents)
 {
     return bundleAt(id, QStringLiteral("qt/qml/com/example/Test/Main.qml"), contents);
 }
 
-respin::Bundle bundleWithWindow(const QString &id, const QByteArray &contents)
+loom::Bundle bundleWithWindow(const QString &id, const QByteArray &contents)
 {
     return bundleAt(
         id, QStringLiteral("qt/qml/com/example/WindowTest/WindowMain.qml"), contents);
@@ -45,7 +45,7 @@ respin::Bundle bundleWithWindow(const QString &id, const QByteArray &contents)
 QString bundleCacheBase()
 {
     return QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
-        + QStringLiteral("/respin/bundles");
+        + QStringLiteral("/loom/bundles");
 }
 
 // Each ReloadController owns a "<pid>-XXXXXX" directory under the cache base.
@@ -87,7 +87,7 @@ private:
 
 bool isMarkedComplete(const QString &bundleDirectory)
 {
-    return QFileInfo::exists(bundleDirectory + QStringLiteral("/.respin-complete"));
+    return QFileInfo::exists(bundleDirectory + QStringLiteral("/.loom-complete"));
 }
 
 bool writeFileAt(const QString &path, const QByteArray &contents)
@@ -117,10 +117,10 @@ public:
                 m_sockets.append(socket);
                 QObject::connect(socket, &QTcpSocket::readyRead, socket, [this, socket] {
                     QByteArray buffer = socket->readAll();
-                    respin::Frame frame;
+                    loom::Frame frame;
                     QString error;
-                    while (respin::takeFrame(buffer, frame, &error)) {
-                        if (frame.type == respin::MessageType::Hello)
+                    while (loom::takeFrame(buffer, frame, &error)) {
+                        if (frame.type == loom::MessageType::Hello)
                             ++m_helloCount;
                     }
                 });
@@ -163,7 +163,7 @@ private slots:
     void reloadsAndPreservesExplicitState()
     {
         QQmlApplicationEngine engine;
-        respin::ReloadController controller(engine);
+        loom::ReloadController controller(engine);
         QVERIFY2(
             controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")),
             qPrintable(controller.lastError()));
@@ -172,7 +172,7 @@ private slots:
         QVariant exportedState;
         QVERIFY(
             QMetaObject::invokeMethod(
-                controller.rootObject(), "respinSaveState", Qt::DirectConnection,
+                controller.rootObject(), "loomSaveState", Qt::DirectConnection,
                 Q_RETURN_ARG(QVariant, exportedState)));
         QCOMPARE(exportedState.toMap().value(QStringLiteral("count")).toInt(), 42);
 
@@ -181,13 +181,13 @@ private slots:
             Item {
                 objectName: "reloaded"
                 property int count: 0
-                function respinSaveState() { return { "count": count } }
-                function respinRestoreState(state) { count = state.count }
+                function loomSaveState() { return { "count": count } }
+                function loomRestoreState(state) { count = state.count }
             }
         )";
         QString error;
         const auto payload =
-            respin::encodeBundle(bundleWithMain(QStringLiteral("valid"), qml));
+            loom::encodeBundle(bundleWithMain(QStringLiteral("valid"), qml));
         QVERIFY2(controller.applyBundle(payload, &error), qPrintable(error));
         QCoreApplication::processEvents();
         QCOMPARE(controller.rootObject()->objectName(), QStringLiteral("reloaded"));
@@ -197,7 +197,7 @@ private slots:
     void invalidQmlRollsBackToWorkingScene()
     {
         QQmlApplicationEngine engine;
-        respin::ReloadController controller(engine);
+        loom::ReloadController controller(engine);
         QVERIFY(
             controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")));
 
@@ -207,13 +207,13 @@ private slots:
         )";
         QString error;
         QVERIFY(controller.applyBundle(
-            respin::encodeBundle(bundleWithMain(QStringLiteral("working"), valid)),
+            loom::encodeBundle(bundleWithMain(QStringLiteral("working"), valid)),
             &error));
         QCOMPARE(controller.rootObject()->objectName(), QStringLiteral("working"));
 
         const QByteArray invalid = "import QtQuick\nItem { objectName: ";
         QVERIFY(!controller.applyBundle(
-            respin::encodeBundle(bundleWithMain(QStringLiteral("broken"), invalid)),
+            loom::encodeBundle(bundleWithMain(QStringLiteral("broken"), invalid)),
             &error));
         QVERIFY(
             error.contains(QStringLiteral("Expected token"))
@@ -226,7 +226,7 @@ private slots:
     void reloadingAWindowSceneKeepsTheApplicationRunning()
     {
         QQmlApplicationEngine engine;
-        respin::ReloadController controller(engine);
+        loom::ReloadController controller(engine);
         QVERIFY2(
             controller.load(
                 QStringLiteral("com.example.WindowTest"), QStringLiteral("WindowMain")),
@@ -249,8 +249,8 @@ private slots:
                 width: 200
                 height: 100
                 property int count: 0
-                function respinSaveState() { return { "count": count } }
-                function respinRestoreState(state) { count = state.count ?? 0 }
+                function loomSaveState() { return { "count": count } }
+                function loomRestoreState(state) { count = state.count ?? 0 }
             }
         )";
         // The reload must happen inside a running event loop, exactly as it does
@@ -262,7 +262,7 @@ private slots:
         QEventLoop loop;
         QTimer::singleShot(0, &loop, [&] {
             applied = controller.applyBundle(
-                respin::encodeBundle(bundleWithWindow(QStringLiteral("win"), qml)),
+                loom::encodeBundle(bundleWithWindow(QStringLiteral("win"), qml)),
                 &error);
         });
         QTimer::singleShot(250, &loop, [&] {
@@ -294,7 +294,7 @@ private slots:
         const auto port = server.port();
 
         QQmlApplicationEngine engine;
-        respin::ReloadController controller(engine);
+        loom::ReloadController controller(engine);
         QVERIFY(
             controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")));
         controller.connectToDevelopmentServer(
@@ -323,7 +323,7 @@ private slots:
         QVERIFY(cacheHome.isValid());
 
         QQmlApplicationEngine engine;
-        respin::ReloadController controller(engine);
+        loom::ReloadController controller(engine);
         QVERIFY(
             controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")));
 
@@ -334,7 +334,7 @@ private slots:
         QString error;
         QVERIFY2(
             controller.applyBundle(
-                respin::encodeBundle(bundleWithMain(QStringLiteral("good"), good)),
+                loom::encodeBundle(bundleWithMain(QStringLiteral("good"), good)),
                 &error),
             qPrintable(error));
 
@@ -343,7 +343,7 @@ private slots:
         live->setObjectName(QStringLiteral("untouched"));
 
         QVERIFY(!controller.applyBundle(
-            respin::encodeBundle(bundleWithMain(QStringLiteral("nope"), BrokenQml)),
+            loom::encodeBundle(bundleWithMain(QStringLiteral("nope"), BrokenQml)),
             &error));
 
         QVERIFY2(
@@ -358,7 +358,7 @@ private slots:
     void reapplyingTheActiveBundleIsANoOp()
     {
         QQmlApplicationEngine engine;
-        respin::ReloadController controller(engine);
+        loom::ReloadController controller(engine);
         QVERIFY(
             controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")));
 
@@ -367,7 +367,7 @@ private slots:
             Item { objectName: "stable"; property int count: 3 }
         )";
         const auto payload =
-            respin::encodeBundle(bundleWithMain(QStringLiteral("same"), qml));
+            loom::encodeBundle(bundleWithMain(QStringLiteral("same"), qml));
 
         QString error;
         QVERIFY2(controller.applyBundle(payload, &error), qPrintable(error));
@@ -389,7 +389,7 @@ private slots:
         // is still running and still carries the mark -- if the no-op had
         // deleted the live bundle directory, this is where the damage would show.
         QVERIFY(!controller.applyBundle(
-            respin::encodeBundle(bundleWithMain(QStringLiteral("bad"), BrokenQml)),
+            loom::encodeBundle(bundleWithMain(QStringLiteral("bad"), BrokenQml)),
             &error));
         QVERIFY2(firstRoot, "a bundle that never compiled destroyed the live scene");
         QCOMPARE(
@@ -397,7 +397,7 @@ private slots:
     }
 
     // Two instances of one application previously shared
-    // "<cache>/respin/bundles/<id>" and called removeRecursively() on each other's
+    // "<cache>/loom/bundles/<id>" and called removeRecursively() on each other's
     // live directories.
     void controllersDoNotShareBundleDirectories()
     {
@@ -408,20 +408,20 @@ private slots:
         // Same id from both controllers: identical content is exactly when the
         // old deterministic path collided.
         const auto payload =
-            respin::encodeBundle(bundleWithMain(QStringLiteral("collide"), qml));
+            loom::encodeBundle(bundleWithMain(QStringLiteral("collide"), qml));
         QString error;
 
         ScopedCacheHome cacheHome;
         QVERIFY(cacheHome.isValid());
 
         QQmlApplicationEngine firstEngine;
-        respin::ReloadController first(firstEngine);
+        loom::ReloadController first(firstEngine);
         QVERIFY(first.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")));
         QVERIFY2(first.applyBundle(payload, &error), qPrintable(error));
         QCOMPARE(bundleCacheRoots().size(), 1);
 
         QQmlApplicationEngine secondEngine;
-        respin::ReloadController second(secondEngine);
+        loom::ReloadController second(secondEngine);
         QVERIFY(second.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")));
         QVERIFY2(second.applyBundle(payload, &error), qPrintable(error));
 
@@ -434,7 +434,7 @@ private slots:
         // The real regression: the second controller staging the same id must
         // not have destroyed what the first one is running from.
         QVERIFY(!first.applyBundle(
-            respin::encodeBundle(bundleWithMain(QStringLiteral("bad"), BrokenQml)),
+            loom::encodeBundle(bundleWithMain(QStringLiteral("bad"), BrokenQml)),
             &error));
         QVERIFY2(
             first.rootObject(),
@@ -461,7 +461,7 @@ private slots:
         QVERIFY(writeFileAt(live + QStringLiteral("/marker"), "x"));
 
         QQmlApplicationEngine engine;
-        respin::ReloadController controller(engine);
+        loom::ReloadController controller(engine);
         QVERIFY(
             controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")));
 
@@ -472,7 +472,7 @@ private slots:
         QString error;
         QVERIFY2(
             controller.applyBundle(
-                respin::encodeBundle(bundleWithMain(QStringLiteral("sweeper"), qml)),
+                loom::encodeBundle(bundleWithMain(QStringLiteral("sweeper"), qml)),
                 &error),
             qPrintable(error));
 
@@ -503,13 +503,13 @@ private slots:
         QVERIFY(cacheHome.isValid());
 
         QQmlApplicationEngine engine;
-        respin::ReloadController controller(engine);
+        loom::ReloadController controller(engine);
         QVERIFY(
             controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")));
 
         QString error;
         QVERIFY(controller.applyBundle(
-            respin::encodeBundle(bundleWithMain(
+            loom::encodeBundle(bundleWithMain(
                 QStringLiteral("first"), "import QtQuick\nItem { objectName: \"one\" }")),
             &error));
 
@@ -531,7 +531,7 @@ private slots:
         )";
         QVERIFY2(
             controller.applyBundle(
-                respin::encodeBundle(bundleWithMain(QStringLiteral("partial"), qml)),
+                loom::encodeBundle(bundleWithMain(QStringLiteral("partial"), qml)),
                 &error),
             qPrintable(error));
         QVERIFY2(

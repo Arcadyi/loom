@@ -69,20 +69,20 @@ void reportProgress(const QString &message)
 {
     if (isQuiet())
         return;
-    QTextStream(stdout) << "respin: " << message << Qt::endl;
+    QTextStream(stdout) << "loom: " << message << Qt::endl;
 }
 
 int reportError(const QString &message)
 {
-    QTextStream(stderr) << "respin: " << message << Qt::endl;
+    QTextStream(stderr) << "loom: " << message << Qt::endl;
     return Failure;
 }
 
 int reportUsageError(const CommandSpec &spec, const QString &message)
 {
-    QTextStream(stderr) << "respin " << spec.name << ": " << message << '\n'
+    QTextStream(stderr) << "loom " << spec.name << ": " << message << '\n'
                         << "usage: " << spec.usage << '\n'
-                        << "try 'respin " << spec.name << " --help'" << Qt::endl;
+                        << "try 'loom " << spec.name << " --help'" << Qt::endl;
     return UsageError;
 }
 
@@ -158,7 +158,7 @@ parseCommand(const CommandSpec &spec, const QStringList &arguments, ParsedComman
 
     // parse(), never process(): process() writes its own message and calls
     // exit(), which makes every failure unreportable and untestable.
-    QStringList argv{QStringLiteral("respin ") + spec.name};
+    QStringList argv{QStringLiteral("loom ") + spec.name};
     argv.append(head);
     if (!parser.parse(argv))
         return reject(parser.errorText());

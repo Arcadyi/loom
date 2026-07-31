@@ -1,16 +1,16 @@
-#include <respin/application.h>
-#include <respin/reloadcontroller.h>
+#include <loom/application.h>
+#include <loom/reloadcontroller.h>
 
 #include <QByteArray>
 #include <QHostAddress>
 
-namespace respin {
+namespace loom {
 
 void Application::connectDevelopmentRuntime()
 {
-    auto host = qEnvironmentVariable("RESPIN_DEV_HOST", QStringLiteral("127.0.0.1"));
-    const auto rawPort = qEnvironmentVariable("RESPIN_DEV_PORT");
-    const auto token = qEnvironmentVariable("RESPIN_DEV_TOKEN");
+    auto host = qEnvironmentVariable("LOOM_DEV_HOST", QStringLiteral("127.0.0.1"));
+    const auto rawPort = qEnvironmentVariable("LOOM_DEV_PORT");
+    const auto token = qEnvironmentVariable("LOOM_DEV_TOKEN");
 
     if (rawPort.isEmpty() && token.isEmpty())
         return;
@@ -23,7 +23,7 @@ void Application::connectDevelopmentRuntime()
     const QHostAddress address(host);
     if (address.isNull() || !address.isLoopback()) {
         qWarning(
-            "respin: refusing development host '%s'; only loopback is allowed",
+            "loom: refusing development host '%s'; only loopback is allowed",
             qUtf8Printable(host));
         return;
     }
@@ -32,13 +32,13 @@ void Application::connectDevelopmentRuntime()
     const auto port = rawPort.toUInt(&portValid);
     if (!portValid || port == 0 || port > 65535) {
         qWarning(
-            "respin: RESPIN_DEV_PORT '%s' is not a valid port; "
+            "loom: LOOM_DEV_PORT '%s' is not a valid port; "
             "hot reload is disabled",
             qUtf8Printable(rawPort));
         return;
     }
     if (token.isEmpty()) {
-        qWarning("respin: RESPIN_DEV_TOKEN is not set; hot reload is disabled");
+        qWarning("loom: LOOM_DEV_TOKEN is not set; hot reload is disabled");
         return;
     }
 
@@ -74,7 +74,7 @@ int Application::run(const QString &moduleUri, const QString &entryType)
         // output whatsoever, which is the least actionable failure there is.
         // The QML errors are already collected in lastError().
         qWarning(
-            "respin: could not load %s from module %s:\n%s", qUtf8Printable(entryType),
+            "loom: could not load %s from module %s:\n%s", qUtf8Printable(entryType),
             qUtf8Printable(moduleUri), qUtf8Printable(m_reloadController->lastError()));
         return 1;
     }
@@ -95,4 +95,4 @@ QQmlApplicationEngine &Application::engine()
     return m_engine;
 }
 
-} // namespace respin
+} // namespace loom

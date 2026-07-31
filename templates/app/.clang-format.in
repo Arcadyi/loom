@@ -1,5 +1,5 @@
-# The style respin itself is written in, so its examples and your code agree.
-# Edit freely: nothing in respin depends on these settings.
+# The style loom itself is written in, so its examples and your code agree.
+# Edit freely: nothing in loom depends on these settings.
 Language: Cpp
 BasedOnStyle: LLVM
 ColumnLimit: 90

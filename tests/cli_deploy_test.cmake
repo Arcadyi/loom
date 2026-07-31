@@ -6,7 +6,7 @@
 # ld-linux-x86-64.so.2, whose binary core-dumps -- a check that stopped at
 # "files were installed" would have called that a success.
 
-foreach(required RESPIN_BUILD_DIR WORK_DIR)
+foreach(required LOOM_CLI_BUILD_DIR WORK_DIR)
     if(NOT ${required})
         message(FATAL_ERROR "${required} is required")
     endif()
@@ -36,18 +36,18 @@ endfunction()
 file(REMOVE_RECURSE "${WORK_DIR}")
 file(MAKE_DIRECTORY "${WORK_DIR}")
 
-set(ENV{RESPIN_QUIET_INSTALL} 1)
-deploy_run("installing respin"
-    COMMAND "${CMAKE_COMMAND}" --install "${RESPIN_BUILD_DIR}" --prefix "${prefix}"
+set(ENV{LOOM_QUIET_INSTALL} 1)
+deploy_run("installing loom"
+    COMMAND "${CMAKE_COMMAND}" --install "${LOOM_CLI_BUILD_DIR}" --prefix "${prefix}"
 )
-set(respin_exe "${prefix}/bin/respin")
+set(loom_exe "${prefix}/bin/loom")
 
-deploy_run("respin new"
-    COMMAND "${respin_exe}" new Deployable --org com.example --directory "${project_dir}"
+deploy_run("loom new"
+    COMMAND "${loom_exe}" new Deployable --org com.example --directory "${project_dir}"
 )
 
-deploy_run("respin deploy"
-    COMMAND "${respin_exe}" deploy --config Release --output "${output}" --package
+deploy_run("loom deploy"
+    COMMAND "${loom_exe}" deploy --config Release --output "${output}" --package
     WORKING_DIRECTORY "${project_dir}"
 )
 
@@ -55,7 +55,7 @@ set(installed "${output}/bin/Deployable")
 if(NOT EXISTS "${installed}")
     file(GLOB_RECURSE produced "${output}/*")
     message(FATAL_ERROR
-        "respin deploy reported success but installed no binary at\n  ${installed}\n"
+        "loom deploy reported success but installed no binary at\n  ${installed}\n"
         "prefix contains:\n${produced}")
 endif()
 
@@ -68,7 +68,7 @@ endif()
 
 file(GLOB archives "${output}/*.tar.gz")
 if(NOT archives)
-    message(FATAL_ERROR "respin deploy --package produced no archive in ${output}")
+    message(FATAL_ERROR "loom deploy --package produced no archive in ${output}")
 endif()
 
 # The whole point: it has to run. offscreen so no display is needed; the app

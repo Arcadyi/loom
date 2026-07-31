@@ -1,20 +1,20 @@
-# `respin.json`
+# `loom.json`
 
-The project manifest. `respin new` writes it, `respin init` creates one for an existing
+The project manifest. `loom new` writes it, `loom init` creates one for an existing
 project, and every project command reads it to decide what to build and what to watch.
 
-respin searches for it in the current directory and upwards, stopping at a directory
+loom searches for it in the current directory and upwards, stopping at a directory
 containing `.git`, `.hg`, `.jj` or `.svn`, and never going past `$HOME`. Without those
-bounds a stray `respin.json` in your home directory would become "your project" from
+bounds a stray `loom.json` in your home directory would become "your project" from
 anywhere on the filesystem.
 
 The resolved path is printed on every project command:
 
 ```
-respin: using /home/you/src/MyApp/respin.json (application MyApp)
+loom: using /home/you/src/MyApp/loom.json (application MyApp)
 ```
 
-A JSON Schema ships alongside it at `share/respin/schemas/project-v1.schema.json`, and CI
+A JSON Schema ships alongside it at `share/loom/schemas/project-v1.schema.json`, and CI
 validates a freshly generated manifest against it.
 
 ---
@@ -23,7 +23,7 @@ validates a freshly generated manifest against it.
 
 ```json
 {
-    "$schema": "https://schemas.respin.dev/project/v1.json",
+    "$schema": "https://raw.githubusercontent.com/Arcadyi/loom/main/schemas/project-v1.schema.json",
     "schemaVersion": 1,
     "project": {
         "name": "MyApp",
@@ -81,7 +81,7 @@ Every field is required.
 | `assetRoots` | Directories bundled under `assets/`. May be empty. |
 | `platforms` | Which targets this application supports. Any of `desktop`, `android`, `ios`, `embedded`. |
 
-`platforms` is enforced: `respin build --target android` on an application that does not list
+`platforms` is enforced: `loom build --target android` on an application that does not list
 `android` is refused, naming what it does list.
 
 ---
@@ -100,15 +100,15 @@ Every field is required.
 With more than one and no `defaultApplication`, commands refuse to guess:
 
 ```
-respin: this project defines 2 applications (Admin, Viewer); choose one with
---app <target>, or set project.defaultApplication in respin.json
+loom: this project defines 2 applications (Admin, Viewer); choose one with
+--app <target>, or set project.defaultApplication in loom.json
 ```
 
 Either pass `--app Viewer` or set `project.defaultApplication`. The selected application is
-always named in the `respin: using …` line.
+always named in the `loom: using …` line.
 
 This matters because JSON object keys are sorted on load: before `--app` existed, adding an
-`Admin` application to a `Viewer` project silently changed what `respin dev` ran, because
+`Admin` application to a `Viewer` project silently changed what `loom dev` ran, because
 `Admin` sorts first.
 
 ---
@@ -117,7 +117,7 @@ This matters because JSON object keys are sorted on load: before `--app` existed
 
 Supported, and validated on load. Manifests are checked beyond the schema's structure:
 
-- `id` must be present. The schema always required it; older respin versions did not check,
+- `id` must be present. The schema always required it; older loom versions did not check,
   so a hand-written manifest missing it loaded and produced an empty bundle identifier.
 - `platforms` entries must be known values.
 - `defaultApplication`, if present, must name an application that exists.

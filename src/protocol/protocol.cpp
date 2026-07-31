@@ -1,4 +1,4 @@
-#include <respin/protocol.h>
+#include <loom/protocol.h>
 
 #include <QCborArray>
 #include <QCborMap>
@@ -8,7 +8,7 @@
 #include <QSet>
 #include <QtEndian>
 
-namespace respin {
+namespace loom {
 
 bool isKnownMessageType(const quint8 value)
 {
@@ -193,4 +193,4 @@ bool isSafeBundlePath(const QString &path)
     return path.startsWith(QStringLiteral("qt/qml/"));
 }
 
-} // namespace respin
+} // namespace loom

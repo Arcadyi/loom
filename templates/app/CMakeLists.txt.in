@@ -1,52 +1,52 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(@RESPIN_TARGET@ VERSION 0.1.0 LANGUAGES CXX)
+project(@LOOM_TARGET@ VERSION 0.1.0 LANGUAGES CXX)
 
 # QuickControls2 is linked because qml/Main.qml imports QtQuick.Controls.
 # Relying on Quick alone breaks a static Qt build and makes qmllint and
 # qmlcachegen complain about an unresolved import.
 find_package(Qt6 6.11 REQUIRED COMPONENTS Quick QuickControls2 Test)
-find_package(respin CONFIG REQUIRED)
+find_package(loom CONFIG REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.11)
 
-respin_add_application(@RESPIN_TARGET@
-    URI @RESPIN_URI@
+loom_add_application(@LOOM_TARGET@
+    URI @LOOM_URI@
     ENTRY Main
     QML_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/qml"
     ASSET_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/assets"
     SOURCES src/main.cpp
 )
 
-target_link_libraries(@RESPIN_TARGET@ PRIVATE Qt6::QuickControls2)
+target_link_libraries(@LOOM_TARGET@ PRIVATE Qt6::QuickControls2)
 
-set_target_properties(@RESPIN_TARGET@ PROPERTIES
+set_target_properties(@LOOM_TARGET@ PROPERTIES
     MACOSX_BUNDLE TRUE
-    MACOSX_BUNDLE_GUI_IDENTIFIER "@RESPIN_APP_ID@"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "@LOOM_APP_ID@"
     WIN32_EXECUTABLE TRUE
 )
 
-# `respin deploy` drives this. Qt is not bundled -- see the note on
-# respin_install_application for what was measured and why.
-respin_install_application(TARGET @RESPIN_TARGET@)
+# `loom deploy` drives this. Qt is not bundled -- see the note on
+# loom_install_application for what was measured and why.
+loom_install_application(TARGET @LOOM_TARGET@)
 
-set(CPACK_PACKAGE_NAME "@RESPIN_TARGET@")
+set(CPACK_PACKAGE_NAME "@LOOM_TARGET@")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_FILE_NAME
-    "@RESPIN_TARGET@-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+    "@LOOM_TARGET@-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 set(CPACK_GENERATOR "TGZ")
 include(CPack)
 
 include(CTest)
 if(BUILD_TESTING)
-    qt_add_executable(@RESPIN_TARGET@Tests
+    qt_add_executable(@LOOM_TARGET@Tests
         tests/tst_smoke.cpp
     )
-    target_link_libraries(@RESPIN_TARGET@Tests PRIVATE Qt6::Test)
+    target_link_libraries(@LOOM_TARGET@Tests PRIVATE Qt6::Test)
     # Same reason as the application target: a test target whose name matches a
     # build-tree directory cannot be linked.
-    set_target_properties(@RESPIN_TARGET@Tests PROPERTIES
+    set_target_properties(@LOOM_TARGET@Tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     )
-    add_test(NAME smoke COMMAND @RESPIN_TARGET@Tests)
+    add_test(NAME smoke COMMAND @LOOM_TARGET@Tests)
 endif()

@@ -1,12 +1,12 @@
 # Development protocol
 
-The wire format between `respin dev` (server) and the runtime inside the application
-(client). Specified here because `respin::Runtime` is a **static** library: the runtime is
+The wire format between `loom dev` (server) and the runtime inside the application
+(client). Specified here because `loom::Runtime` is a **static** library: the runtime is
 baked into an application at link time, so an upgraded CLI genuinely does meet an older
 runtime, and the two have to agree about what is on the wire.
 
 Transport is TCP on `127.0.0.1` only, on an ephemeral port chosen at startup. The runtime
-refuses a non-loopback `RESPIN_DEV_HOST`: a bundle is executable QML, so it is only ever
+refuses a non-loopback `LOOM_DEV_HOST`: a bundle is executable QML, so it is only ever
 accepted from this machine.
 
 ---
@@ -90,7 +90,7 @@ disable reload.
 { "success": true, "bundleId": "...", "message": "Reloaded" }
 ```
 
-On failure, `message` carries the QML errors, which `respin dev` prints.
+On failure, `message` carries the QML errors, which `loom dev` prints.
 
 ### `Error`
 
@@ -100,7 +100,7 @@ On failure, `message` carries the QML errors, which `respin dev` prints.
 
 Server to client: protocol version mismatch, or a bundle too large to send. Client to
 server: QML warnings raised at run time, so they surface in the terminal running
-`respin dev` rather than only in the application's own output.
+`loom dev` rather than only in the application's own output.
 
 ### `Ping`
 
@@ -109,7 +109,7 @@ Empty payload, answered with an empty `Ping`. The server pings authenticated cli
 silence as a dead link and reconnects.
 
 This exists because a half-open connection — a suspended host, a hung process — is
-indistinguishable from an idle one at the TCP level. Without it, `respin dev` reports
+indistinguishable from an idle one at the TCP level. Without it, `loom dev` reports
 "application connected" while every reload goes nowhere.
 
 ---
@@ -123,7 +123,7 @@ indistinguishable from an idle one at the TCP level. Without it, `respin dev` re
 | Authentication deadline | 2 s | A client that has not proved itself by then is dropped. |
 | Concurrent clients | 8 | Past this, connections are refused rather than queued, so a connect loop cannot grow the client table. |
 | Bundle files | 50 000 | Bounds per-file bookkeeping; the frame cap already bounds total bytes. |
-| Scene state | 1 MiB | What `respinSaveState()` may return. |
+| Scene state | 1 MiB | What `loomSaveState()` may return. |
 
 ---
 
@@ -146,5 +146,5 @@ was added to the wire this way.
 - Pre-authentication frames capped, with a deadline and a client limit.
 
 Development connection settings reach the application through the environment
-(`RESPIN_DEV_HOST`, `RESPIN_DEV_PORT`, `RESPIN_DEV_TOKEN`) and are never compiled into
+(`LOOM_DEV_HOST`, `LOOM_DEV_PORT`, `LOOM_DEV_TOKEN`) and are never compiled into
 release resources. Do not expose a development endpoint to an untrusted network.
