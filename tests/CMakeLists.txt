@@ -153,6 +153,15 @@ if(TARGET loom_cli)
             "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/existing-project"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_init_test.cmake"
     )
+    # `loom style` needs no project and no build, so it is checked directly
+    # rather than through the e2e tier.
+    add_test(
+        NAME loom_cli_style
+        COMMAND "${CMAKE_COMMAND}"
+            "-DLOOM_EXE=$<TARGET_FILE:loom_cli>"
+            "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/style-check"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_style_test.cmake"
+    )
 endif()
 
 # The end-to-end tests install loom to a throwaway prefix and drive the real

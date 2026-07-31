@@ -175,6 +175,5 @@ bool ProjectScaffolder::create(
             *error = QStringLiteral("Could not create the assets directory");
         return false;
     }
-    return manifest.save(
-        QDir(destination).filePath(QStringLiteral("loom.json")), error);
+    return manifest.save(QDir(destination).filePath(QStringLiteral("loom.json")), error);
 }

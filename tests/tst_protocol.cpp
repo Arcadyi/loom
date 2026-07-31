@@ -64,8 +64,8 @@ private slots:
         loom::Frame frame;
         QString error;
         auto restricted = encoded;
-        QVERIFY(!loom::takeFrame(
-            restricted, frame, &error, loom::MaximumPreAuthFrameSize));
+        QVERIFY(
+            !loom::takeFrame(restricted, frame, &error, loom::MaximumPreAuthFrameSize));
         QVERIFY(error.contains(QStringLiteral("frame size")));
 
         error.clear();
@@ -75,8 +75,7 @@ private slots:
 
     void rejectsUnknownMessageType()
     {
-        auto encoded =
-            loom::encodeFrame(loom::MessageType::Ping, QByteArrayLiteral("x"));
+        auto encoded = loom::encodeFrame(loom::MessageType::Ping, QByteArrayLiteral("x"));
         encoded[4] = static_cast<char>(99);
 
         loom::Frame frame;

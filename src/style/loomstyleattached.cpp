@@ -396,7 +396,8 @@ void LoomStyleAttached::applyNow()
             case LoomUtility::BgColor:
             case LoomUtility::TextColor:
             case LoomUtility::BorderColor:
-                writes.append({path, withAlpha(registry->color(rule.key), rule.alphaPercent)});
+                writes.append(
+                    {path, withAlpha(registry->color(rule.key), rule.alphaPercent)});
                 break;
             case LoomUtility::TextSize: {
                 const LoomTextStyle size = registry->textSize(rule.key);

@@ -43,8 +43,8 @@ LoomIconProvider::LoomIconProvider()
 {
 }
 
-QImage LoomIconProvider::requestImage(
-    const QString &id, QSize *size, const QSize &requestedSize)
+QImage
+LoomIconProvider::requestImage(const QString &id, QSize *size, const QSize &requestedSize)
 {
     const qsizetype separator = id.indexOf(QLatin1Char('/'));
     if (separator < 0) {
@@ -82,7 +82,8 @@ QImage LoomIconProvider::requestImage(
             painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
             painter.fillRect(image.rect(), color);
         } else {
-            qCWarning(lcLoomIcon).noquote() << "unparseable tint" << tint << "for" << path;
+            qCWarning(lcLoomIcon).noquote()
+                << "unparseable tint" << tint << "for" << path;
         }
     }
 
@@ -115,7 +116,8 @@ QUrl loomResolveIconSource(const QUrl &source)
     // complete. With no root configured a relative source is passed through
     // unchanged, so the provider reports the unreadable path rather than a
     // silently invented one.
-    if (source.isEmpty() || !source.isRelative() || source.path().startsWith(QLatin1Char('/')))
+    if (source.isEmpty() || !source.isRelative()
+        || source.path().startsWith(QLatin1Char('/')))
         return source;
     const QUrl root = iconRootStorage();
     return root.isEmpty() ? source : root.resolved(source);
@@ -130,8 +132,8 @@ QUrl loomIconUrl(const QUrl &source, const QColor &color)
 {
     // HexArgb round-trips through QColor's own parser, so a translucent tint
     // survives; mid(1) drops the '#' the provider puts back.
-    const QString tint
-        = color.isValid() ? color.name(QColor::HexArgb).mid(1) : QString(untinted);
+    const QString tint =
+        color.isValid() ? color.name(QColor::HexArgb).mid(1) : QString(untinted);
     return QUrl(QStringLiteral("image://%1/%2/%3")
                     .arg(
                         loomIconProviderName(), tint,

@@ -243,7 +243,8 @@ void CompilerTests::alphaModifier()
     // Absent modifier is fully opaque, not zero.
     QCOMPARE(int(compile(QStringLiteral("bg-surface"))->rules.first().alphaPercent), 100);
     QCOMPARE(int(compile(QStringLiteral("bg-surface/0"))->rules.first().alphaPercent), 0);
-    QCOMPARE(int(compile(QStringLiteral("bg-surface/100"))->rules.first().alphaPercent), 100);
+    QCOMPARE(
+        int(compile(QStringLiteral("bg-surface/100"))->rules.first().alphaPercent), 100);
 }
 
 void CompilerTests::alphaModifierRejections()

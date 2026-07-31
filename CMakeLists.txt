@@ -205,6 +205,7 @@ if(LOOM_BUILD_CLI)
         src/cli/devsession.cpp
         src/cli/projectmanifest.cpp
         src/cli/projectscaffolder.cpp
+        src/cli/stylecheck.cpp
         src/cli/toolchaindoctor.cpp
     )
     target_include_directories(loom_cli_core PUBLIC

@@ -56,7 +56,8 @@ QList<QMetaProperty> declaredProperties(const QObject *object)
         return {};
     QList<QMetaProperty> properties;
     const QMetaObject *metaObject = object->metaObject();
-    for (int index = metaObject->propertyOffset(); index < metaObject->propertyCount(); ++index) {
+    for (int index = metaObject->propertyOffset(); index < metaObject->propertyCount();
+         ++index) {
         const QMetaProperty property = metaObject->property(index);
         if (property.isWritable())
             properties.append(property);

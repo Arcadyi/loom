@@ -169,8 +169,7 @@ ToolCheck packageCheck()
     const QDir binaryDirectory(QCoreApplication::applicationDirPath());
     const auto prefix = QDir::cleanPath(binaryDirectory.filePath(QStringLiteral("..")));
     const auto config = QDir(prefix).filePath(
-        QStringLiteral(LOOM_RELATIVE_CMAKE_DIR)
-        + QStringLiteral("/loomConfig.cmake"));
+        QStringLiteral(LOOM_RELATIVE_CMAKE_DIR) + QStringLiteral("/loomConfig.cmake"));
     const bool found = QFileInfo(config).isFile();
     return ToolCheck{
         .name = QStringLiteral("loom CMake package"),
@@ -179,6 +178,36 @@ ToolCheck packageCheck()
         .remediation = QStringLiteral(
             "Install loom (cmake --install <build> --prefix <prefix>) and run the "
             "installed binary, or pass --prefix <prefix> to build/test/dev."),
+    };
+}
+
+// The styling half's own contract. loomConfig.cmake points generated projects
+// at this directory so `import Loom` resolves for qmllint and qmlls; without
+// the qmltypes the module still runs, but every styled file lints as unknown,
+// which reads as a broken project rather than a missing file.
+ToolCheck qmlModuleCheck()
+{
+    const QDir binaryDirectory(QCoreApplication::applicationDirPath());
+    const auto prefix = QDir::cleanPath(binaryDirectory.filePath(QStringLiteral("..")));
+    // Derived from the CMake package directory rather than assuming "lib":
+    // both are installed under CMAKE_INSTALL_LIBDIR, which may be lib, lib64 or
+    // a multiarch triplet.
+    const auto libraryDirectory =
+        QFileInfo(QDir(prefix).filePath(QStringLiteral(LOOM_RELATIVE_CMAKE_DIR)))
+            .absolutePath();
+    const QDir module(
+        QDir::cleanPath(QDir(libraryDirectory).filePath(QStringLiteral("../qml/Loom"))));
+    const bool found = module.exists(QStringLiteral("qmldir"))
+        && module.exists(QStringLiteral("loom.qmltypes"));
+    return ToolCheck{
+        .name = QStringLiteral("Loom QML module"),
+        .available = found,
+        .detail = found
+            ? module.path()
+            : QStringLiteral("qmldir/loom.qmltypes not found in ") + module.path(),
+        .remediation = QStringLiteral(
+            "Reinstall loom. Without this, `import Loom` still resolves at runtime, "
+            "but qmllint and qmlls report every Loom type as unknown."),
     };
 }
 
@@ -203,6 +232,7 @@ QList<ToolCheck> ToolchainDoctor::inspect(const QString &target)
             QStringLiteral("CTest ships with CMake; install the full CMake package.")),
         qtCheck(),
         packageCheck(),
+        qmlModuleCheck(),
     };
 
     if (target == QStringLiteral("android")) {

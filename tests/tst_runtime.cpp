@@ -18,8 +18,7 @@
 
 namespace {
 
-loom::Bundle
-bundleAt(const QString &id, const QString &path, const QByteArray &contents)
+loom::Bundle bundleAt(const QString &id, const QString &path, const QByteArray &contents)
 {
     return loom::Bundle{
         .id = id,
@@ -317,8 +316,7 @@ private slots:
         QEventLoop loop;
         QTimer::singleShot(0, &loop, [&] {
             applied = controller.applyBundle(
-                loom::encodeBundle(bundleWithWindow(QStringLiteral("win"), qml)),
-                &error);
+                loom::encodeBundle(bundleWithWindow(QStringLiteral("win"), qml)), &error);
         });
         QTimer::singleShot(250, &loop, [&] {
             testAskedToQuit = true;
@@ -389,8 +387,7 @@ private slots:
         QString error;
         QVERIFY2(
             controller.applyBundle(
-                loom::encodeBundle(bundleWithMain(QStringLiteral("good"), good)),
-                &error),
+                loom::encodeBundle(bundleWithMain(QStringLiteral("good"), good)), &error),
             qPrintable(error));
 
         const QPointer<QObject> live = controller.rootObject();

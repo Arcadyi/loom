@@ -18,19 +18,19 @@ namespace {
 
 // Left half opaque, right half untouched: enough to prove a tint replaces
 // color without eating the asset's own coverage.
-constexpr auto halfFilledSvg
-    = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" "
-      "viewBox=\"0 0 16 16\">"
-      "<rect x=\"0\" y=\"0\" width=\"8\" height=\"16\" fill=\"#0000ff\"/>"
-      "</svg>";
+constexpr auto halfFilledSvg =
+    "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" "
+    "viewBox=\"0 0 16 16\">"
+    "<rect x=\"0\" y=\"0\" width=\"8\" height=\"16\" fill=\"#0000ff\"/>"
+    "</svg>";
 
 // The shape that started this: Qt's SVG renderer has no notion of an inherited
 // color and resolves currentColor to black.
-constexpr auto currentColorSvg
-    = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" "
-      "viewBox=\"0 0 16 16\">"
-      "<rect x=\"0\" y=\"0\" width=\"8\" height=\"16\" fill=\"currentColor\"/>"
-      "</svg>";
+constexpr auto currentColorSvg =
+    "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" "
+    "viewBox=\"0 0 16 16\">"
+    "<rect x=\"0\" y=\"0\" width=\"8\" height=\"16\" fill=\"currentColor\"/>"
+    "</svg>";
 
 QString writeAsset(const QTemporaryDir &dir, const QString &name, const char *contents)
 {
@@ -177,8 +177,9 @@ void IconTests::requestedSizeIsHonoured()
 void IconTests::unreadableSourceWarnsAndYieldsNull()
 {
     LoomIconProvider provider;
-    const QUrl url
-        = loomIconUrl(QUrl::fromLocalFile(m_dir.filePath(QStringLiteral("absent.svg"))), QColor(Qt::red));
+    const QUrl url = loomIconUrl(
+        QUrl::fromLocalFile(m_dir.filePath(QStringLiteral("absent.svg"))),
+        QColor(Qt::red));
 
     QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("cannot read")));
     QSize size;
@@ -189,16 +190,18 @@ void IconTests::malformedIdYieldsNull()
 {
     LoomIconProvider provider;
 
-    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("malformed icon id")));
+    QTest::ignoreMessage(
+        QtWarningMsg, QRegularExpression(QStringLiteral("malformed icon id")));
     QSize size;
-    QVERIFY(provider.requestImage(QStringLiteral("no-separator"), &size, QSize()).isNull());
+    QVERIFY(
+        provider.requestImage(QStringLiteral("no-separator"), &size, QSize()).isNull());
 }
 
 QUrl IconTests_sourceOf(const QUrl &url)
 {
     const QString id = providerId(url);
-    return QUrl(QUrl::fromPercentEncoding(
-        id.sliced(id.indexOf(QLatin1Char('/')) + 1).toUtf8()));
+    return QUrl(
+        QUrl::fromPercentEncoding(id.sliced(id.indexOf(QLatin1Char('/')) + 1).toUtf8()));
 }
 
 void IconTests::relativeSourceResolvesAgainstIconRoot()
@@ -210,11 +213,12 @@ void IconTests::relativeSourceResolvesAgainstIconRoot()
         "QtObject {\n"
         "    property url tinted\n"
         "    Component.onCompleted: {\n"
-        "        Loom.iconRoot = \"" + QUrl::fromLocalFile(m_dir.path()).toString().toUtf8()
+        "        Loom.iconRoot = \""
+            + QUrl::fromLocalFile(m_dir.path()).toString().toUtf8()
             + "\"\n"
-        "        tinted = Loom.icon(\"half.svg\", Loom.color.green600)\n"
-        "    }\n"
-        "}\n",
+              "        tinted = Loom.icon(\"half.svg\", Loom.color.green600)\n"
+              "    }\n"
+              "}\n",
         QUrl());
     QScopedPointer<QObject> object(component.create());
     QVERIFY2(object, qPrintable(component.errorString()));
@@ -227,7 +231,8 @@ void IconTests::relativeSourceResolvesAgainstIconRoot()
 void IconTests::iconRootToleratesMissingTrailingSlash()
 {
     // QUrl::resolved() would otherwise treat "icons" as a file and drop it.
-    const QUrl bare = QUrl::fromLocalFile(m_dir.path()).adjusted(QUrl::StripTrailingSlash);
+    const QUrl bare =
+        QUrl::fromLocalFile(m_dir.path()).adjusted(QUrl::StripTrailingSlash);
     setLoomIconRoot(bare);
 
     QCOMPARE(loomIconRoot().path().endsWith(QLatin1Char('/')), true);
@@ -258,8 +263,8 @@ void IconTests::relativeSourceSurvivesUnsetIconRoot()
 
 void IconTests::configFileSetsIconRoot()
 {
-    const QString config = writeAsset(
-        m_dir, QStringLiteral("loom.json"), "{ \"iconRoot\": \".\" }");
+    const QString config =
+        writeAsset(m_dir, QStringLiteral("loom.json"), "{ \"iconRoot\": \".\" }");
     QVERIFY(!config.isEmpty());
 
     QVERIFY(loomLoadConfigFile(config));

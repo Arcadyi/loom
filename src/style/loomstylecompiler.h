@@ -65,13 +65,13 @@ enum LoomState : quint8 {
 
 struct LoomStyleRule {
     LoomUtility utility;
-    quint8 minBreakpoint = 0; // 0 = base, 1..4 = sm..xl
-    quint8 stateMask = 0;     // LoomState bits that must all be active
-    quint8 variantCount = 0;  // specificity: number of variant prefixes
-    QString key;              // registry key for token-valued utilities
-    double literal = 0;       // numeric literal (border width)
+    quint8 minBreakpoint = 0;  // 0 = base, 1..4 = sm..xl
+    quint8 stateMask = 0;      // LoomState bits that must all be active
+    quint8 variantCount = 0;   // specificity: number of variant prefixes
+    QString key;               // registry key for token-valued utilities
+    double literal = 0;        // numeric literal (border width)
     quint8 alphaPercent = 100; // `bg-surface/70` colour-opacity modifier
-    bool flag = false;        // bool-valued utilities (visible, italic, ...)
+    bool flag = false;         // bool-valued utilities (visible, italic, ...)
 };
 
 class LoomCompiledStyle {

@@ -137,7 +137,7 @@ bool applyConfigFile(const QString &filePath, bool reset)
     static const QStringList knownKeys = {
         QStringLiteral("colors"),       QStringLiteral("space"),
         QStringLiteral("breakpoints"),  QStringLiteral("themes"),
-        QStringLiteral("defaultTheme"),  QStringLiteral("iconRoot"),
+        QStringLiteral("defaultTheme"), QStringLiteral("iconRoot"),
     };
     for (auto it = root.constBegin(); it != root.constEnd(); ++it) {
         if (!knownKeys.contains(it.key()))

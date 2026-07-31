@@ -288,7 +288,9 @@ QJsonObject ProjectManifest::toJson() const
     }
     QJsonObject root{
         {QStringLiteral("$schema"),
-         QStringLiteral("https://raw.githubusercontent.com/Arcadyi/loom/main/schemas/project-v1.schema.json")},
+         QStringLiteral(
+             "https://raw.githubusercontent.com/Arcadyi/loom/main/schemas/"
+             "project-v1.schema.json")},
         {QStringLiteral("schemaVersion"), 1},
         {QStringLiteral("project"), projectObject()},
         {QStringLiteral("qt"),
@@ -322,8 +324,7 @@ QString ProjectManifest::resolvedDesignPath(const QString &manifestPath) const
     // Anchored at the manifest's directory, never the working directory: every
     // command that reads this runs from wherever the user happened to be.
     // An absolute path in the manifest is honoured as-is.
-    return QFileInfo(QFileInfo(manifestPath).absolutePath(), m_design)
-        .absoluteFilePath();
+    return QFileInfo(QFileInfo(manifestPath).absolutePath(), m_design).absoluteFilePath();
 }
 
 QString ProjectManifest::projectName() const

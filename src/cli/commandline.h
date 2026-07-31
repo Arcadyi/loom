@@ -26,6 +26,8 @@ struct CommandSpec {
     QString usage;
     QList<OptionSpec> options;
     int minimumPositional = 0;
+    // Negative means unbounded, for a command that takes a list of paths
+    // (`loom style`). Everything else caps it.
     int maximumPositional = 0;
     // Whether a bare "--" is allowed, after which everything is forwarded to
     // the launched application rather than parsed.

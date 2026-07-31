@@ -129,9 +129,8 @@ void DevServer::setDesignPath(const QString &absolutePath)
     if (m_designPath.isEmpty())
         return;
     if (!QFileInfo::exists(m_designPath)) {
-        emit logMessage(
-            QStringLiteral("design tokens %1 do not exist; not watching them")
-                .arg(QDir(m_projectRoot).relativeFilePath(m_designPath)));
+        emit logMessage(QStringLiteral("design tokens %1 do not exist; not watching them")
+                            .arg(QDir(m_projectRoot).relativeFilePath(m_designPath)));
         return;
     }
     m_designWatcher->addPath(m_designPath);
@@ -280,8 +279,8 @@ void DevServer::readClient(QTcpSocket *socket)
     while (true) {
         loom::Frame frame;
         QString error;
-        const auto limit = state.authenticated ? loom::MaximumFrameSize
-                                               : loom::MaximumPreAuthFrameSize;
+        const auto limit =
+            state.authenticated ? loom::MaximumFrameSize : loom::MaximumPreAuthFrameSize;
         if (!loom::takeFrame(state.buffer, frame, &error, limit)) {
             // A set error is a framing error, which is unrecoverable: takeFrame
             // consumed nothing and there is no way to resynchronize.
@@ -493,11 +492,10 @@ void DevServer::reloadDesign()
     }
     const auto contents = file.readAll();
     if (contents.size() > loom::MaximumDesignSize) {
-        emit logMessage(
-            QStringLiteral("%1 is %2 bytes, over the %3 byte limit; not sent")
-                .arg(relative)
-                .arg(contents.size())
-                .arg(loom::MaximumDesignSize));
+        emit logMessage(QStringLiteral("%1 is %2 bytes, over the %3 byte limit; not sent")
+                            .arg(relative)
+                            .arg(contents.size())
+                            .arg(loom::MaximumDesignSize));
         return;
     }
 

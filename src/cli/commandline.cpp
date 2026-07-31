@@ -196,7 +196,10 @@ parseCommand(const CommandSpec &spec, const QStringList &arguments, ParsedComman
     if (positional.size() < spec.minimumPositional) {
         return reject(QStringLiteral("missing required argument"));
     }
-    if (positional.size() > spec.maximumPositional) {
+    // Guarded rather than compared directly: a negative maximum means
+    // unbounded, and without the guard the first argument would be rejected by
+    // a message that indexes positional.at(-1) to name it.
+    if (spec.maximumPositional >= 0 && positional.size() > spec.maximumPositional) {
         return reject(QStringLiteral("unexpected argument '%1'")
                           .arg(positional.at(spec.maximumPositional)));
     }

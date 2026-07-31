@@ -58,8 +58,7 @@ bool removePath(const QString &path)
     const bool removed =
         info.isDir() ? QDir(path).removeRecursively() : QFile::remove(path);
     if (!removed)
-        qWarning(
-            "loom: could not remove %s from the bundle cache", qUtf8Printable(path));
+        qWarning("loom: could not remove %s from the bundle cache", qUtf8Printable(path));
     return removed;
 }
 
@@ -651,9 +650,10 @@ bool ReloadController::applyDesign(const QByteArray &json, QString *error)
     const auto document = QJsonDocument::fromJson(json, &parseError);
     if (document.isNull() || !document.isObject()) {
         if (error) {
-            *error = QStringLiteral("Design tokens are not a JSON object: %1 at offset %2")
-                         .arg(parseError.errorString())
-                         .arg(parseError.offset);
+            *error =
+                QStringLiteral("Design tokens are not a JSON object: %1 at offset %2")
+                    .arg(parseError.errorString())
+                    .arg(parseError.offset);
         }
         return false;
     }
@@ -668,12 +668,14 @@ bool ReloadController::applyDesign(const QByteArray &json, QString *error)
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         if (error)
-            *error = QStringLiteral("Cannot stage design tokens: %1").arg(file.errorString());
+            *error =
+                QStringLiteral("Cannot stage design tokens: %1").arg(file.errorString());
         return false;
     }
     if (file.write(json) != json.size() || !file.flush()) {
         if (error)
-            *error = QStringLiteral("Cannot write design tokens: %1").arg(file.errorString());
+            *error =
+                QStringLiteral("Cannot write design tokens: %1").arg(file.errorString());
         return false;
     }
     file.close();

@@ -6,7 +6,11 @@
 #include "devsession.h"
 #include "projectmanifest.h"
 #include "projectscaffolder.h"
+#include "stylecheck.h"
 #include "toolchaindoctor.h"
+
+#include <loom/loom.h>
+#include <loom/loomcatalogue.h>
 
 #include <QCoreApplication>
 #include <QDir>
@@ -140,8 +144,7 @@ QString installedPackagePrefix()
     const QDir binaryDirectory(QCoreApplication::applicationDirPath());
     const auto prefix = QDir::cleanPath(binaryDirectory.filePath(QStringLiteral("..")));
     const auto config = QDir(prefix).filePath(
-        QStringLiteral(LOOM_RELATIVE_CMAKE_DIR)
-        + QStringLiteral("/loomConfig.cmake"));
+        QStringLiteral(LOOM_RELATIVE_CMAKE_DIR) + QStringLiteral("/loomConfig.cmake"));
     if (!QFileInfo(config).isFile())
         return {};
     return prefix;
@@ -205,6 +208,41 @@ struct ProjectContext {
     // to the manifest instead of the working directory.
     QString designPath;
 };
+
+// Shared by `loom lint` and `loom style`. Loads the project's design tokens
+// first, so a class built from a project-defined token (bg-brand-500) is not
+// reported as unknown. A default-constructed context means "no project", which
+// is how an explicit path outside any project is checked.
+int runStyleCheck(const ProjectContext &context, const QStringList &files)
+{
+    QTextStream out(stdout);
+    QTextStream err(stderr);
+
+    if (!context.designPath.isEmpty() && !loom::loadConfig(context.designPath)) {
+        return reportError(
+            QStringLiteral("could not load design tokens %1").arg(context.designPath));
+    }
+
+    QList<stylecheck::Finding> findings;
+    for (const auto &file : files) {
+        QString error;
+        findings.append(stylecheck::checkFile(file, &error));
+        if (!error.isEmpty())
+            return reportError(error);
+    }
+
+    for (const auto &finding : findings) {
+        err << finding.file << ':' << finding.line << ": unknown utility class '"
+            << finding.klass << "'\n";
+    }
+    if (!findings.isEmpty()) {
+        err << "loom: " << findings.size() << " unknown class(es) in " << files.size()
+            << " file(s)\n";
+        return cli::Failure;
+    }
+    out << "loom: " << files.size() << " file(s) checked, no unknown classes\n";
+    return cli::Success;
+}
 
 // Every QML file the manifest declares, which is what qmlformat and the
 // fallback qmllint path operate on.
@@ -316,6 +354,8 @@ int Commands::execute(const QStringList &arguments)
         return build(tail);
     if (command == QStringLiteral("lint"))
         return lint(tail);
+    if (command == QStringLiteral("style"))
+        return style(tail);
     if (command == QStringLiteral("fmt"))
         return format(tail);
     if (command == QStringLiteral("clean"))
@@ -326,8 +366,8 @@ int Commands::execute(const QStringList &arguments)
         return develop(tail);
     if (command == QStringLiteral("deploy"))
         return deploy(tail);
-    QTextStream(stderr) << "loom: unknown command '" << command
-                        << "'; run 'loom help'" << Qt::endl;
+    QTextStream(stderr) << "loom: unknown command '" << command << "'; run 'loom help'"
+                        << Qt::endl;
     return cli::UsageError;
 }
 
@@ -391,8 +431,7 @@ int Commands::createProject(const QStringList &arguments)
         return reportError(error);
     QTextStream output(stdout);
     output << "Created " << name << " in " << destination << "\n\n  cd "
-           << QDir::toNativeSeparators(destination)
-           << "\n  loom doctor\n  loom dev\n";
+           << QDir::toNativeSeparators(destination) << "\n  loom doctor\n  loom dev\n";
     if (options.githubWorkflow) {
         output << "\nThe generated .github/workflows/ci.yml has one step marked TODO: "
                   "loom has no published release to pin, so you must supply the "
@@ -675,7 +714,8 @@ int Commands::lint(const QStringList &arguments)
 {
     const CommandSpec spec{
         .name = QStringLiteral("lint"),
-        .summary = QStringLiteral("Run qmllint over the project's QML."),
+        .summary =
+            QStringLiteral("Run qmllint and check Lo.style classes over the project."),
         .usage = QStringLiteral("loom lint [options]"),
         .options = buildOptions(),
     };
@@ -702,9 +742,83 @@ int Commands::lint(const QStringList &arguments)
             context.cmakeArguments, context.generator)) {
         return status;
     }
-    return BuildRunner::build(
+    const auto qmllintStatus = BuildRunner::build(
         context.buildDirectory, context.application.target + QStringLiteral("_qmllint"),
         context.configuration);
+
+    // Both halves always run, and the worse status wins. Stopping at the first
+    // failure would hide every utility-class typo behind one qmllint complaint,
+    // which is exactly the round trip this command exists to avoid.
+    const auto styleStatus = runStyleCheck(context, qmlFilesOf(context));
+    return qmllintStatus != cli::Success ? qmllintStatus : styleStatus;
+}
+
+int Commands::style(const QStringList &arguments)
+{
+    const CommandSpec spec{
+        .name = QStringLiteral("style"),
+        .summary = QStringLiteral("Check or list the Lo.style utility vocabulary."),
+        .usage = QStringLiteral("loom style [--check | --catalogue] [path...]"),
+        .options =
+            {
+                {QStringLiteral("check"),
+                 {},
+                 QStringLiteral(
+                     "Report unknown classes in Lo.style literals "
+                     "(the default).")},
+                {QStringLiteral("catalogue"),
+                 {},
+                 QStringLiteral(
+                     "Print the utility vocabulary as JSON, for editor "
+                     "completion.")},
+                {QStringLiteral("app"), QStringLiteral("target"),
+                 QStringLiteral("Application whose qmlRoots to check.")},
+            },
+        .minimumPositional = 0,
+        // Any number of explicit paths; without one the manifest's qmlRoots are
+        // used, which is what makes a bare `loom style` work in a project.
+        .maximumPositional = -1,
+    };
+    ParsedCommand parsed;
+    switch (cli::parseCommand(spec, arguments, parsed)) {
+    case ParseOutcome::HelpPrinted:
+        return cli::Success;
+    case ParseOutcome::Rejected:
+        return cli::UsageError;
+    case ParseOutcome::Ready:
+        break;
+    }
+
+    // The catalogue is the whole vocabulary, so it needs no project at all --
+    // an editor asking for completion data should not have to be inside one.
+    // A --config-less catalogue is still the built-in vocabulary, which is the
+    // useful answer.
+    if (parsed.isSet(QStringLiteral("catalogue"))) {
+        if (parsed.isSet(QStringLiteral("check"))) {
+            return cli::reportUsageError(
+                spec, QStringLiteral("--check and --catalogue are mutually exclusive"));
+        }
+        QTextStream(stdout) << QString::fromUtf8(loom::styleCatalogueJson());
+        return cli::Success;
+    }
+
+    // Explicit paths skip the manifest entirely, so the checker can be pointed
+    // at a directory outside any project.
+    const auto paths = parsed.positional();
+    if (!paths.isEmpty()) {
+        QStringList files;
+        for (const auto &path : paths) {
+            if (!QFileInfo::exists(path))
+                return reportError(QStringLiteral("no such path %1").arg(path));
+            files.append(stylecheck::qmlFilesUnder(path));
+        }
+        return runStyleCheck(ProjectContext{}, files);
+    }
+
+    ProjectContext context;
+    if (const auto status = resolveProjectContext(parsed, spec, context))
+        return status;
+    return runStyleCheck(context, qmlFilesOf(context));
 }
 
 int Commands::format(const QStringList &arguments)
@@ -1055,7 +1169,8 @@ void Commands::printHelp() const
            "  setup       Show the confirmed setup plan\n"
            "  dev         Build, run, watch, and hot-reload\n"
            "  build       Configure and build the application\n"
-           "  lint        Run qmllint over the project's QML\n"
+           "  lint        Run qmllint and check Lo.style classes\n"
+           "  style       Check Lo.style classes, or dump the vocabulary\n"
            "  fmt         Format the project's QML with qmlformat\n"
            "  clean       Remove loom's build and deploy trees\n"
            "  test        Build and run the project's tests\n"

@@ -75,8 +75,7 @@ int DevSession::run(QString *error)
     m_process.setProcessChannelMode(QProcess::ForwardedChannels);
     auto environment = QProcessEnvironment::systemEnvironment();
     environment.insert(QStringLiteral("LOOM_DEV_HOST"), QStringLiteral("127.0.0.1"));
-    environment.insert(
-        QStringLiteral("LOOM_DEV_PORT"), QString::number(m_server.port()));
+    environment.insert(QStringLiteral("LOOM_DEV_PORT"), QString::number(m_server.port()));
     environment.insert(QStringLiteral("LOOM_DEV_TOKEN"), m_server.token());
     m_process.setProcessEnvironment(environment);
     connect(&m_process, &QProcess::finished, this, &DevSession::handleProcessFinished);

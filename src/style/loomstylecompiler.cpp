@@ -418,7 +418,6 @@ Parsed parseUtility(QStringView name)
     return out;
 }
 
-
 // One class through the parser: variant prefixes, then the utility itself.
 // Shared by compile() and unknownClasses() so a checker can never disagree with
 // what actually applies.

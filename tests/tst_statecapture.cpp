@@ -12,7 +12,8 @@ namespace {
 
 QObject *build(QQmlComponent &component, const QByteArray &body)
 {
-    component.setData(QByteArray("import QtQuick\n") + body, QUrl(QStringLiteral("Scene.qml")));
+    component.setData(
+        QByteArray("import QtQuick\n") + body, QUrl(QStringLiteral("Scene.qml")));
     QObject *object = component.create();
     if (!object)
         qWarning("%s", qPrintable(component.errorString()));
@@ -65,8 +66,9 @@ void StateCaptureTests::capturesDeclaredPropertiesOfIdBearingObjects()
     QVERIFY(state.contains(QStringLiteral("Scene.qml#appRoot")));
     QVERIFY(state.contains(QStringLiteral("Scene.qml#searchField")));
     QCOMPARE(
-        state.value(QStringLiteral("Scene.qml#appRoot")).toMap().value(
-            QStringLiteral("currentPage")),
+        state.value(QStringLiteral("Scene.qml#appRoot"))
+            .toMap()
+            .value(QStringLiteral("currentPage")),
         QVariant(QStringLiteral("trending")));
 
     // An object with no id cannot be addressed on the way back in, so it is
@@ -82,8 +84,8 @@ void StateCaptureTests::skipsBoundAndReadonlyProperties()
     QScopedPointer<QObject> root(build(component, scene));
     QVERIFY(root);
 
-    const QVariantMap appRoot
-        = captureSceneState(root.data()).value(QStringLiteral("Scene.qml#appRoot")).toMap();
+    const QVariantMap appRoot =
+        captureSceneState(root.data()).value(QStringLiteral("Scene.qml#appRoot")).toMap();
 
     QVERIFY(appRoot.contains(QStringLiteral("currentPage")));
     QVERIFY(appRoot.contains(QStringLiteral("base")));
@@ -114,7 +116,8 @@ void StateCaptureTests::restoresValuesIntoAFreshScene()
     // Nested state survives without the root funnelling anything: the point of
     // the whole exercise.
     QCOMPARE(
-        reloaded->findChild<QObject *>()->property("text").toString(), QStringLiteral("qt"));
+        reloaded->findChild<QObject *>()->property("text").toString(),
+        QStringLiteral("qt"));
 }
 
 void StateCaptureTests::restoreLeavesBindingsIntact()
@@ -159,7 +162,9 @@ void StateCaptureTests::ignoresInheritedCppProperties()
     const QVariantMap state = captureSceneState(root.data());
 
     QCOMPARE(
-        state.value(QStringLiteral("Scene.qml#appRoot")).toMap().value(QStringLiteral("kept")),
+        state.value(QStringLiteral("Scene.qml#appRoot"))
+            .toMap()
+            .value(QStringLiteral("kept")),
         QVariant(QStringLiteral("yes")));
     // Geometry, focus and painting belong to the new scene, which sets them up
     // for itself. Carrying a snapshot of them over is how a reload used to

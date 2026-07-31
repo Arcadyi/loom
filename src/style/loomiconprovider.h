@@ -19,7 +19,8 @@ public:
     LoomIconProvider();
 
     // `id` is "<tint>/<percent-encoded source url>" as built by loomIconUrl().
-    QImage requestImage(const QString &id, QSize *size, const QSize &requestedSize) override;
+    QImage
+    requestImage(const QString &id, QSize *size, const QSize &requestedSize) override;
 };
 
 // Builds the image://loom/... URL LoomIconProvider answers. An invalid color
