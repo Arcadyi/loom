@@ -102,7 +102,7 @@ private:
     // Takes pre-rendered text rather than QList<QQmlError> so this installed
     // header does not drag QtQml into every consumer's translation unit.
     void reportEngineWarnings(const QString &text);
-    void sendResult(bool success, const QString &message);
+    void sendResult(bool success, const QString &message, const QString &kind);
     QUrl resourceEntryUrl() const;
     QUrl bundleEntryUrl(const QString &directory) const;
 

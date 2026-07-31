@@ -295,12 +295,22 @@ void DevServer::readClient(QTcpSocket *socket)
             }
         } else if (frame.type == loom::MessageType::ReloadResult) {
             const auto result = QJsonDocument::fromJson(frame.payload).object();
-            emit logMessage(
-                result.value(QStringLiteral("success")).toBool()
-                    ? QStringLiteral("reloaded bundle %1")
-                          .arg(result.value(QStringLiteral("bundleId")).toString())
-                    : QStringLiteral("reload failed: %1")
-                          .arg(result.value(QStringLiteral("message")).toString()));
+            if (!result.value(QStringLiteral("success")).toBool()) {
+                emit logMessage(
+                    QStringLiteral("reload failed: %1")
+                        .arg(result.value(QStringLiteral("message")).toString()));
+            } else if (
+                result.value(QStringLiteral("kind")).toString()
+                == QStringLiteral("design")) {
+                // Deliberately does not name a bundle: applying design tokens
+                // leaves the running scene in place, so reporting the (unchanged)
+                // bundle id read as though it had been rebuilt.
+                emit logMessage(QStringLiteral("design tokens applied"));
+            } else {
+                emit logMessage(
+                    QStringLiteral("reloaded bundle %1")
+                        .arg(result.value(QStringLiteral("bundleId")).toString()));
+            }
         } else if (frame.type == loom::MessageType::Error) {
             const auto payload = QJsonDocument::fromJson(frame.payload).object();
             emit logMessage(

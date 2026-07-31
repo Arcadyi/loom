@@ -607,14 +607,18 @@ void ReloadController::handleSocketData()
             QString error;
             const bool success = applyBundle(frame.payload, &error);
             m_lastError = error;
-            sendResult(success, success ? QStringLiteral("Reloaded") : error);
+            sendResult(
+                success, success ? QStringLiteral("Reloaded") : error,
+                QStringLiteral("bundle"));
             if (!success)
                 emit reloadFailed(error);
         } else if (frame.type == MessageType::Design) {
             QString error;
             const bool success = applyDesign(frame.payload, &error);
             m_lastError = error;
-            sendResult(success, success ? QStringLiteral("Design reloaded") : error);
+            sendResult(
+                success, success ? QStringLiteral("Design reloaded") : error,
+                QStringLiteral("design"));
             if (success)
                 emit designReloaded();
             else
@@ -688,13 +692,19 @@ bool ReloadController::applyDesign(const QByteArray &json, QString *error)
     return true;
 }
 
-void ReloadController::sendResult(const bool success, const QString &message)
+void ReloadController::sendResult(
+    const bool success, const QString &message, const QString &kind)
 {
     if (!m_socket)
         return;
+    // `kind` distinguishes a scene reload from a design token reload. Without
+    // it the server logged the active bundle id for both, so applying design
+    // tokens -- which does not touch the bundle -- reported "reloaded bundle
+    // <unchanged id>". Additive, so an older peer simply ignores it.
     const QJsonObject result{
         {QStringLiteral("success"), success},
         {QStringLiteral("bundleId"), m_activeBundleId},
+        {QStringLiteral("kind"), kind},
         {QStringLiteral("message"), message},
     };
     m_socket->write(encodeFrame(
