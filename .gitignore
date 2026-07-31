@@ -1,0 +1,23 @@
+# Build and install trees
+build/
+build-*/
+cmake-build-*/
+dist/
+CMakeUserPresets.json
+
+# In-source CMake droppings
+CMakeFiles/
+CMakeCache.txt
+
+# Tooling
+compile_commands.json
+.cache/
+
+# Editors
+.idea/
+.vscode/
+*.user
+*.swp
+
+# Agent scratch (the old tree accumulated a stale worktree here)
+.claude/

@@ -1,0 +1,4 @@
+# GCC emits -mno-direct-extern-access into compile_commands.json; clangd's
+# driver rejects it and then refuses to parse anything.
+CompileFlags:
+  Remove: [-mno-direct-extern-access]

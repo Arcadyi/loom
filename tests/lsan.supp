@@ -1,0 +1,8 @@
+# Upstream Qt leak, not ours: creating and destroying a single
+# RectangularShadow with no Loom involvement leaks 2093 bytes from
+# QQuickShaderEffect internals (reproduced against system Qt 6.11.1 with a
+# 12-line pure-Qt program; identical byte count to the loom test failures).
+# Scoped to the one Qt module Loom touches only for shadow-*; every other
+# leak, including anything reached through QtQuick or QtQml frames, still
+# fails the sanitizer job.
+leak:libQt6QuickEffects

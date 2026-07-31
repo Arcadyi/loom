@@ -1,0 +1,14 @@
+#include <QtTest>
+
+class SmokeTest final : public QObject {
+    Q_OBJECT
+
+private slots:
+    void generatedProjectIsTestable()
+    {
+        QVERIFY(true);
+    }
+};
+
+QTEST_APPLESS_MAIN(SmokeTest)
+#include "tst_smoke.moc"

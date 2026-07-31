@@ -1,0 +1,22 @@
+# Scoped deliberately narrow. bugprone-* and performance-* find real defects in
+# Qt code; the readability/modernize families mostly argue with Qt idioms
+# (QStringLiteral, out-parameters, C arrays for QRandomGenerator::fillRange).
+#
+# Not a CI gate — an opt-in developer tool. Run it as:
+#
+#   cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+#   clang-tidy -p build src/cli/commands.cpp
+#
+# When the build uses GCC, clang-tidy reads GCC-only flags out of
+# compile_commands.json and reports `unknown argument: '-mno-direct-extern-access'`
+# as a clang-diagnostic-error. The analysis still runs; configure with
+# -DCMAKE_CXX_COMPILER=clang++ if you want a clean run.
+Checks: >
+  bugprone-*,
+  performance-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*/(include/respin|src)/.*'
+FormatStyle: file

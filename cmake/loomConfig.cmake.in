@@ -1,0 +1,12 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Qt6 6.11 COMPONENTS Core Gui Qml Quick)
+
+include("${CMAKE_CURRENT_LIST_DIR}/loomTargets.cmake")
+
+# Where `import Loom` resolves for tooling (qmllint, Qt Creator): the directory
+# containing Loom/qmldir and Loom/loom.qmltypes.
+set_and_check(LOOM_QML_IMPORT_DIR "@PACKAGE_CMAKE_INSTALL_LIBDIR@/qml")
+
+check_required_components(loom)

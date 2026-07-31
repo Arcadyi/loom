@@ -1,0 +1,76 @@
+import Loom
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+
+ApplicationWindow {
+    id: window
+
+    property int count: 0
+
+    function respinSaveState() {
+        return {
+            "count": count,
+            "theme": Loom.theme,
+            "width": width,
+            "height": height
+        };
+    }
+
+    function respinRestoreState(state) {
+        count = state.count ?? 0;
+        Loom.theme = state.theme ?? Loom.theme;
+        width = state.width ?? width;
+        height = state.height ?? height;
+    }
+
+    color: Loom.color.background
+    width: 960
+    height: 640
+    visible: true
+    title: qsTr("@RESPIN_DISPLAY_NAME@")
+
+    ColumnLayout {
+        anchors.centerIn: parent
+        spacing: Loom.space.s5
+
+        Label {
+            Lo.style: "text-foreground text-3xl font-semibold"
+            Layout.alignment: Qt.AlignHCenter
+            text: qsTr("Your respin app is ready")
+        }
+
+        Label {
+            Lo.style: "text-muted"
+            Layout.alignment: Qt.AlignHCenter
+            text: qsTr("Edit qml/Main.qml and save to reload")
+        }
+
+        Button {
+            Layout.alignment: Qt.AlignHCenter
+            text: qsTr("Count: %1").arg(window.count)
+            onClicked: window.count += 1
+        }
+
+        Rectangle {
+            Lo.style: "bg-surface border border-outline rounded-lg hover:bg-surface-alt transition-colors"
+            Layout.alignment: Qt.AlignHCenter
+            implicitWidth: 260
+            implicitHeight: 48
+
+            Label {
+                Lo.style: "text-accent text-sm font-medium"
+                anchors.centerIn: parent
+                text: Loom.dark ? qsTr("Switch to light mode") : qsTr("Switch to dark mode")
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: Loom.theme = Loom.dark ? "light" : "dark"
+            }
+
+        }
+
+    }
+
+}

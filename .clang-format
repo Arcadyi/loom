@@ -1,0 +1,44 @@
+# Same style as respin, so the two projects read as one codebase. The CI
+# `clang-format --dry-run --Werror` check is a drift guard rather than a
+# reformat.
+Language: Cpp
+BasedOnStyle: LLVM
+ColumnLimit: 90
+IndentWidth: 4
+AccessModifierOffset: -4
+SortIncludes: CaseSensitive
+
+# Qt-style braces: function bodies break, everything else hugs.
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterClass: false
+  AfterStruct: false
+  AfterUnion: false
+  AfterEnum: false
+  AfterNamespace: false
+  AfterExternBlock: false
+  AfterControlStatement: Never
+  BeforeCatch: false
+  BeforeElse: false
+  SplitEmptyFunction: true
+  SplitEmptyRecord: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortLambdasOnASingleLine: All
+
+# Leading-comma initializer lists, one member per line.
+BreakConstructorInitializers: BeforeComma
+ConstructorInitializerIndentWidth: 4
+PackConstructorInitializers: Never
+
+# Wrapped arguments indent one level instead of aligning under the paren, so
+# renaming a function never reflows its call sites.
+AlignAfterOpenBracket: AlwaysBreak
+AlignOperands: DontAlign
+BreakBeforeBinaryOperators: NonAssignment
+PointerAlignment: Right
+Cpp11BracedListStyle: true
+
+# The leading "own header" include is separated by a blank line everywhere in
+# this tree; Preserve keeps clang-format from folding it into the Qt block.
+IncludeBlocks: Preserve
