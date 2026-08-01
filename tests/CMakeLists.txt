@@ -132,8 +132,9 @@ if(TARGET loom_cli_core)
     target_compile_definitions(tst_lsp PRIVATE
         LOOM_TEST_EXE="$<TARGET_FILE:loom_cli>"
         LOOM_FAKE_QMLLS="$<TARGET_FILE:fake_qmlls>"
+        LOOM_QMLLS_SHIM="$<TARGET_FILE:loom_qmlls_shim>"
     )
-    add_dependencies(tst_lsp loom_cli fake_qmlls)
+    add_dependencies(tst_lsp loom_cli loom_qmlls_shim fake_qmlls)
 
     loom_add_test(tst_devsession LINK loom_cli_core)
     set_tests_properties(tst_devsession PROPERTIES TIMEOUT 60)
@@ -230,6 +231,7 @@ if(LOOM_BUILD_E2E_TESTS AND TARGET loom_cli)
         NAME loom_e2e_deploy
         COMMAND "${CMAKE_COMMAND}"
             "-DLOOM_CLI_BUILD_DIR=${CMAKE_BINARY_DIR}"
+            "-DLOOM_QMLLS_SHIM_RELATIVE=${LOOM_QMLLS_SHIM_INSTALL_DIR}/qmlls${CMAKE_EXECUTABLE_SUFFIX}"
             "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/e2e/deploy"
             "-DCMAKE_GENERATOR=${CMAKE_GENERATOR}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_deploy_test.cmake"

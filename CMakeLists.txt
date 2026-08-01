@@ -276,6 +276,36 @@ if(LOOM_BUILD_CLI)
     set_target_properties(loom_cli PROPERTIES OUTPUT_NAME loom)
     target_link_libraries(loom_cli PRIVATE loom_cli_core)
     loom_set_target_defaults(loom_cli)
+
+    # CLion discovers QML language servers by executable name and cannot launch
+    # `loom lsp` as a command plus arguments. This companion binary presents the
+    # expected `qmlls` name while running the same proxy as the CLI. It is
+    # installed outside bin so it never overwrites or shadows Qt's real qmlls.
+    qt_add_executable(loom_qmlls_shim src/cli/qmllsshim.cpp)
+    set_target_properties(loom_qmlls_shim PROPERTIES OUTPUT_NAME qmlls)
+    target_link_libraries(loom_qmlls_shim PRIVATE loom_cli_core)
+    loom_set_target_defaults(loom_qmlls_shim)
+
+    set(LOOM_QMLLS_SHIM_INSTALL_DIR "${CMAKE_INSTALL_LIBEXECDIR}/loom")
+    if(UNIX)
+        # qt_deploy_runtime_dependencies installs the CLI's Qt libraries under
+        # <prefix>/<libdir>. The shim lives two levels deeper, so give it an
+        # install-relative lookup path as well. It intentionally has no qt.conf:
+        # QLibraryInfo should keep describing the real Qt installation whose
+        # qmlls the proxy launches.
+        file(RELATIVE_PATH loom_qmlls_shim_to_lib
+            "/${LOOM_QMLLS_SHIM_INSTALL_DIR}"
+            "/${CMAKE_INSTALL_LIBDIR}"
+        )
+        if(APPLE)
+            set(loom_qmlls_shim_origin "@loader_path")
+        else()
+            set(loom_qmlls_shim_origin "\$ORIGIN")
+        endif()
+        set_target_properties(loom_qmlls_shim PROPERTIES
+            INSTALL_RPATH "${loom_qmlls_shim_origin}/${loom_qmlls_shim_to_lib}"
+        )
+    endif()
 endif()
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/loomFunctions.cmake")
@@ -308,6 +338,10 @@ install(TARGETS loom loomplugin loom_protocol loom_runtime ${LOOM_GENERATED_HELP
 )
 if(LOOM_BUILD_CLI)
     install(TARGETS loom_cli RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+    install(TARGETS loom_qmlls_shim
+        RUNTIME DESTINATION "${LOOM_QMLLS_SHIM_INSTALL_DIR}"
+        BUNDLE DESTINATION "${LOOM_QMLLS_SHIM_INSTALL_DIR}"
+    )
     qt_generate_deploy_script(
         TARGET loom_cli
         OUTPUT_SCRIPT loom_deploy_script
@@ -341,9 +375,14 @@ if(LOOM_BUILD_CLI)
     )
     install(SCRIPT "${loom_deploy_script}")
     install(CODE "set(loom_relative_bindir \"${CMAKE_INSTALL_BINDIR}\")")
+    install(CODE
+        "set(loom_relative_qmlls_shim \"${LOOM_QMLLS_SHIM_INSTALL_DIR}/qmlls${CMAKE_EXECUTABLE_SUFFIX}\")"
+    )
     install(CODE [[
         if(NOT DEFINED ENV{DESTDIR} AND NOT DEFINED ENV{LOOM_QUIET_INSTALL})
             cmake_path(SET loom_bindir NORMALIZE "${CMAKE_INSTALL_PREFIX}/${loom_relative_bindir}")
+            cmake_path(SET loom_qmlls_shim NORMALIZE "${CMAKE_INSTALL_PREFIX}/${loom_relative_qmlls_shim}")
+            message(STATUS "CLion qmlls proxy: ${loom_qmlls_shim}")
             cmake_path(CONVERT "$ENV{PATH}" TO_CMAKE_PATH_LIST loom_path_entries)
             if(NOT loom_bindir IN_LIST loom_path_entries)
                 message(STATUS "loom is installed to ${loom_bindir}, which is not on PATH.")

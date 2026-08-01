@@ -44,6 +44,39 @@ QString executableAt(const QString &directory)
     return QFileInfo(path).isExecutable() ? path : QString();
 }
 
+QString resolvedExecutable(const QString &requested)
+{
+    const QFileInfo explicitPath(requested);
+    if (explicitPath.isExecutable())
+        return explicitPath.absoluteFilePath();
+    return QStandardPaths::findExecutable(requested);
+}
+
+QString canonicalExecutablePath(const QString &path)
+{
+    const QFileInfo info(path);
+    const QString canonical = info.canonicalFilePath();
+    return canonical.isEmpty() ? info.absoluteFilePath() : canonical;
+}
+
+bool isCurrentExecutable(const QString &path)
+{
+    if (path.isEmpty())
+        return false;
+    const auto current = canonicalExecutablePath(QCoreApplication::applicationFilePath());
+    const auto candidate = canonicalExecutablePath(path);
+#ifdef Q_OS_WIN
+    return current.compare(candidate, Qt::CaseInsensitive) == 0;
+#else
+    return current == candidate;
+#endif
+}
+
+QString externalExecutable(const QString &path)
+{
+    return isCurrentExecutable(path) ? QString() : path;
+}
+
 QJsonArray completionItems(const QJsonValue &value)
 {
     if (value.isArray())
@@ -89,12 +122,8 @@ LanguageServerProxy::LanguageServerProxy(QObject *parent)
 
 QString LanguageServerProxy::discoverQmlls(const QString &requested)
 {
-    if (!requested.isEmpty()) {
-        const QFileInfo explicitPath(requested);
-        if (explicitPath.isExecutable())
-            return explicitPath.absoluteFilePath();
-        return QStandardPaths::findExecutable(requested);
-    }
+    if (!requested.isEmpty())
+        return externalExecutable(resolvedExecutable(requested));
 
     const QString fromEnvironment = qEnvironmentVariable("LOOM_QMLLS_PATH");
     if (!fromEnvironment.isEmpty()) {
@@ -105,7 +134,7 @@ QString LanguageServerProxy::discoverQmlls(const QString &requested)
 
     if (const QString bundled =
             executableAt(QLibraryInfo::path(QLibraryInfo::BinariesPath));
-        !bundled.isEmpty()) {
+        !externalExecutable(bundled).isEmpty()) {
         return bundled;
     }
 
@@ -121,10 +150,10 @@ QString LanguageServerProxy::discoverQmlls(const QString &requested)
             continue;
         const QString found =
             executableAt(QString::fromLocal8Bit(query.readAllStandardOutput()).trimmed());
-        if (!found.isEmpty())
+        if (!externalExecutable(found).isEmpty())
             return found;
     }
-    return QStandardPaths::findExecutable(QStringLiteral("qmlls"));
+    return externalExecutable(QStandardPaths::findExecutable(QStringLiteral("qmlls")));
 }
 
 int LanguageServerProxy::run(const QString &qmllsPath, const QStringList &qmllsArguments)

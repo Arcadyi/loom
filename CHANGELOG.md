@@ -11,8 +11,9 @@ available without restarting the editor.
 
 Pass ordinary language-server arguments after `--` (`loom lsp -- --build-dir
 .loom/build/desktop-debug`) or select a Qt server explicitly with `--qmlls`.
-There is no editor-specific extension or replacement binary named `qmlls` in
-this release.
+CLion and IDEs that insist on an executable named `qmlls` can select the
+installed compatibility shim under `<prefix>/<libexec>/loom/qmlls`; it forwards
+the IDE's server arguments without replacing Qt's actual binary.
 
 **Layout utilities.** loom could style an item but never place one, so every
 layout decision fell back to raw QML — 37 `anchors.*` lines in the gallery

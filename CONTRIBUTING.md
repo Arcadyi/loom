@@ -36,7 +36,7 @@ cmake -S . -B build-asan -G Ninja -DLOOM_SANITIZE=ON -DLOOM_BUILD_E2E_TESTS=OFF
 cmake --build build-asan
 ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build-asan -LE e2e
 
-# Formatting
+# Formatting (CI pins clang-format 22.1.8)
 find src include tests examples -name '*.cpp' -o -name '*.h' | xargs clang-format --dry-run --Werror
 ```
 
@@ -109,8 +109,9 @@ Beware shell pipelines when checking exit codes: `cmd | head` reports `head`'s s
 
 ## Style
 
-`clang-format` with the repository's `.clang-format`, which describes the style the code is
-already written in rather than imposing a new one. `.clang-tidy` is opt-in and not a CI gate:
+`clang-format` 22.1.8 with the repository's `.clang-format`, which describes the style the
+code is already written in rather than imposing a new one. `.clang-tidy` is opt-in and not
+a CI gate:
 
 ```sh
 cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON

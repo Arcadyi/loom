@@ -66,6 +66,10 @@ loom lsp -- --build-dir .loom/build/desktop-debug
 ```
 
 Configure an LSP-capable editor to launch that command instead of `qmlls`.
+For CLion and other IDEs that require the executable itself to be named
+`qmlls`, Loom also installs a compatibility shim under
+`<prefix>/<libexec>/loom/qmlls`; select it in the IDE's QML language-server
+settings.
 See [the editor setup reference](docs/tooling/cli.md#loom-lsp).
 
 ## Status

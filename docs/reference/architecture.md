@@ -69,6 +69,9 @@ is always followed by an apply.
 ### Editor intelligence
 
 `loom lsp` speaks LSP over stdio and launches the real Qt `qmlls` as a child.
+The separately installed `qmlls` compatibility executable enters that same
+proxy directly for IDEs such as CLion that select a server by filename. It is
+kept outside the normal binary directory so Qt's executable remains distinct.
 Messages Loom does not augment pass through unchanged, including Qt's build-dir
 extension. The proxy tracks the editor's open-document snapshots so it can find
 the exact string segment and replacement range without asking `qmlls` to

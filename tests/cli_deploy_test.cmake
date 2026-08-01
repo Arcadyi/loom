@@ -6,7 +6,7 @@
 # ld-linux-x86-64.so.2, whose binary core-dumps -- a check that stopped at
 # "files were installed" would have called that a success.
 
-foreach(required LOOM_CLI_BUILD_DIR WORK_DIR)
+foreach(required LOOM_CLI_BUILD_DIR LOOM_QMLLS_SHIM_RELATIVE WORK_DIR)
     if(NOT ${required})
         message(FATAL_ERROR "${required} is required")
     endif()
@@ -41,6 +41,13 @@ deploy_run("installing loom"
     COMMAND "${CMAKE_COMMAND}" --install "${LOOM_CLI_BUILD_DIR}" --prefix "${prefix}"
 )
 set(loom_exe "${prefix}/bin/loom")
+set(qmlls_shim "${prefix}/${LOOM_QMLLS_SHIM_RELATIVE}")
+if(NOT EXISTS "${qmlls_shim}")
+    file(GLOB_RECURSE installed_files "${prefix}/*")
+    message(FATAL_ERROR
+        "install produced no CLion qmlls shim at\n  ${qmlls_shim}\n"
+        "prefix contains:\n${installed_files}")
+endif()
 
 deploy_run("loom new"
     COMMAND "${loom_exe}" new Deployable --org com.example --directory "${project_dir}"

@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QTemporaryDir>
 #include <QUrl>
 #include <functional>
@@ -22,6 +23,7 @@ private slots:
     void incrementalChangesHonorUtf8Positions();
     void projectTokensDriveIntelligence();
     void proxyMergesQmllsAndLoomFeatures();
+    void qmllsShimForwardsArguments();
 };
 
 namespace {
@@ -375,6 +377,60 @@ void LspTests::proxyMergesQmllsAndLoomFeatures()
     QVERIFY(proxy.waitForFinished(5000));
     QCOMPARE(proxy.exitStatus(), QProcess::NormalExit);
     QCOMPARE(proxy.exitCode(), 0);
+}
+
+void LspTests::qmllsShimForwardsArguments()
+{
+    QProcess shim;
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.insert(
+        QStringLiteral("LOOM_QMLLS_PATH"), QStringLiteral(LOOM_FAKE_QMLLS));
+    shim.setProcessEnvironment(environment);
+    shim.setProgram(QStringLiteral(LOOM_QMLLS_SHIM));
+    shim.setArguments({QStringLiteral("--loom-shim-test")});
+    shim.setProcessChannelMode(QProcess::SeparateChannels);
+    shim.start();
+    QVERIFY2(shim.waitForStarted(5000), qPrintable(shim.errorString()));
+
+    lsp::JsonRpcFramer framer;
+    writeMessage(
+        &shim,
+        request(
+            1, QStringLiteral("initialize"),
+            QJsonObject{
+                {QStringLiteral("rootUri"),
+                 QUrl::fromLocalFile(QDir::currentPath()).toString()},
+                {QStringLiteral("capabilities"), QJsonObject{}},
+            }));
+    auto messages = readUntil(&shim, &framer, [](const QJsonObject &message) {
+        return message.value(QStringLiteral("id")).toInt(-1) == 1;
+    });
+    const QJsonObject result =
+        responseWithId(messages, 1).value(QStringLiteral("result")).toObject();
+    QCOMPARE(
+        result.value(QStringLiteral("serverInfo"))
+            .toObject()
+            .value(QStringLiteral("name"))
+            .toString(),
+        QStringLiteral("fake-qmlls-forwarded"));
+    const auto triggers = result.value(QStringLiteral("capabilities"))
+                              .toObject()
+                              .value(QStringLiteral("completionProvider"))
+                              .toObject()
+                              .value(QStringLiteral("triggerCharacters"))
+                              .toArray();
+    QVERIFY(triggers.contains(QStringLiteral(":")));
+
+    writeMessage(&shim, request(2, QStringLiteral("shutdown")));
+    messages = readUntil(&shim, &framer, [](const QJsonObject &message) {
+        return message.value(QStringLiteral("id")).toInt(-1) == 2;
+    });
+    QVERIFY(!responseWithId(messages, 2).isEmpty());
+    writeMessage(&shim, notification(QStringLiteral("exit")));
+    shim.closeWriteChannel();
+    QVERIFY(shim.waitForFinished(5000));
+    QCOMPARE(shim.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(shim.exitCode(), 0);
 }
 
 QTEST_GUILESS_MAIN(LspTests)

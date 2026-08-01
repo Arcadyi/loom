@@ -27,6 +27,8 @@ QJsonObject response(const QJsonObject &request, const QJsonValue &result)
 int main(int argc, char **argv)
 {
     QCoreApplication application(argc, argv);
+    const bool receivedShimArgument =
+        QCoreApplication::arguments().contains(QStringLiteral("--loom-shim-test"));
     QFile input;
     QFile output;
     if (!input.open(stdin, QIODevice::ReadOnly, QFileDevice::DontCloseHandle)
@@ -48,6 +50,13 @@ int main(int argc, char **argv)
                     response(
                         message,
                         QJsonObject{
+                            {QStringLiteral("serverInfo"),
+                             QJsonObject{
+                                 {QStringLiteral("name"),
+                                  receivedShimArgument
+                                      ? QStringLiteral("fake-qmlls-forwarded")
+                                      : QStringLiteral("fake-qmlls")},
+                             }},
                             {QStringLiteral("capabilities"),
                              QJsonObject{
                                  {QStringLiteral("positionEncoding"),
