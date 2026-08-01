@@ -226,9 +226,9 @@ to Qt's `qmlls` and adds these features inside literal portions of `Lo.style`:
 - hover descriptions with resolved token values and variant conditions;
 - background, text, and border color previews, including `/opacity` modifiers.
 
-Configure the editor's QML language-server command as `loom lsp`. Anything
-after `--` goes to the real `qmlls`, so its build and import configuration stays
-available:
+Configure an editor that accepts a command plus arguments to run `loom lsp`.
+Anything after `--` goes to the real `qmlls`, so its build and import
+configuration stays available:
 
 ```sh
 loom lsp -- --build-dir .loom/build/desktop-debug --no-cmake-calls
@@ -244,13 +244,37 @@ that manifest and its `design` file, recomputes diagnostics when either changes,
 and retains the last valid token vocabulary while a design file is temporarily
 malformed. Files outside a Loom project use the built-in vocabulary.
 
-An editor must support a command plus arguments to launch this v1 integration;
-Loom does not install a replacement executable named `qmlls`. For a generic LSP
-client, the command vector is equivalent to:
+For a generic LSP client, the command vector is equivalent to:
 
 ```
 ["loom", "lsp", "--", "--build-dir", ".loom/build/desktop-debug"]
 ```
+
+### CLion
+
+CLion discovers the QML language server as an executable named `qmlls`, so a
+Loom installation also provides a thin compatibility executable at:
+
+```text
+<install-prefix>/<libexec>/loom/qmlls
+```
+
+On a normal Linux `/usr/local` installation that is
+`/usr/local/libexec/loom/qmlls`. The install command prints the exact path as
+`CLion qmlls proxy: ...`. Point CLion's QML language-server/tool path at that
+executable (or its containing directory, depending on the CLion version), then
+enable both **Enable QML language server** and **Use completion from QML
+language server** under **Settings | Languages & Frameworks | QML**.
+
+The compatibility executable accepts every argument CLion normally gives
+`qmlls` and forwards it unchanged. It then locates Qt's real server using the
+same search order as `loom lsp`. If CLion is using a different Qt installation
+than Loom finds automatically, add `LOOM_QMLLS_PATH=/absolute/path/to/qt/bin/qmlls`
+to that CLion toolchain or CMake profile environment.
+
+The shim is deliberately outside the normal `bin` directory: installing Loom
+does not overwrite or shadow Qt's own `qmlls`. Selecting the shim in the IDE is
+therefore an explicit, reversible setting.
 
 Dynamic expressions remain dynamic: Loom completes and checks quoted result
 segments in concatenations and ternaries, but cannot infer classes produced by
