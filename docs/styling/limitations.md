@@ -134,7 +134,8 @@ a workaround.
   at run time, and it reports any string literal inside a `Lo.style` binding —
   including one that is not a class at all. See
   [../tooling/cli.md](../tooling/cli.md).
-- **No editor completion inside `Lo.style`** in any editor today, though
-  `loom style --catalogue` emits the data an integration would need.
+- **`loom lsp` sees literal class fragments, not arbitrary JavaScript.** It can
+  complete and check quoted results in concatenations and ternaries, but not a
+  class assembled entirely at run time. See [the LSP command](../tooling/cli.md#loom-lsp).
 - **One application per build directory** for `loom dev`; a multi-application
   project selects with `--app`.

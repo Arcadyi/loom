@@ -1,6 +1,6 @@
 # The `loom` command
 
-One binary, twelve subcommands. `loom <command> --help` prints the same
+One binary, thirteen subcommands. `loom <command> --help` prints the same
 information as the reference below.
 
 | Command | Does |
@@ -14,6 +14,7 @@ information as the reference below.
 | [`loom test`](#loom-test) | Build and run the project's tests |
 | [`loom lint`](#loom-lint) | `qmllint` **and** the `Lo.style` class check |
 | [`loom style`](#loom-style) | The class check alone, or the vocabulary as JSON |
+| [`loom lsp`](#loom-lsp) | Preserve `qmlls` and add `Lo.style` IntelliSense |
 | [`loom fmt`](#loom-fmt) | `qmlformat` over the project's QML |
 | [`loom clean`](#loom-clean) | Remove the `.loom/` build and deploy trees |
 | [`loom deploy`](#loom-deploy) | Install to a prefix, optionally packaged |
@@ -42,8 +43,9 @@ Accepted by `build`, `test`, `lint`, `fmt`, `clean`, `dev` and `deploy`:
 | 127 | a subprocess could not be started |
 | 128 | a subprocess crashed |
 
-`--json` on `loom doctor` is the only machine-readable output today; the other
-commands emit human-readable text.
+`--json` on `loom doctor` is the only batch command that emits structured
+output. `loom lsp` instead reserves stdout for its long-running LSP transport;
+the remaining commands emit human-readable text.
 
 ---
 
@@ -109,7 +111,8 @@ Ninja, Qt and its modules, the loom CMake package, and the `Loom` QML module's
 `qmldir` and `qmltypes`.
 
 `--json` emits the report as a structured document, which is also what makes it
-scriptable. This is the only command with machine-readable output.
+scriptable. It is the only batch command with machine-readable output; `loom
+lsp` is a persistent protocol server rather than a report.
 
 `--target android|ios|embedded` inspects those toolchains — the only place
 non-desktop targets do anything today.
@@ -208,6 +211,50 @@ loom style [--check | --catalogue] [--app target] [path...]
 
 The class check on its own, or the vocabulary as JSON. `--check` is the default.
 The rest of this page covers it in detail.
+
+## `loom lsp`
+
+```
+loom lsp [--qmlls path] [-- qmlls arguments...]
+```
+
+Runs a Language Server Protocol proxy. It forwards ordinary QML intelligence
+to Qt's `qmlls` and adds these features inside literal portions of `Lo.style`:
+
+- utility and chained-variant completion, including project-defined tokens;
+- live unknown-class diagnostics and confidence-gated replacement fixes;
+- hover descriptions with resolved token values and variant conditions;
+- background, text, and border color previews, including `/opacity` modifiers.
+
+Configure the editor's QML language-server command as `loom lsp`. Anything
+after `--` goes to the real `qmlls`, so its build and import configuration stays
+available:
+
+```sh
+loom lsp -- --build-dir .loom/build/desktop-debug --no-cmake-calls
+loom lsp --qmlls /opt/Qt/6.11/gcc_64/bin/qmlls -- -I build/qml
+```
+
+Without `--qmlls`, Loom checks `LOOM_QMLLS_PATH`, the bin directory of the Qt
+installation it runs against, `qtpaths6`/`qtpaths`, and finally `PATH`. A missing
+server exits 127 with the reason on stderr; stdout is reserved for LSP frames.
+
+The proxy discovers the nearest `loom.json` for every open QML file. It watches
+that manifest and its `design` file, recomputes diagnostics when either changes,
+and retains the last valid token vocabulary while a design file is temporarily
+malformed. Files outside a Loom project use the built-in vocabulary.
+
+An editor must support a command plus arguments to launch this v1 integration;
+Loom does not install a replacement executable named `qmlls`. For a generic LSP
+client, the command vector is equivalent to:
+
+```
+["loom", "lsp", "--", "--build-dir", ".loom/build/desktop-debug"]
+```
+
+Dynamic expressions remain dynamic: Loom completes and checks quoted result
+segments in concatenations and ternaries, but cannot infer classes produced by
+arbitrary JavaScript at run time.
 
 ## `loom fmt`
 
@@ -389,15 +436,7 @@ string. Full signatures in
 
 ## Editor completion
 
-There is no completion inside `Lo.style` today, in any editor. `qmlls` has no
-extension point for it — its suggestions come from the QML type system, and a
-string's contents are not in it — so completion means a front-end that consumes
-the catalogue above. Two routes are practical:
-
-- **A `qmlls` proxy.** Editors resolve `qmlls` from a configurable directory
-  (CLion: *Settings → Languages & Frameworks → QML → Qt binaries*). A wrapper of
-  that name can forward every request to the real `qmlls` and answer only
-  `textDocument/completion` from the catalogue when the cursor sits inside an
-  `Lo.style` literal. Editor-agnostic.
-- **Editor snippets.** Generate live templates or snippets from `classes`. Not
-  context-aware, but no plumbing.
+`loom lsp` is the context-aware consumer of this catalogue. It delegates normal
+QML requests and diagnostics to `qmlls`, then merges Loom's results for
+`Lo.style`; see [`loom lsp`](#loom-lsp) for setup. The JSON form remains useful
+for third-party integrations and generated snippets.

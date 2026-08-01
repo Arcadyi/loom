@@ -2,6 +2,18 @@
 
 ## 0.3.0
 
+**Editor IntelliSense.** `loom lsp` is a `qmlls` proxy that keeps Qt's normal
+QML completion, linting, navigation, formatting and documentation, then adds
+context-aware completion inside `Lo.style`. The same live compiler and token
+registry also drive unknown-class diagnostics and fixes, resolved-value hovers,
+and color previews. The nearest project's design tokens are watched and become
+available without restarting the editor.
+
+Pass ordinary language-server arguments after `--` (`loom lsp -- --build-dir
+.loom/build/desktop-debug`) or select a Qt server explicitly with `--qmlls`.
+There is no editor-specific extension or replacement binary named `qmlls` in
+this release.
+
 **Layout utilities.** loom could style an item but never place one, so every
 layout decision fell back to raw QML — 37 `anchors.*` lines in the gallery
 alone, inside an example whose job is to show you don't need them.

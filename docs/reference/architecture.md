@@ -15,7 +15,7 @@ project-management CLI.
 | `loom::loomplugin` | the `Loom` QML module's static plugin, so `import Loom` resolves with no import-path setup |
 | `loom::Protocol` | the versioned framed transport and bundle validation |
 | `loom::Runtime` | the QML engine bootstrap and the reload controller. Links `loom::loom` publicly |
-| `loom_cli` → `bin/loom` | a `QCoreApplication` host: manifests, project generation, toolchain diagnostics, builds, file watching, dev connections |
+| `loom_cli` → `bin/loom` | a `QCoreApplication` host: manifests, project generation, toolchain diagnostics, builds, file watching, dev connections, and the `qmlls` proxy |
 | `loomFunctions.cmake` | the starter-application wrapper and the integration function for conventional Qt targets |
 
 Two boundaries are load-bearing:
@@ -65,6 +65,20 @@ token that did not exist when it was compiled. If a design file later defines
 `brand-500`, re-applying the old compiled form would faithfully re-apply the
 gap. `vocabularyChanged` is emitted first, then `tokensChanged`, so a recompile
 is always followed by an apply.
+
+### Editor intelligence
+
+`loom lsp` speaks LSP over stdio and launches the real Qt `qmlls` as a child.
+Messages Loom does not augment pass through unchanged, including Qt's build-dir
+extension. The proxy tracks the editor's open-document snapshots so it can find
+the exact string segment and replacement range without asking `qmlls` to
+understand the contents of a string.
+
+For each document it finds the nearest `loom.json`, activates that project's
+design tokens, and reads completion, hover and validation data from the same
+catalogue and compiler as the runtime. `qmlls` and Loom diagnostics are cached
+separately and republished as one versioned list, because every LSP diagnostic
+notification replaces the previous list from that server.
 
 ### Compiling a style string
 
