@@ -4,6 +4,7 @@
 #include "commandline.h"
 #include "devserver.h"
 #include "devsession.h"
+#include "languageserverproxy.h"
 #include "projectmanifest.h"
 #include "projectscaffolder.h"
 #include "stylecheck.h"
@@ -356,6 +357,8 @@ int Commands::execute(const QStringList &arguments)
         return lint(tail);
     if (command == QStringLiteral("style"))
         return style(tail);
+    if (command == QStringLiteral("lsp"))
+        return languageServer(tail);
     if (command == QStringLiteral("fmt"))
         return format(tail);
     if (command == QStringLiteral("clean"))
@@ -821,6 +824,35 @@ int Commands::style(const QStringList &arguments)
     return runStyleCheck(context, qmlFilesOf(context));
 }
 
+int Commands::languageServer(const QStringList &arguments)
+{
+    const CommandSpec spec{
+        .name = QStringLiteral("lsp"),
+        .summary = QStringLiteral("Run the qmlls proxy with Lo.style IntelliSense."),
+        .usage = QStringLiteral("loom lsp [--qmlls path] [-- qmlls arguments...]"),
+        .options =
+            {
+                {QStringLiteral("qmlls"), QStringLiteral("path"),
+                 QStringLiteral("Real qmlls executable (otherwise auto-discovered).")},
+            },
+        .minimumPositional = 0,
+        .maximumPositional = 0,
+        .acceptsPassthrough = true,
+    };
+    ParsedCommand parsed;
+    switch (cli::parseCommand(spec, arguments, parsed)) {
+    case ParseOutcome::HelpPrinted:
+        return cli::Success;
+    case ParseOutcome::Rejected:
+        return cli::UsageError;
+    case ParseOutcome::Ready:
+        break;
+    }
+
+    lsp::LanguageServerProxy proxy;
+    return proxy.run(parsed.value(QStringLiteral("qmlls")), parsed.passthrough());
+}
+
 int Commands::format(const QStringList &arguments)
 {
     auto options = buildOptions();
@@ -1171,6 +1203,7 @@ void Commands::printHelp() const
            "  build       Configure and build the application\n"
            "  lint        Run qmllint and check Lo.style classes\n"
            "  style       Check Lo.style classes, or dump the vocabulary\n"
+           "  lsp         Run qmlls with Lo.style IntelliSense\n"
            "  fmt         Format the project's QML with qmlformat\n"
            "  clean       Remove loom's build and deploy trees\n"
            "  test        Build and run the project's tests\n"

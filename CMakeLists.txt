@@ -207,13 +207,23 @@ if(LOOM_BUILD_CLI)
         src/cli/commands.cpp
         src/cli/devserver.cpp
         src/cli/devsession.cpp
+        src/cli/languageserverproxy.cpp
+        src/cli/lspdocument.cpp
+        src/cli/lspjsonrpc.cpp
         src/cli/projectmanifest.cpp
         src/cli/projectscaffolder.cpp
         src/cli/stylecheck.cpp
+        src/cli/styleintelligence.cpp
+        src/cli/styleworkspace.cpp
         src/cli/toolchaindoctor.cpp
     )
     target_include_directories(loom_cli_core PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/src/cli"
+    )
+    target_include_directories(loom_cli_core PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/style"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/tokens"
     )
     target_link_libraries(loom_cli_core PUBLIC
         loom_protocol

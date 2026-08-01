@@ -124,6 +124,17 @@ if(TARGET loom_cli_core)
     loom_add_test(tst_devserver LINK loom_cli_core)
     loom_add_test(tst_commandline LINK loom_cli_core)
 
+    qt_add_executable(fake_qmlls fake_qmlls.cpp)
+    target_link_libraries(fake_qmlls PRIVATE loom_cli_core Qt6::Core)
+    loom_set_target_defaults(fake_qmlls)
+
+    loom_add_test(tst_lsp LINK loom_cli_core)
+    target_compile_definitions(tst_lsp PRIVATE
+        LOOM_TEST_EXE="$<TARGET_FILE:loom_cli>"
+        LOOM_FAKE_QMLLS="$<TARGET_FILE:fake_qmlls>"
+    )
+    add_dependencies(tst_lsp loom_cli fake_qmlls)
+
     loom_add_test(tst_devsession LINK loom_cli_core)
     set_tests_properties(tst_devsession PROPERTIES TIMEOUT 60)
 endif()

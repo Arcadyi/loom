@@ -57,6 +57,17 @@ qml/Main.qml:44: unknown utility class 'bg-brnad-500'
 loom: 1 unknown class(es) in 1 file(s)
 ```
 
+`loom lsp` wraps Qt's `qmlls` and adds context-aware utility completion,
+diagnostics and fixes, resolved-value hovers, and color previews inside those
+same strings while preserving ordinary QML language features:
+
+```sh
+loom lsp -- --build-dir .loom/build/desktop-debug
+```
+
+Configure an LSP-capable editor to launch that command instead of `qmlls`.
+See [the editor setup reference](docs/tooling/cli.md#loom-lsp).
+
 ## Status
 
 Version 0.3.0, early development. Linux-validated; Qt 6.11, C++20, CMake ≥ 3.22.

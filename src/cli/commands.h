@@ -18,6 +18,7 @@ private:
     int build(const QStringList &arguments);
     int lint(const QStringList &arguments);
     int style(const QStringList &arguments);
+    int languageServer(const QStringList &arguments);
     int format(const QStringList &arguments);
     int clean(const QStringList &arguments);
     int test(const QStringList &arguments);
