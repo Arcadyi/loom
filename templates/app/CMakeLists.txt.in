@@ -7,9 +7,28 @@ project(@LOOM_TARGET@ VERSION 0.1.0 LANGUAGES CXX)
 # qmlcachegen complain about an unresolved import.
 find_package(Qt6 6.11 REQUIRED COMPONENTS Quick QuickControls2 Test)
 # One package for both halves: the styling library behind `import Loom`, and the
-# build and hot-reload tooling. Point CMAKE_PREFIX_PATH at a loom build or
-# install tree if configure cannot find it.
-find_package(loom CONFIG REQUIRED)
+# build and hot-reload tooling. `loom new` records the package belonging to the
+# CLI that created this project so a direct IDE configure does not depend on the
+# IDE inheriting the terminal's PATH. If that installation has moved, normal
+# CMake package discovery remains the portable fallback.
+set(_loom_generated_package_hint "@LOOM_CMAKE_PACKAGE_DIR@")
+if(EXISTS "${_loom_generated_package_hint}/loomConfig.cmake")
+    find_package(loom @LOOM_VERSION@ CONFIG REQUIRED
+        PATHS "${_loom_generated_package_hint}"
+        NO_DEFAULT_PATH
+    )
+else()
+    find_package(loom @LOOM_VERSION@ CONFIG REQUIRED)
+endif()
+unset(_loom_generated_package_hint)
+
+# Do not let an unrelated or incomplete package fail later as an unexplained
+# "Unknown CMake command" at loom_add_application.
+if(NOT COMMAND loom_add_application)
+    message(FATAL_ERROR
+        "The loom package at '${loom_DIR}' does not provide loom_add_application. "
+        "Select the package installed with loom @LOOM_VERSION@ or newer.")
+endif()
 
 qt_standard_project_setup(REQUIRES 6.11)
 

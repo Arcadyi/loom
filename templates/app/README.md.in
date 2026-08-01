@@ -31,9 +31,16 @@ already persists the theme across hot reloads via `loomSaveState`.
 
 ## Finding loom
 
-`find_package(loom CONFIG REQUIRED)` searches CMake's usual prefixes. If loom is
-installed somewhere else — including straight out of its build tree — put that
-path on `CMAKE_PREFIX_PATH` before running any loom command:
+The generated `CMakeLists.txt` first uses the Loom CMake package belonging to
+the CLI that created this project. This lets CLion and other IDEs configure the
+project even when they did not inherit the terminal's `PATH`. If the project is
+copied to another machine, that hint is ignored once the original installation
+does not exist and `find_package(loom CONFIG REQUIRED)` uses CMake's usual
+search paths.
+
+If loom is installed somewhere else — including straight out of its build tree
+— put that path on `CMAKE_PREFIX_PATH` before configuring or running a loom
+command:
 
 ```sh
 export CMAKE_PREFIX_PATH=/path/to/loom/build   # or an install prefix

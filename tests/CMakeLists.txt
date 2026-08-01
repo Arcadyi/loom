@@ -136,6 +136,7 @@ if(TARGET loom_cli)
         COMMAND "${CMAKE_COMMAND}"
             "-DLOOM_EXE=$<TARGET_FILE:loom_cli>"
             "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/generated-project"
+            "-DLOOM_VERSION=${PROJECT_VERSION}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_new_test.cmake"
     )
     add_test(

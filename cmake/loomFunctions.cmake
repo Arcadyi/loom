@@ -174,6 +174,18 @@ function(loom_add_application target)
         set(loom_import_paths "${LOOM_QML_IMPORT_DIR}")
     endif()
 
+    # CMake-aware IDEs inspect this conventional cache variable to discover
+    # custom QML modules. IMPORT_PATH below is still the source of truth for Qt
+    # build tools; publishing the same roots here makes `import Loom` resolve in
+    # CLion/Qt Creator as soon as configure succeeds. Preserve paths supplied by
+    # the application and by earlier loom targets in the same project.
+    set(loom_editor_import_paths ${QML_IMPORT_PATH})
+    list(APPEND loom_editor_import_paths ${loom_import_paths})
+    list(REMOVE_DUPLICATES loom_editor_import_paths)
+    set(QML_IMPORT_PATH "${loom_editor_import_paths}" CACHE STRING
+        "Additional QML import roots exposed to IDE code models" FORCE
+    )
+
     # IMPORT_PATHS reaches qt_add_qml_module rather than being set afterwards
     # as a target property: Qt reads QT_QML_IMPORT_PATH eagerly while building
     # the generated qmllint/qmlcachegen command lines here, so a later

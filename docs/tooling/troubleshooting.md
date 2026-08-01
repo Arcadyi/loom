@@ -31,6 +31,25 @@ prefix. Either install it, or pass `--prefix <prefix>`.
 
 ---
 
+## CLion reports `Unknown CMake command "loom_add_application"`
+
+CLion configured the project with the wrong (usually stale) `loomConfig.cmake`.
+That failed configure also prevents CLion from discovering Qt and produces the
+secondary **QML imports directory not found** editor warning.
+
+Projects created by a current `loom new` record the matching package as a
+conditional CMake hint and require at least the CLI's Loom version. They also
+publish Loom's generated `qmldir` and `loom.qmltypes` root through the
+`QML_IMPORT_PATH` CMake cache entry for IDE code models.
+
+For an existing generated project, open **Settings | Build, Execution,
+Deployment | CMake**, add the directory containing `loomConfig.cmake` as
+`-Dloom_DIR=/path/to/prefix/lib/cmake/loom`, then use **Reset Cache and Reload
+Project**. `loom doctor` prints the installed package location. Once CMake
+configures successfully, the QML warning should disappear as well.
+
+---
+
 ## The application builds and runs but never hot-reloads
 
 Check the configuration. `Release`, `RelWithDebInfo` and `MinSizeRel` all define `NDEBUG`,

@@ -9,6 +9,8 @@
 # caught by any test that stops at file generation.
 #
 # Deliberately invoked with no --prefix: prefix inference is what is under test.
+# The direct preset configure also strips the installed CLI from PATH to model a
+# desktop-launched IDE which did not inherit the shell that installed loom.
 
 foreach(required LOOM_SOURCE_DIR LOOM_CLI_BUILD_DIR WORK_DIR APP_NAME)
     if(NOT ${required})
@@ -60,6 +62,45 @@ loom_e2e_run("loom new ${APP_NAME}"
         --org com.example
         --directory "${project_dir}"
 )
+
+loom_e2e_run("direct CMake preset configure"
+    COMMAND "${CMAKE_COMMAND}" -E env
+        --unset=CMAKE_PREFIX_PATH
+        --unset=loom_DIR
+        "PATH=/usr/bin:/bin"
+        "${CMAKE_COMMAND}" --preset debug
+    WORKING_DIRECTORY "${project_dir}"
+)
+
+set(preset_cache "${project_dir}/.loom/build/preset-debug/CMakeCache.txt")
+if(NOT EXISTS "${preset_cache}")
+    message(FATAL_ERROR "Direct preset configure produced no cache at ${preset_cache}")
+endif()
+file(READ "${preset_cache}" preset_cache_contents)
+file(GLOB_RECURSE installed_loom_configs "${prefix}/*loomConfig.cmake")
+list(FILTER installed_loom_configs INCLUDE REGEX "/cmake/loom/loomConfig[.]cmake$")
+list(LENGTH installed_loom_configs installed_config_count)
+if(NOT installed_config_count EQUAL 1)
+    message(FATAL_ERROR
+        "Expected one installed loomConfig.cmake, found: ${installed_loom_configs}")
+endif()
+list(GET installed_loom_configs 0 installed_loom_config)
+get_filename_component(expected_loom_dir "${installed_loom_config}" DIRECTORY)
+string(FIND "${preset_cache_contents}"
+    "loom_DIR:PATH=${expected_loom_dir}" loom_dir_position)
+if(loom_dir_position EQUAL -1)
+    message(FATAL_ERROR
+        "Direct IDE-like configure did not resolve the installed loom package:\n"
+        "${preset_cache_contents}")
+endif()
+get_filename_component(expected_cmake_dir "${expected_loom_dir}" DIRECTORY)
+get_filename_component(expected_library_dir "${expected_cmake_dir}" DIRECTORY)
+string(FIND "${preset_cache_contents}"
+    "QML_IMPORT_PATH:STRING=${expected_library_dir}/qml" qml_import_position)
+if(qml_import_position EQUAL -1)
+    message(FATAL_ERROR
+        "Direct IDE-like configure did not publish Loom's QML import root")
+endif()
 
 loom_e2e_run("loom build"
     COMMAND "${loom_exe}" build

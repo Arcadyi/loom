@@ -1,5 +1,5 @@
-if(NOT LOOM_EXE OR NOT TEST_DIR)
-    message(FATAL_ERROR "LOOM_EXE and TEST_DIR are required")
+if(NOT LOOM_EXE OR NOT TEST_DIR OR NOT LOOM_VERSION)
+    message(FATAL_ERROR "LOOM_EXE, TEST_DIR and LOOM_VERSION are required")
 endif()
 
 file(REMOVE_RECURSE "${TEST_DIR}")
@@ -53,9 +53,29 @@ endif()
 # the QML imports it. This used to be gated behind --loom, with a plain Qt Quick
 # template as the default and the two kept in sync by hand.
 file(READ "${TEST_DIR}/CMakeLists.txt" generated_cmake)
-if(NOT generated_cmake MATCHES "find_package\\(loom CONFIG REQUIRED\\)"
+if(NOT generated_cmake MATCHES "find_package\\(loom ${LOOM_VERSION} CONFIG REQUIRED"
     OR NOT generated_cmake MATCHES "loom::loomplugin")
     message(FATAL_ERROR "loom new did not wire loom into CMakeLists.txt")
+endif()
+if(NOT generated_cmake MATCHES "find_package\\(loom ${LOOM_VERSION} CONFIG REQUIRED"
+    OR NOT generated_cmake MATCHES "NO_DEFAULT_PATH")
+    message(FATAL_ERROR
+        "loom new did not require its generator version or prefer its own package")
+endif()
+get_filename_component(loom_exe_dir "${LOOM_EXE}" DIRECTORY)
+set(expected_build_tree_config "${loom_exe_dir}/loomConfig.cmake")
+if(EXISTS "${expected_build_tree_config}")
+    if(NOT generated_cmake MATCHES
+        "set\\(_loom_generated_package_hint \"[^\"]+\"\\)")
+        message(FATAL_ERROR
+            "loom new did not record its build-tree CMake package for direct IDE configure")
+    endif()
+    file(TO_CMAKE_PATH "$ENV{HOME}" user_home)
+    string(FIND "${generated_cmake}" "${user_home}/" leaked_home_position)
+    if(NOT leaked_home_position EQUAL -1)
+        message(FATAL_ERROR
+            "loom new wrote the developer's absolute home path into generated CMake")
+    endif()
 endif()
 if(NOT generated_cmake MATCHES "DESIGN")
     message(FATAL_ERROR "loom new did not point loom_add_application at a design file")

@@ -2,6 +2,7 @@
 
 #include "projectmanifest.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -22,6 +23,63 @@ QString qmlStringLiteral(QString value)
     value.replace(QLatin1Char('\\'), QLatin1String("\\\\"));
     value.replace(QLatin1Char('"'), QLatin1String("\\\""));
     return value;
+}
+
+// A generated project may be opened directly in an IDE, without `loom build`
+// adding the package prefix to CMake's command line. Record the package that
+// belongs to the running CLI so that this first configure is deterministic.
+// The template only uses the hint while it exists, which keeps a copied project
+// portable to another developer or machine.
+QString ownCmakePackageDirectory()
+{
+    const QDir binaryDirectory(QCoreApplication::applicationDirPath());
+    const QStringList candidates{
+        // Build-tree CLI: build/loom and build/loomConfig.cmake.
+        binaryDirectory.absolutePath(),
+        // Installed CLI: <prefix>/bin/loom and
+        // <prefix>/<libdir>/cmake/loom/loomConfig.cmake.
+        QDir::cleanPath(binaryDirectory.filePath(
+            QStringLiteral("../") + QStringLiteral(LOOM_RELATIVE_CMAKE_DIR))),
+    };
+    for (const auto &candidate : candidates) {
+        if (QFileInfo(QDir(candidate).filePath(QStringLiteral("loomConfig.cmake")))
+                .isFile()) {
+            return QDir::fromNativeSeparators(candidate);
+        }
+    }
+    return {};
+}
+
+// The value is substituted into a CMake double-quoted argument. Paths normally
+// contain none of these characters, but escaping them makes a custom install
+// prefix data rather than generated CMake syntax.
+QString cmakeStringLiteral(QString value)
+{
+    value = QDir::fromNativeSeparators(value);
+    value.replace(QLatin1Char('\\'), QLatin1String("\\\\"));
+    value.replace(QLatin1Char('"'), QLatin1String("\\\""));
+    value.replace(QLatin1Char('$'), QLatin1String("\\$"));
+    value.replace(QLatin1Char(';'), QLatin1String("\\;"));
+    return value;
+}
+
+// Do not write a developer's home directory into a CMakeLists.txt that will
+// normally be committed. CMake expands the environment reference when it
+// configures the project, so the hint also has a chance to work for another
+// developer using the same documented install layout.
+QString cmakePathExpression(const QString &value)
+{
+    const auto path = QDir::fromNativeSeparators(value);
+    const auto home = QDir::fromNativeSeparators(QDir::homePath());
+    if (path == home || path.startsWith(home + QLatin1Char('/'))) {
+#ifdef Q_OS_WIN
+        const auto homeExpression = QStringLiteral("$ENV{USERPROFILE}");
+#else
+        const auto homeExpression = QStringLiteral("$ENV{HOME}");
+#endif
+        return homeExpression + cmakeStringLiteral(path.sliced(home.size()));
+    }
+    return cmakeStringLiteral(path);
 }
 
 // Ordered on purpose. A QHash iterates in an unspecified order, and these
@@ -156,6 +214,10 @@ bool ProjectScaffolder::create(
         Replacement{QStringLiteral("@LOOM_TARGET@"), identifierFromName(name)},
         Replacement{QStringLiteral("@LOOM_APP_ID@"), application.id},
         Replacement{QStringLiteral("@LOOM_URI@"), application.uri},
+        Replacement{QStringLiteral("@LOOM_VERSION@"), QStringLiteral(LOOM_VERSION_STR)},
+        Replacement{
+            QStringLiteral("@LOOM_CMAKE_PACKAGE_DIR@"),
+            cmakePathExpression(ownCmakePackageDirectory())},
     };
 
     QStringList skipped;
