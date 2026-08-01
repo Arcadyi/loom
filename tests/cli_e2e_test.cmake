@@ -12,7 +12,7 @@
 # The direct preset configure also strips the installed CLI from PATH to model a
 # desktop-launched IDE which did not inherit the shell that installed loom.
 
-foreach(required LOOM_SOURCE_DIR LOOM_CLI_BUILD_DIR WORK_DIR APP_NAME)
+foreach(required LOOM_SOURCE_DIR LOOM_CLI_BUILD_DIR QT6_DIR WORK_DIR APP_NAME)
     if(NOT ${required})
         message(FATAL_ERROR "${required} is required")
     endif()
@@ -68,7 +68,10 @@ loom_e2e_run("direct CMake preset configure"
         --unset=CMAKE_PREFIX_PATH
         --unset=loom_DIR
         "PATH=/usr/bin:/bin"
-        "${CMAKE_COMMAND}" --preset debug
+        # An IDE must select a Qt installation independently of Loom. Reuse the
+        # exact package selected by the parent build so this isolation does not
+        # accidentally make a CI-installed, non-system Qt undiscoverable.
+        "${CMAKE_COMMAND}" --preset debug "-DQt6_DIR=${QT6_DIR}"
     WORKING_DIRECTORY "${project_dir}"
 )
 

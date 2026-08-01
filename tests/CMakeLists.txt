@@ -210,6 +210,7 @@ if(LOOM_BUILD_E2E_TESTS AND TARGET loom_cli)
             COMMAND "${CMAKE_COMMAND}"
                 "-DLOOM_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
                 "-DLOOM_CLI_BUILD_DIR=${CMAKE_BINARY_DIR}"
+                "-DQT6_DIR=${Qt6_DIR}"
                 "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/e2e/${loom_e2e_app}"
                 "-DAPP_NAME=${loom_e2e_app}"
                 "-DCMAKE_GENERATOR=${CMAKE_GENERATOR}"
