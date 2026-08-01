@@ -160,24 +160,24 @@ void LspTests::projectTokensDriveIntelligence()
     QFile manifest(directory.filePath(QStringLiteral("loom.json")));
     QVERIFY(manifest.open(QIODevice::WriteOnly));
     manifest.write(R"({
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "project": {"name": "LspTest"},
       "design": "tokens.json",
       "qt": {"version": "6.11"},
       "applications": {"App": {
         "name": "App", "target": "App", "id": "dev.test.app",
         "uri": "dev.test.App", "entry": "Main", "qmlRoots": ["qml"],
-        "assetRoots": [], "platforms": ["desktop"]
+        "assetRoots": [], "platforms": {"desktop": {}}
       }}
     })");
     manifest.close();
     QFile design(directory.filePath(QStringLiteral("tokens.json")));
     QVERIFY(design.open(QIODevice::WriteOnly));
     design.write(R"({
-      "colors":{"brand":"#123456"},
-      "space":{"18":72},
-      "themes":{"midnight":{"extends":"dark","surface":"#010203"}},
-      "defaultTheme":"midnight"
+      "schemaVersion": 2,
+      "tokens":{"colors":{"brand":"#123456"},"space":{"18":72}},
+      "themes":{"midnight":{"extends":"dark","tokens":{"colors":{"surface":"#010203"}}}},
+      "theme":{"default":"midnight"}
     })");
     design.close();
 

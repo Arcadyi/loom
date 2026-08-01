@@ -111,6 +111,8 @@ public:
     // Escape hatch mirroring LoomColorGroup::value(), for size keys that are
     // only known at runtime ("2xl" from a model, config-defined entries).
     Q_INVOKABLE LoomTextStyle value(const QString &key) const;
+    Q_INVOKABLE int weight(const QString &key) const;
+    Q_INVOKABLE qreal tracking(const QString &key) const;
 
 signals:
     void changed();
@@ -135,6 +137,26 @@ public:
     LOOM_RADIUS_TOKENS(LOOM_READ)
 #undef LOOM_READ
 
+    Q_INVOKABLE qreal value(const QString &key) const;
+
+signals:
+    void changed();
+};
+
+class LoomFontGroup : public QObject {
+    Q_OBJECT
+    QML_ANONYMOUS
+    Q_PROPERTY(QStringList sans READ sans NOTIFY changed)
+    Q_PROPERTY(QStringList serif READ serif NOTIFY changed)
+    Q_PROPERTY(QStringList mono READ mono NOTIFY changed)
+
+public:
+    explicit LoomFontGroup(QObject *parent = nullptr);
+    QStringList sans() const;
+    QStringList serif() const;
+    QStringList mono() const;
+    Q_INVOKABLE QStringList value(const QString &key) const;
+
 signals:
     void changed();
 };
@@ -157,6 +179,8 @@ public:
     }
     LOOM_SHADOW_TOKENS(LOOM_READ)
 #undef LOOM_READ
+
+    Q_INVOKABLE LoomShadow value(const QString &key) const;
 
 signals:
     void changed();
@@ -181,6 +205,8 @@ public:
     LOOM_OPACITY_TOKENS(LOOM_READ)
 #undef LOOM_READ
 
+    Q_INVOKABLE qreal value(const QString &key) const;
+
 signals:
     void changed();
 };
@@ -203,6 +229,8 @@ public:
     }
     LOOM_DURATION_TOKENS(LOOM_READ)
 #undef LOOM_READ
+
+    Q_INVOKABLE int value(const QString &key) const;
 
 signals:
     void changed();
@@ -227,6 +255,8 @@ public:
     LOOM_EASING_TOKENS(LOOM_READ)
 #undef LOOM_READ
 
+    Q_INVOKABLE QEasingCurve value(const QString &key) const;
+
 signals:
     void changed();
 };
@@ -249,6 +279,8 @@ public:
     }
     LOOM_BREAKPOINT_TOKENS(LOOM_READ)
 #undef LOOM_READ
+
+    Q_INVOKABLE int value(const QString &key) const;
 
 signals:
     void changed();

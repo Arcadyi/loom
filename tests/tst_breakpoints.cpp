@@ -24,6 +24,8 @@ private slots:
     void mobileFirstMinWidth();
     void noWindowMeansBaseTier();
     void fullSizeTracksParent();
+    void arbitraryAndMaxViewportQueries();
+    void containerQueriesFollowNearestContainer();
 };
 
 void BreakpointTests::tiersFollowWindowWidth()
@@ -118,6 +120,55 @@ void BreakpointTests::fullSizeTracksParent()
     item->setHeight(240);
     QTRY_COMPARE(child->width(), 320.0);
     QCOMPARE(child->height(), 240.0);
+}
+
+void BreakpointTests::arbitraryAndMaxViewportQueries()
+{
+    QQuickWindow window;
+    window.resize(700, 300);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\n"
+        "Rectangle {\n"
+        "    Lo.style: \"bg-white max-[799px]:bg-blue-500 "
+        "min-[900px]:bg-red-500\"\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+    item->setParentItem(window.contentItem());
+
+    QTRY_COMPARE(item->property("color").value<QColor>(), QColor(0x3b, 0x82, 0xf6));
+    window.resize(850, 300);
+    QTRY_COMPARE(item->property("color").value<QColor>(), QColor(Qt::white));
+    window.resize(1000, 300);
+    QTRY_COMPARE(item->property("color").value<QColor>(), QColor(0xef, 0x44, 0x44));
+}
+
+void BreakpointTests::containerQueriesFollowNearestContainer()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> root(createItem(
+        component,
+        "import QtQuick\nimport Loom\n"
+        "Item {\n"
+        "    width: 400; height: 100\n"
+        "    Lo.container: true\n"
+        "    Rectangle { objectName: \"child\"; Lo.style: \"bg-white @md:bg-black\" }\n"
+        "}\n"));
+    QVERIFY2(root, qPrintable(component.errorString()));
+    QQuickItem *child = root->findChild<QQuickItem *>(QStringLiteral("child"));
+    QVERIFY(child);
+
+    QTRY_COMPARE(child->property("color").value<QColor>(), QColor(Qt::white));
+    root->setWidth(500); // default md container threshold is 448 px
+    QTRY_COMPARE(child->property("color").value<QColor>(), QColor(Qt::black));
+    root->setWidth(300);
+    QTRY_COMPARE(child->property("color").value<QColor>(), QColor(Qt::white));
 }
 
 QTEST_MAIN(BreakpointTests)

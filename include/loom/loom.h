@@ -9,6 +9,8 @@
 // the `Loom` singleton.
 namespace loom {
 
+enum class ThemeMode { Explicit, System };
+
 // Library version, e.g. "0.1.0".
 const char *version();
 
@@ -16,12 +18,14 @@ const char *version();
 // more). Unknown names warn and leave the theme unchanged.
 void setTheme(const QString &name);
 QString theme();
+void setThemeMode(ThemeMode mode);
+ThemeMode themeMode();
 
-// Load a JSON config (the tailwind.config equivalent): custom colors and
-// spacing, breakpoint thresholds, themes, defaultTheme. Merges into the
-// defaults; everything styled re-resolves. Call before the engine loads for a
-// flicker-free start, or at any later point. Returns false when the file
-// cannot be read or parsed. Also available from QML: Loom.loadConfig(url).
+// Load a schema-v2 design file: all token families, themes, recipes, responsive
+// thresholds, and lint policy. Merges into the defaults; everything styled
+// re-resolves. Call before the engine loads for a flicker-free start, or at any
+// later point. Returns false when the file cannot be read, parsed, or validated.
+// Also available from QML: Loom.loadConfig(url).
 bool loadConfig(const QString &filePath);
 
 // Replaces the active config instead of merging into it: tokens reset to the

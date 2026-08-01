@@ -11,7 +11,8 @@ Window {
         qsTr("Utilities"),
         qsTr("States"),
         qsTr("Responsive"),
-        qsTr("Theming")
+        qsTr("Theming"),
+        qsTr("Modern")
     ]
 
     color: Loom.color.background
@@ -104,7 +105,8 @@ Window {
                 "UtilitiesPage.qml",
                 "StatesPage.qml",
                 "ResponsivePage.qml",
-                "ThemingPage.qml"
+                "ThemingPage.qml",
+                "FeaturesPage.qml"
             ][window.currentPage]
         }
     }

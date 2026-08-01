@@ -86,8 +86,8 @@ notification replaces the previous list from that server.
 ### Compiling a style string
 
 `Lo.style` strings are parsed into a `LoomCompiledStyle` — a flat list of rules,
-each carrying a utility, a token *key*, a breakpoint tier, a state mask and a
-specificity rank.
+each carrying a utility, a token *key*, exact viewport/container bounds, state
+and group masks, and a specificity rank.
 
 **Rules store token names, never resolved values.** That single decision is what
 makes a theme switch cheap: nothing recompiles, the same rules simply resolve
@@ -126,8 +126,8 @@ assignments, so `Lo.style` wins regardless of declaration order in the document.
 
 The pass:
 
-1. reads the current state bits and breakpoint tier;
-2. discards rules whose tier or state does not match;
+1. reads current state bits and viewport/container conditions;
+2. discards rules whose variants do not match;
 3. resolves survivors' token names against the active theme;
 4. ranks by specificity into a hash keyed by property path;
 5. releases properties no longer wanted, restoring saved values;
@@ -139,22 +139,24 @@ put back. What cannot be put back is a *binding* — an imperative write destroy
 it permanently, which is standard QML semantics rather than something loom adds.
 Hence the rule that a property is either yours or Loom's.
 
-### Why specificity has two axes
+### How specificity is ordered
 
-Breakpoints and states are ranked separately, states winning, then breakpoint
-tier, then position in the string.
+State/group/theme conditions and responsive conditions are ranked separately,
+with state depth winning, followed by responsive constraint depth and exact
+viewport/container bounds, then position in the string.
 
 Ranking them on a single count of variant prefixes — which loom did through
 0.2.0 — makes `hover:bg-accent` and `md:bg-red-500` tie, so the later-written
 class wins. In practice that silently disabled every `hover:` rule above 768 px.
-The two-axis rank encodes the actual relationship: a breakpoint says *where*, a
-state says *when*, and a transient state should override the static appearance
-at any width.
+The rank encodes the actual relationship: a responsive condition says *where*,
+a state says *when*, and a transient state should override the static
+appearance at any width. Exact bounds keep dynamic names, arbitrary queries,
+max-width rules, and container rules out of a fixed-tier special case.
 
 ### Managed items
 
-Two utilities cannot be expressed as property writes and create real items
-instead:
+Several utilities cannot be expressed as ordinary property writes and create
+or manage runtime helpers instead:
 
 - **`hover:` / `pressed:`** need an input source. Loom adds one invisible child
   holding a `HoverHandler` and a passive `TapHandler`, stacked at `z: -1` so it
@@ -163,8 +165,14 @@ instead:
 - **`shadow-*`** creates a `RectangularShadow` child at `z: -1`, bound to the
   target's geometry and corner radii. A child rather than a sibling, so a
   positioner or Layout never lays it out as content of its own.
+- **translate utilities** use a managed `Translate` child while rotation and
+  scale use the target's native properties.
+- **rings and gradients** manage Rectangle border/gradient state and restore it
+  when their classes stop matching.
+- **filter utilities** install a `MultiEffect` into `Item.layer.effect`, but only
+  when the item opts into that ownership with `Lo.effects: true`.
 
-Both are ordinary scene-graph items and visible to code walking `children`.
+The child helpers are visible to code walking `children`.
 
 ---
 

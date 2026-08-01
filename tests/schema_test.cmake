@@ -8,8 +8,9 @@
 # as a silent pass, this gate ran nowhere -- including in CI, which did not
 # install jsonschema while CONTRIBUTING.md claimed it did.
 
-if(NOT LOOM_EXE OR NOT TEST_DIR OR NOT SCHEMA)
-    message(FATAL_ERROR "LOOM_EXE, TEST_DIR and SCHEMA are required")
+if(NOT LOOM_EXE OR NOT TEST_DIR OR NOT SCHEMA OR NOT DESIGN_SCHEMA)
+    message(FATAL_ERROR
+        "LOOM_EXE, TEST_DIR, SCHEMA and DESIGN_SCHEMA are required")
 endif()
 
 function(loom_unavailable reason)
@@ -62,6 +63,24 @@ if(NOT validation EQUAL 0)
     message(FATAL_ERROR
         "A freshly generated loom.json does not satisfy the shipped schema:\n"
         "${validation_error}")
+endif()
+
+execute_process(
+    COMMAND "${PYTHON_EXE}" -c
+        "import json,sys,jsonschema; \
+         schema=json.load(open(sys.argv[1])); \
+         doc=json.load(open(sys.argv[2])); \
+         jsonschema.validate(doc, schema); \
+         print('valid')"
+        "${DESIGN_SCHEMA}" "${TEST_DIR}/design/tokens.json"
+    RESULT_VARIABLE design_validation
+    OUTPUT_VARIABLE design_validation_output
+    ERROR_VARIABLE design_validation_error
+)
+if(NOT design_validation EQUAL 0)
+    message(FATAL_ERROR
+        "A freshly generated design file does not satisfy the shipped schema:\n"
+        "${design_validation_error}")
 endif()
 
 # The other direction: the new project.defaultApplication field must be

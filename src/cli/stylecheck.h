@@ -16,7 +16,11 @@ namespace stylecheck {
 struct Finding {
     QString file;
     int line = 0;
+    int column = 0;
     QString klass;
+    QString code;
+    QString message;
+    bool error = true;
 };
 
 // Every *.qml under `path`, or `path` itself when it names a file. Sorted, so

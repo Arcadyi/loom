@@ -16,3 +16,7 @@ QQuickItem *loomCreateStateWatcher(QQuickItem *target, QObject *owner);
 // null with a warning when QtQuick.Effects is unavailable or the target has
 // no QML engine. QObject-parented to `owner`.
 QQuickItem *loomCreateShadowItem(QQuickItem *target, QObject *owner);
+
+// Creates the transparent border overlay used by ring-* utilities. Unlike a
+// layer effect this does not replace user-owned rendering state.
+QQuickItem *loomCreateRingItem(QQuickItem *target, QObject *owner);

@@ -13,16 +13,19 @@ that bites is the number of *applies*, not the number of classes.**
 | --- | --- | --- |
 | A `LoomStyleAttached` object | any item with `Lo.style` | one QObject, plus a few signal connections |
 | A compiled style | first time a unique *string* is seen anywhere in the process | shared by every item using that string |
-| A watcher item | only when `hover:`, or `pressed:` on a target with no native `pressed` | one `QQuickItem` with a `HoverHandler` and a `TapHandler` |
+| A watcher item | when pointer or group-pointer variants need it | one `QQuickItem` with a `HoverHandler` and a `TapHandler` |
 | A shadow item | only while a `shadow-*` class is active | one `RectangularShadow` |
+| A transform helper | only while translate/rotate/scale utilities are active | one managed `Translate` plus native rotation/scale writes |
+| A filter effect | only with filter classes **and** `Lo.effects: true` | one managed `MultiEffect` in the target's layer slot |
 
 The compiled style is shared, not copied. A thousand items with
 `Lo.style: "bg-surface rounded-lg"` parse that string once and hold a
 `shared_ptr` to one compiled result. The vocabulary size is irrelevant to
 runtime cost: only the classes you actually use are parsed.
 
-The watcher and shadow are real items in the scene graph and are visible to code
-walking `children`. Neither paints unless it has to — the watcher never does.
+The watcher, shadow, and translate helper are real scene-graph children and are
+visible to code walking `children`. The watcher never paints. Filters add an
+offscreen layer pass, so opt into them only where the visual result warrants it.
 
 ## The compile cache
 
@@ -59,7 +62,9 @@ An item subscribes only to what its own style needs:
 | --- | --- |
 | the token registry's `tokensChanged` | always — a theme switch or design reload |
 | the registry's `vocabularyChanged` | always — forces a **recompile**, not just a re-apply |
-| the window's `widthChanged` | the style uses any breakpoint variant |
+| the window's `widthChanged` | the style uses any viewport variant |
+| a container ancestor's size/state | the style uses a container variant |
+| an ancestor group's state | the style uses a group variant |
 | the parent's `widthChanged` / `heightChanged` | the style uses `w-full` / `h-full` |
 | the item's `parentChanged` | the style uses `m-*` (margins re-route) or `w-full`/`h-full` |
 | the item's `activeFocusChanged` | the style uses `focus:` |
@@ -78,7 +83,7 @@ initial property assignments regardless of declaration order.
 
 One pass over a compiled style:
 
-1. reads the current state bits and breakpoint tier;
+1. reads current state bits and viewport/container conditions;
 2. walks the rules, discarding those whose tier or state does not match;
 3. resolves each survivor's token name to a value against the active theme;
 4. ranks by specificity into a small hash keyed by property path;
@@ -98,10 +103,10 @@ dominant cost. That is the first thing to fix if profiling ever points here.
 
 ### 1. Breakpoint variants during a drag-resize
 
-Every item whose style uses `sm:`–`xl:` connects to its window's
+Every item whose style uses a viewport variant connects to its window's
 `widthChanged`. During a drag-resize that fires continuously, so every such item
-schedules an apply on every frame — even though the tier itself changes at most
-four times across the whole drag, and every one of those applies writes nothing.
+schedules an apply on every frame — even though its matching thresholds change
+only a handful of times across the whole drag, and most applies write nothing.
 
 Coalescing keeps it to one pass per item per frame, not one per pixel. Still, on
 a screen with hundreds of breakpoint-using items, this is the one pattern that
@@ -143,7 +148,7 @@ so `transition-all` on a static item costs nothing.
 ## Startup
 
 Loading the token registry seeds every scale — 250-odd palette colours plus the
-other nine scales — once per process. A design file load resets and re-seeds
+other token families — once per process. A design file load resets and re-seeds
 them all, which is why the reset is a full rebuild rather than a diff: under
 `loom dev` this happens on a debounce per save, and correctness there is worth
 more than the microseconds.

@@ -17,12 +17,18 @@ Rectangle {
 | `md:` | 768 px |
 | `lg:` | 1024 px |
 | `xl:` | 1280 px |
+| `2xl:` | 1536 px |
 
-Because the prefixes are min-width and cumulative, an item at 1400 px matches
-`sm:`, `md:`, `lg:` **and** `xl:` — so write the base case unprefixed and layer
-overrides upward, exactly as in Tailwind. There is no max-width variant.
+Because the prefixes are min-width and cumulative, an item at 1600 px matches
+`sm:`, `md:`, `lg:`, `xl:`, **and** `2xl:` — so write the base case unprefixed and layer
+overrides upward, exactly as in Tailwind.
 
-## What drives the tier
+Every named breakpoint also has `max-{name}:`, whose upper bound is one pixel
+below the threshold. Typed arbitrary viewport queries use `min-[900]:` and
+`max-[1199]:`. Names and thresholds come from the live design registry, so a
+custom `tablet` token immediately enables `tablet:` and `max-tablet:`.
+
+## What drives viewport matching
 
 **The width of the window the item lives in** — not the screen, not the parent
 item, not the application. Specifically:
@@ -38,21 +44,27 @@ That last point is why there is deliberately **no global "current breakpoint"
 property**. A singleton value would be wrong in any application with more than
 one window, and quietly wrong at that.
 
-For sizes that should track the *parent* rather than the window, use `w-full` /
-`h-full`, which copy the parent's dimensions and keep copying them.
+For component-local responsiveness, mark an ancestor and use a container query:
 
-## How the tier is computed
+```qml
+Item {
+    Lo.container: true
+    Lo.containerName: "card"
+    Rectangle { Lo.style: "p-2 @md/card:p-6 @max-sm/card:text-sm" }
+}
+```
 
-Loom walks the four thresholds in order and stops at the first one the window
-does not meet. The resulting tier is the number of thresholds passed: 0 for a
-window narrower than `sm`, 4 for one at least as wide as `xl`.
+`@md:` and `@max-md:` use the `tokens.containers` scale; `@min-[500]:` and
+`@max-[799]:` are the typed arbitrary forms. Loom searches the nearest matching
+`Lo.container` ancestor and observes only that item's width.
 
-Stopping at the first failure matters when a design token file has moved the
-thresholds. If they are not strictly widening — say `md` is set below `sm` —
-continuing the walk would let the narrower tier promote past a breakpoint whose
-own threshold is unmet. Loom stops instead, and
-[`loom lint`](../tooling/cli.md) warns at config load that the narrower tier
-will shadow the wider one.
+## How matching is computed
+
+Each rule stores exact minimum and maximum pixel bounds, so dynamic names,
+max-width queries, and arbitrary ranges do not depend on a fixed tier count.
+
+The conventional `sm` through `2xl` names are expected to widen in that order;
+the loader warns when an override breaks that convention.
 
 ## Combining with state variants
 
@@ -75,31 +87,33 @@ Lo.style: "bg-white hover:bg-black md:hover:bg-blue-500"
 
 ## Changing the thresholds
 
-A [design token file](configuration.md) can move any of the four:
+A [design token file](configuration.md) can move or add thresholds:
 
 ```json
-{ "breakpoints": { "sm": 480, "md": 720, "lg": 960, "xl": 1200 } }
+{ "schemaVersion": 2, "tokens": { "breakpoints": {
+  "sm": 480, "md": 720, "lg": 960, "xl": 1200, "wide": 1680
+} } }
 ```
 
 Two rules the loader enforces:
 
 - a threshold must be **greater than zero** — one at or below zero is met by
-  every window, which makes the tier meaningless rather than merely unusual, and
+  every window, which makes the query meaningless rather than merely unusual, and
   is rejected;
-- thresholds should be **strictly widening**. A tier no wider than the one
-  before it warns, because its classes can never be the widest match and will
-  appear to do nothing.
+- thresholds should be **strictly widening**. A threshold no wider than the one
+  before it warns, because its classes can never be the narrowest matching
+  min-width condition and will appear to do nothing.
 
-The four tiers are structural: they map to the four prefixes, so a config can
-move them but cannot add a fifth or rename one.
+Names are not structural; adding `wide` above creates the `wide:` and
+`max-wide:` variants.
 
-The thresholds are also readable as `Loom.breakpoint.sm` … `Loom.breakpoint.xl`
+The built-in thresholds are also readable as typed `Loom.breakpoint` properties
 for layout logic that needs the number rather than a variant.
 
 ## Testing responsive behaviour
 
-Under `loom dev`, resize the window — the tier is recomputed on every width
-change and re-applies immediately, with no reload.
+Under `loom dev`, resize the window — conditions are recomputed on every width
+change and styles re-apply immediately, with no reload.
 
 In a test, drive a real `QQuickWindow`:
 

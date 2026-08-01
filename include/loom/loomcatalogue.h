@@ -26,8 +26,8 @@ struct StyleUtilityFamily {
 
 struct StyleCatalogue {
     QString version;      // loom version the catalogue was produced by
-    QString theme;        // active theme; semantic color names come from it
-    QStringList variants; // `sm` … `xl`, `hover` … `dark`
+    QString theme;        // active theme at the time the catalogue was produced
+    QStringList variants; // viewport/container, interaction, control, environment, group
     QStringList classes;  // every enumerable class, without variant prefixes
     QList<StyleUtilityFamily> families;
     // Prefixes that additionally accept a bare number, which cannot be

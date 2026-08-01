@@ -9,6 +9,8 @@
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QVersionNumber>
+#include <algorithm>
+#include <cmath>
 
 QString identifierFromName(QString name)
 {
@@ -39,6 +41,297 @@ QJsonArray stringArray(const QStringList &values)
     for (const auto &value : values)
         array.append(value);
     return array;
+}
+
+bool shapeError(QString *error, const QString &path, const QString &message)
+{
+    if (error)
+        *error = QStringLiteral("Invalid loom.json: %1 %2").arg(path, message);
+    return false;
+}
+
+bool hasOnlyKeys(
+    const QJsonObject &object, const QStringList &known, const QString &path,
+    QString *error)
+{
+    for (auto it = object.constBegin(); it != object.constEnd(); ++it) {
+        if (!known.contains(it.key()))
+            return shapeError(
+                error, path + QLatin1Char('.') + it.key(),
+                QStringLiteral("is not supported by schema v2"));
+    }
+    return true;
+}
+
+bool isStringArray(const QJsonValue &value, bool allowEmpty)
+{
+    if (!value.isArray() || (!allowEmpty && value.toArray().isEmpty()))
+        return false;
+    const QJsonArray values = value.toArray();
+    return std::all_of(values.cbegin(), values.cend(), [](const QJsonValue &entry) {
+        return entry.isString() && !entry.toString().isEmpty();
+    });
+}
+
+bool validatePlatformOptions(
+    const QString &platform, const QJsonValue &value, const QString &path, QString *error)
+{
+    if (!value.isObject())
+        return shapeError(error, path, QStringLiteral("must be an object"));
+    const QJsonObject options = value.toObject();
+    QStringList keys;
+    if (platform == QLatin1String("desktop")) {
+        keys = {};
+    } else if (platform == QLatin1String("android")) {
+        keys = {QStringLiteral("qtPath"), QStringLiteral("hostQtPath"),
+                QStringLiteral("abi"),    QStringLiteral("abis"),
+                QStringLiteral("api"),    QStringLiteral("device")};
+    } else if (platform == QLatin1String("ios")) {
+        keys = {QStringLiteral("qtPath"), QStringLiteral("hostQtPath"),
+                QStringLiteral("sdk"),    QStringLiteral("destination"),
+                QStringLiteral("team"),   QStringLiteral("device"),
+                QStringLiteral("host")};
+    } else if (platform == QLatin1String("embedded")) {
+        keys = {QStringLiteral("profile")};
+    } else {
+        return shapeError(error, path, QStringLiteral("names an unknown platform"));
+    }
+    if (!hasOnlyKeys(options, keys, path, error))
+        return false;
+
+    static const QStringList androidAbis{
+        QStringLiteral("arm64-v8a"), QStringLiteral("armeabi-v7a"),
+        QStringLiteral("x86_64")};
+    for (auto it = options.constBegin(); it != options.constEnd(); ++it) {
+        if (it.key() == QLatin1String("api")) {
+            const double api = it->toDouble(-1);
+            if (!it->isDouble() || std::floor(api) != api || api < 23)
+                return shapeError(
+                    error, path + QStringLiteral(".api"),
+                    QStringLiteral("must be an integer of at least 23"));
+        } else if (it.key() == QLatin1String("abis")) {
+            const QJsonArray abis = it->toArray();
+            if (!isStringArray(*it, true)
+                || !std::all_of(abis.cbegin(), abis.cend(), [](const auto &abi) {
+                       return androidAbis.contains(abi.toString());
+                   }))
+                return shapeError(
+                    error, path + QStringLiteral(".abis"),
+                    QStringLiteral("contains an unsupported Android ABI"));
+        } else if (it.key() == QLatin1String("abi")) {
+            if (!it->isString() || !androidAbis.contains(it->toString()))
+                return shapeError(
+                    error, path + QStringLiteral(".abi"),
+                    QStringLiteral("must name a supported Android ABI"));
+        } else if (it.key() == QLatin1String("sdk")) {
+            if (!it->isString()
+                || (it->toString() != QLatin1String("iphonesimulator")
+                    && it->toString() != QLatin1String("iphoneos")))
+                return shapeError(
+                    error, path + QStringLiteral(".sdk"),
+                    QStringLiteral("must be iphonesimulator or iphoneos"));
+        } else if (it.key() == QLatin1String("destination")) {
+            if (!it->isString()
+                || (it->toString() != QLatin1String("simulator")
+                    && it->toString() != QLatin1String("device")))
+                return shapeError(
+                    error, path + QStringLiteral(".destination"),
+                    QStringLiteral("must be simulator or device"));
+        } else if (!it->isString()) {
+            return shapeError(
+                error, path + QLatin1Char('.') + it.key(),
+                QStringLiteral("must be a string"));
+        } else if (
+            (it.key() == QLatin1String("qtPath")
+             || it.key() == QLatin1String("hostQtPath")
+             || it.key() == QLatin1String("profile"))
+            && it->toString().isEmpty()) {
+            return shapeError(
+                error, path + QLatin1Char('.') + it.key(),
+                QStringLiteral("must not be empty"));
+        }
+    }
+    return true;
+}
+
+bool validateManifestShape(const QJsonObject &root, QString *error)
+{
+    if (!hasOnlyKeys(
+            root,
+            {QStringLiteral("$schema"), QStringLiteral("schemaVersion"),
+             QStringLiteral("project"), QStringLiteral("design"), QStringLiteral("qt"),
+             QStringLiteral("embeddedProfiles"), QStringLiteral("applications")},
+            QStringLiteral("root"), error))
+        return false;
+    const QJsonValue schemaVersion = root.value(QLatin1String("schemaVersion"));
+    if (!schemaVersion.isDouble() || schemaVersion.toDouble() != 2.0)
+        return shapeError(
+            error, QStringLiteral("schemaVersion"), QStringLiteral("must be 2"));
+    if ((root.contains(QLatin1String("$schema"))
+         && !root.value(QLatin1String("$schema")).isString())
+        || (root.contains(QLatin1String("design"))
+            && (!root.value(QLatin1String("design")).isString()
+                || root.value(QLatin1String("design")).toString().isEmpty())))
+        return shapeError(
+            error, QStringLiteral("root"),
+            QStringLiteral("has a non-string $schema or design field"));
+    if (!root.value(QLatin1String("project")).isObject()
+        || !root.value(QLatin1String("qt")).isObject()
+        || !root.value(QLatin1String("applications")).isObject())
+        return shapeError(
+            error, QStringLiteral("root"),
+            QStringLiteral("requires project, qt, and applications objects"));
+
+    const QJsonObject project = root.value(QLatin1String("project")).toObject();
+    if (!hasOnlyKeys(
+            project, {QStringLiteral("name"), QStringLiteral("defaultApplication")},
+            QStringLiteral("project"), error))
+        return false;
+    if (!project.value(QLatin1String("name")).isString())
+        return shapeError(
+            error, QStringLiteral("project.name"), QStringLiteral("must be a string"));
+    if (project.contains(QLatin1String("defaultApplication"))
+        && (!project.value(QLatin1String("defaultApplication")).isString()
+            || project.value(QLatin1String("defaultApplication")).toString().isEmpty()))
+        return shapeError(
+            error, QStringLiteral("project.defaultApplication"),
+            QStringLiteral("must be a string"));
+
+    const QJsonObject qt = root.value(QLatin1String("qt")).toObject();
+    if (!hasOnlyKeys(qt, {QStringLiteral("version")}, QStringLiteral("qt"), error))
+        return false;
+    if (!qt.value(QLatin1String("version")).isString())
+        return shapeError(
+            error, QStringLiteral("qt.version"), QStringLiteral("must be a string"));
+
+    const QJsonObject applications = root.value(QLatin1String("applications")).toObject();
+    if (applications.isEmpty())
+        return shapeError(
+            error, QStringLiteral("applications"),
+            QStringLiteral("must contain at least one application"));
+    static const QStringList applicationKeys{
+        QStringLiteral("name"),       QStringLiteral("target"),
+        QStringLiteral("id"),         QStringLiteral("uri"),
+        QStringLiteral("entry"),      QStringLiteral("qmlRoots"),
+        QStringLiteral("assetRoots"), QStringLiteral("platforms")};
+    for (auto it = applications.constBegin(); it != applications.constEnd(); ++it) {
+        const QString path = QStringLiteral("applications.") + it.key();
+        if (!it->isObject())
+            return shapeError(error, path, QStringLiteral("must be an object"));
+        const QJsonObject application = it->toObject();
+        if (!hasOnlyKeys(application, applicationKeys, path, error))
+            return false;
+        for (const auto &field : {"name", "target", "id", "uri", "entry"}) {
+            const QJsonValue value = application.value(QLatin1String(field));
+            if (!value.isString() || value.toString().isEmpty())
+                return shapeError(
+                    error, path + QLatin1Char('.') + QLatin1String(field),
+                    QStringLiteral("must be a non-empty string"));
+        }
+        if (application.value(QLatin1String("target")).toString() != it.key())
+            return shapeError(
+                error, path + QStringLiteral(".target"),
+                QStringLiteral("must match its applications map key"));
+        if (!isStringArray(application.value(QLatin1String("qmlRoots")), false)
+            || !isStringArray(application.value(QLatin1String("assetRoots")), true))
+            return shapeError(
+                error, path,
+                QStringLiteral("requires string-array qmlRoots and assetRoots"));
+        if (!application.value(QLatin1String("platforms")).isObject())
+            return shapeError(
+                error, path + QStringLiteral(".platforms"),
+                QStringLiteral("must be an object in schema v2"));
+        const QJsonObject platforms =
+            application.value(QLatin1String("platforms")).toObject();
+        if (platforms.isEmpty())
+            return shapeError(
+                error, path + QStringLiteral(".platforms"),
+                QStringLiteral("must enable at least one platform"));
+        for (auto platform = platforms.constBegin(); platform != platforms.constEnd();
+             ++platform) {
+            if (!validatePlatformOptions(
+                    platform.key(), platform.value(),
+                    path + QStringLiteral(".platforms.") + platform.key(), error))
+                return false;
+        }
+    }
+
+    if (root.contains(QLatin1String("embeddedProfiles"))) {
+        if (!root.value(QLatin1String("embeddedProfiles")).isObject())
+            return shapeError(
+                error, QStringLiteral("embeddedProfiles"),
+                QStringLiteral("must be an object"));
+        const QJsonObject profiles =
+            root.value(QLatin1String("embeddedProfiles")).toObject();
+        static const QStringList profileKeys{
+            QStringLiteral("toolchainFile"), QStringLiteral("hostQtPath"),
+            QStringLiteral("sysroot"),       QStringLiteral("host"),
+            QStringLiteral("port"),          QStringLiteral("user"),
+            QStringLiteral("remoteDir"),     QStringLiteral("environment"),
+            QStringLiteral("launchCommand")};
+        for (auto it = profiles.constBegin(); it != profiles.constEnd(); ++it) {
+            const QString path = QStringLiteral("embeddedProfiles.") + it.key();
+            if (it.key().isEmpty() || !it->isObject())
+                return shapeError(error, path, QStringLiteral("is invalid"));
+            const QJsonObject profile = it->toObject();
+            if (!hasOnlyKeys(profile, profileKeys, path, error))
+                return false;
+            for (const auto &field : {"toolchainFile", "sysroot", "host", "remoteDir"}) {
+                if (!profile.value(QLatin1String(field)).isString()
+                    || profile.value(QLatin1String(field)).toString().isEmpty())
+                    return shapeError(
+                        error, path + QLatin1Char('.') + QLatin1String(field),
+                        QStringLiteral("must be a non-empty string"));
+            }
+            if (profile.contains(QLatin1String("hostQtPath"))
+                && (!profile.value(QLatin1String("hostQtPath")).isString()
+                    || profile.value(QLatin1String("hostQtPath")).toString().isEmpty()))
+                return shapeError(
+                    error, path + QStringLiteral(".hostQtPath"),
+                    QStringLiteral("must be a non-empty string"));
+            for (const auto &field : {"user", "launchCommand"}) {
+                if (profile.contains(QLatin1String(field))
+                    && !profile.value(QLatin1String(field)).isString())
+                    return shapeError(
+                        error, path + QLatin1Char('.') + QLatin1String(field),
+                        QStringLiteral("must be a string"));
+            }
+            if (profile.contains(QLatin1String("port"))) {
+                const QJsonValue port = profile.value(QLatin1String("port"));
+                const double number = port.toDouble(-1);
+                if (!port.isDouble() || std::floor(number) != number || number < 1
+                    || number > 65535)
+                    return shapeError(
+                        error, path + QStringLiteral(".port"),
+                        QStringLiteral("must be an integer from 1 through 65535"));
+            }
+            if (profile.contains(QLatin1String("environment"))) {
+                const QJsonValue environment =
+                    profile.value(QLatin1String("environment"));
+                if (!environment.isObject())
+                    return shapeError(
+                        error, path + QStringLiteral(".environment"),
+                        QStringLiteral("must be an object of strings"));
+                const QJsonObject variables = environment.toObject();
+                static const QRegularExpression variableName(
+                    QStringLiteral("^[A-Za-z_][A-Za-z0-9_]*$"));
+                for (auto variable = variables.constBegin();
+                     variable != variables.constEnd(); ++variable) {
+                    if (!variableName.match(variable.key()).hasMatch())
+                        return shapeError(
+                            error,
+                            path + QStringLiteral(".environment.") + variable.key(),
+                            QStringLiteral("is not a valid environment variable name"));
+                    if (!variable->isString())
+                        return shapeError(
+                            error,
+                            path + QStringLiteral(".environment.") + variable.key(),
+                            QStringLiteral("must be a string"));
+                }
+            }
+        }
+    }
+    return true;
 }
 
 } // namespace
@@ -80,6 +373,7 @@ ProjectManifest::createDefault(const QString &projectName, const QString &organi
                     QStringLiteral("ios"),
                     QStringLiteral("embedded"),
                 },
+            .platformOptions = {},
         });
     return manifest;
 }
@@ -117,11 +411,14 @@ bool ProjectManifest::load(
     }
 
     const auto root = document.object();
-    if (root.value(QStringLiteral("schemaVersion")).toInt() != 1) {
+    if (root.value(QStringLiteral("schemaVersion")).toInt() != 2) {
         if (error)
-            *error = QStringLiteral("Unsupported loom.json schemaVersion");
+            *error = QStringLiteral(
+                "Unsupported loom.json schemaVersion; run 'loom migrate --to 2 --apply'");
         return false;
     }
+    if (!validateManifestShape(root, error))
+        return false;
 
     ProjectManifest decoded;
     decoded.m_projectName = root.value(QStringLiteral("project"))
@@ -137,6 +434,8 @@ bool ProjectManifest::load(
                                        .value(QStringLiteral("defaultApplication"))
                                        .toString();
     decoded.m_design = root.value(QStringLiteral("design")).toString();
+    decoded.m_embeddedProfiles =
+        root.value(QStringLiteral("embeddedProfiles")).toObject();
 
     const auto applications = root.value(QStringLiteral("applications")).toObject();
     for (auto iterator = applications.begin(); iterator != applications.end();
@@ -152,7 +451,11 @@ bool ProjectManifest::load(
                 .qmlRoots = readStringArray(object.value(QStringLiteral("qmlRoots"))),
                 .assetRoots = readStringArray(object.value(QStringLiteral("assetRoots"))),
                 .platforms = readStringArray(object.value(QStringLiteral("platforms"))),
+                .platformOptions = object.value(QStringLiteral("platforms")).toObject(),
             });
+        if (!decoded.m_applications.last().platformOptions.isEmpty())
+            decoded.m_applications.last().platforms =
+                decoded.m_applications.last().platformOptions.keys();
     }
 
     if (!decoded.validate(error))
@@ -219,13 +522,20 @@ bool ProjectManifest::validate(QString *error) const
     const QRegularExpression uriPattern(
         QStringLiteral("^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+$"));
     for (const auto &application : m_applications) {
-        if (application.target.isEmpty() || application.entry.isEmpty()
-            || application.qmlRoots.isEmpty()
+        if (application.name.trimmed().isEmpty() || application.target.isEmpty()
+            || application.entry.isEmpty() || application.qmlRoots.isEmpty()
+            || application.platforms.isEmpty()
+            || std::any_of(
+                application.qmlRoots.cbegin(), application.qmlRoots.cend(),
+                [](const QString &path) { return path.isEmpty(); })
+            || std::any_of(
+                application.assetRoots.cbegin(), application.assetRoots.cend(),
+                [](const QString &path) { return path.isEmpty(); })
             || !uriPattern.match(application.uri).hasMatch()) {
             if (error) {
                 *error = QStringLiteral(
-                             "Application '%1' requires target, entry, qmlRoots, and a "
-                             "valid dotted URI")
+                             "Application '%1' requires name, target, entry, non-empty "
+                             "qmlRoots/platforms, and a valid dotted URI")
                              .arg(application.name);
             }
             return false;
@@ -282,6 +592,11 @@ QJsonObject ProjectManifest::toJson() const
 {
     QJsonObject applications;
     for (const auto &application : m_applications) {
+        QJsonObject platforms = application.platformOptions;
+        if (platforms.isEmpty()) {
+            for (const QString &name : application.platforms)
+                platforms.insert(name, QJsonObject{});
+        }
         applications.insert(
             application.target,
             QJsonObject{
@@ -292,15 +607,15 @@ QJsonObject ProjectManifest::toJson() const
                 {QStringLiteral("entry"), application.entry},
                 {QStringLiteral("qmlRoots"), stringArray(application.qmlRoots)},
                 {QStringLiteral("assetRoots"), stringArray(application.assetRoots)},
-                {QStringLiteral("platforms"), stringArray(application.platforms)},
+                {QStringLiteral("platforms"), platforms},
             });
     }
     QJsonObject root{
         {QStringLiteral("$schema"),
          QStringLiteral(
-             "https://raw.githubusercontent.com/Arcadyi/loom/main/schemas/"
-             "project-v1.schema.json")},
-        {QStringLiteral("schemaVersion"), 1},
+             "https://raw.githubusercontent.com/Arcadyi/loom/master/schemas/"
+             "project-v2.schema.json")},
+        {QStringLiteral("schemaVersion"), 2},
         {QStringLiteral("project"), projectObject()},
         {QStringLiteral("qt"),
          QJsonObject{
@@ -313,6 +628,8 @@ QJsonObject ProjectManifest::toJson() const
     // string is not a usable path.
     if (!m_design.isEmpty())
         root.insert(QStringLiteral("design"), m_design);
+    if (!m_embeddedProfiles.isEmpty())
+        root.insert(QStringLiteral("embeddedProfiles"), m_embeddedProfiles);
     return root;
 }
 
@@ -344,6 +661,11 @@ QString ProjectManifest::projectName() const
 QString ProjectManifest::qtVersion() const
 {
     return m_qtVersion;
+}
+
+QJsonObject ProjectManifest::embeddedProfiles() const
+{
+    return m_embeddedProfiles;
 }
 
 QList<ApplicationDefinition> ProjectManifest::applications() const

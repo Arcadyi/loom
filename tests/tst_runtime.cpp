@@ -223,7 +223,9 @@ private slots:
         QString error;
         QVERIFY2(
             controller.applyDesign(
-                encodedDesign(R"({"colors": {"brand": "#7c5cff"}})"), &error),
+                encodedDesign(
+                    R"({"schemaVersion": 2, "tokens": {"colors": {"brand": "#7c5cff"}}})"),
+                &error),
             qPrintable(error));
         QCoreApplication::processEvents();
 
@@ -241,8 +243,8 @@ private slots:
         QVERIFY2(
             controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")),
             qPrintable(controller.lastError()));
-        QVERIFY(
-            controller.applyDesign(encodedDesign(R"({"colors": {"brand": "#7c5cff"}})")));
+        QVERIFY(controller.applyDesign(encodedDesign(
+            R"({"schemaVersion": 2, "tokens": {"colors": {"brand": "#7c5cff"}}})")));
         QObject *const sceneBefore = controller.rootObject();
 
         QString error;
@@ -286,7 +288,9 @@ private slots:
         QString error;
         QVERIFY2(
             controller.applyDesign(
-                encodedDesign(R"({"iconRoot": "assets/icons"})", designPath), &error),
+                encodedDesign(
+                    R"({"schemaVersion": 2, "iconRoot": "assets/icons"})", designPath),
+                &error),
             qPrintable(error));
 
         const QUrl expected = QUrl::fromLocalFile(

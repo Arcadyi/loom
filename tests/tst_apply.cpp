@@ -1,7 +1,9 @@
 #include <QtTest>
 
+#include <QJSValue>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QQmlListReference>
 #include <QQmlProperty>
 #include <QQuickItem>
 #include <QScopedPointer>
@@ -18,6 +20,15 @@ QQuickItem *createItem(QQmlComponent &component, const QByteArray &document)
     return qobject_cast<QQuickItem *>(object);
 }
 
+QObject *objectPointer(const QVariant &value)
+{
+    if (value.metaType() == QMetaType::fromType<QJSValue>())
+        return value.value<QJSValue>().toQObject();
+    if (!(value.metaType().flags() & QMetaType::IsPointer))
+        return nullptr;
+    return *static_cast<QObject *const *>(value.constData());
+}
+
 } // namespace
 
 class ApplyTests : public QObject {
@@ -27,6 +38,7 @@ private slots:
     void cleanup();
     void rectangleUtilities();
     void textUtilities();
+    void visibilityUtilitiesHaveDistinctSemantics();
     void styleWinsOverInitialAssignment();
     void unsupportedUtilityWarnsAndSkips();
     void removedClassRestoresOriginal();
@@ -51,6 +63,7 @@ private slots:
     void pinInsideALayoutWarns();
     void aspectRatioDerivesHeightFromWidth();
     void removedAnchorIsReleased();
+    void modernVisualUtilitiesApplyAndRestore();
 };
 
 void ApplyTests::cleanup()
@@ -67,7 +80,7 @@ void ApplyTests::rectangleUtilities()
         "import QtQuick\nimport Loom\n"
         "Rectangle {\n"
         "    Lo.style: \"bg-blue-500 rounded-lg opacity-50 w-64 h-8 border-2"
-        " border-slate-200 invisible\"\n"
+        " border-slate-200 hidden\"\n"
         "}\n"));
     QVERIFY2(item, qPrintable(component.errorString()));
 
@@ -92,7 +105,7 @@ void ApplyTests::textUtilities()
         "import QtQuick\nimport Loom\n"
         "Text {\n"
         "    text: \"styled\"\n"
-        "    Lo.style: \"text-red-600 text-2xl font-bold italic underline"
+        "    Lo.style: \"text-red-600 text-2xl font-bold font-sans italic underline"
         " tracking-wide\"\n"
         "}\n"));
     QVERIFY2(item, qPrintable(component.errorString()));
@@ -102,12 +115,39 @@ void ApplyTests::textUtilities()
     QCOMPARE(item->property("lineHeight").toReal(), 32.0);
     QCOMPARE(item->property("lineHeightMode").toInt(), 1);
     QCOMPARE(QQmlProperty(item.data(), "font.weight").read().toInt(), 700);
+    QCOMPARE(
+        QQmlProperty(item.data(), "font.family").read().toString(),
+        QStringLiteral("Sans Serif"));
     QCOMPARE(QQmlProperty(item.data(), "font.italic").read().toBool(), true);
     QCOMPARE(QQmlProperty(item.data(), "font.underline").read().toBool(), true);
     // tracking-wide is 0.025em against the applied 24px size; QFont stores
     // letter spacing in 1/64 steps, hence the tolerance.
     const qreal spacing = QQmlProperty(item.data(), "font.letterSpacing").read().toReal();
     QVERIFY2(qAbs(spacing - 0.6) < 0.02, qPrintable(QString::number(spacing)));
+}
+
+void ApplyTests::visibilityUtilitiesHaveDistinctSemantics()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(
+        "import QtQuick\nimport Loom\n"
+        "Item {\n"
+        "    property alias hiddenItem: hiddenItem\n"
+        "    property alias invisibleItem: invisibleItem\n"
+        "    Rectangle { id: hiddenItem; Lo.style: \"hidden\" }\n"
+        "    Rectangle { id: invisibleItem; Lo.style: \"invisible\" }\n"
+        "}\n",
+        QUrl());
+    QScopedPointer<QObject> root(component.create());
+    QVERIFY2(root, qPrintable(component.errorString()));
+    auto *hidden = root->property("hiddenItem").value<QQuickItem *>();
+    auto *invisible = root->property("invisibleItem").value<QQuickItem *>();
+    QVERIFY(hidden);
+    QVERIFY(invisible);
+    QTRY_VERIFY(!hidden->isVisible());
+    QTRY_COMPARE(invisible->opacity(), 0.0);
+    QVERIFY(invisible->isVisible());
 }
 
 // Regression: tracking is em-relative and used to resolve against whatever
@@ -553,6 +593,62 @@ void ApplyTests::alphaModifierScalesResolvedColour()
     // against the pre-switch colour and prove nothing.
     QTRY_VERIFY(surface->property("color").value<QColor>().rgb() != light.rgb());
     QCOMPARE(alphaPercent(surface.data()), 50);
+}
+
+void ApplyTests::modernVisualUtilitiesApplyAndRestore()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\n"
+        "Rectangle {\n"
+        "    width: 100; height: 80\n"
+        "    Lo.effects: true\n"
+        "    Lo.style: \"overflow-hidden z-7 rotate-12 scale-110 "
+        "translate-x-[5px] translate-y-[7px] ring-2 ring-blue-500 "
+        "bg-linear-to-r from-red-500 to-blue-500 brightness-125\"\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QTRY_COMPARE(item->z(), 7.0);
+    QCOMPARE(item->clip(), true);
+    QCOMPARE(item->rotation(), 12.0);
+    QCOMPARE(item->scale(), 1.1);
+
+    QQmlListReference transforms(item.data(), "transform");
+    QTRY_COMPARE(transforms.count(), 1);
+    QObject *translate = transforms.at(0);
+    QVERIFY(translate);
+    QCOMPARE(translate->property("x").toReal(), 5.0);
+    QCOMPARE(translate->property("y").toReal(), 7.0);
+
+    QTRY_COMPARE(item->childItems().size(), 1);
+    QQuickItem *ring = item->childItems().constFirst();
+    QCOMPARE(QQmlProperty(ring, "border.width").read().toReal(), 2.0);
+    QCOMPARE(
+        QQmlProperty(ring, "border.color").read().value<QColor>(),
+        QColor(0x3b, 0x82, 0xf6));
+
+    // These are typed QML pointer properties (QQuickGradient* and
+    // QQmlComponent*). QVariant does not down-convert either to QObject*, so
+    // inspect the typed pointer payload without depending on private Qt Quick
+    // types.
+    QTRY_VERIFY(objectPointer(QQmlProperty(item.data(), "gradient").read()));
+    QTRY_VERIFY(QQmlProperty(item.data(), "layer.enabled").read().toBool());
+    QVERIFY(objectPointer(QQmlProperty(item.data(), "layer.effect").read()));
+
+    QObject *attached = qmlAttachedPropertiesObject<Lo>(item.data());
+    QVERIFY(attached);
+    attached->setProperty("style", QString());
+    QTRY_COMPARE(item->z(), 0.0);
+    QCOMPARE(item->clip(), false);
+    QCOMPARE(item->rotation(), 0.0);
+    QCOMPARE(item->scale(), 1.0);
+    QTRY_COMPARE(transforms.count(), 0);
+    QTRY_COMPARE(item->childItems().size(), 0);
+    QTRY_VERIFY(!objectPointer(QQmlProperty(item.data(), "gradient").read()));
+    QTRY_VERIFY(!QQmlProperty(item.data(), "layer.enabled").read().toBool());
 }
 
 // Outside a QtQuick.Layouts layout the layout family writes anchors, and the

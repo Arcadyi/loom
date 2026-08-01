@@ -1,6 +1,10 @@
 #include "lspdocument.h"
 
 #include <algorithm>
+#include <private/qqmljsast_p.h>
+#include <private/qqmljsengine_p.h>
+#include <private/qqmljslexer_p.h>
+#include <private/qqmljsparser_p.h>
 
 namespace lsp {
 
@@ -39,7 +43,7 @@ bool bindingContinues(const QString &text, qsizetype currentEnd, qsizetype nextS
         || leading == QLatin1Char('?') || leading == QLatin1Char(':');
 }
 
-QVector<StyleLiteral> scanStyleLiterals(const QString &text)
+QVector<StyleLiteral> scanStyleLiteralsHeuristic(const QString &text)
 {
     QVector<StyleLiteral> literals;
     enum class State { Code, LineComment, BlockComment, String };
@@ -164,6 +168,100 @@ QVector<StyleLiteral> scanStyleLiterals(const QString &text)
         }
         i = expressionEnd;
     }
+    return literals;
+}
+
+void collectExpressionLiterals(
+    QQmlJS::AST::ExpressionNode *expression, QVector<StyleLiteral> *literals)
+{
+    using namespace QQmlJS::AST;
+    if (!expression)
+        return;
+    if (auto *literal = cast<StringLiteral *>(expression)) {
+        const auto location = literal->literalToken;
+        // The lexer location includes the quote characters. Keep source ranges
+        // rather than decoded string values so LSP edits remain exact even for
+        // escaped content.
+        if (location.length >= 2)
+            literals->append(
+                StyleLiteral{
+                    {qsizetype(location.offset + 1),
+                     qsizetype(location.offset + location.length - 1)}});
+        return;
+    }
+    if (auto *nested = cast<NestedExpression *>(expression)) {
+        collectExpressionLiterals(nested->expression, literals);
+        return;
+    }
+    if (auto *conditional = cast<ConditionalExpression *>(expression)) {
+        // The condition is deliberately excluded. A comparison such as
+        // `state === "active" ? "bg-accent" : "bg-surface"` contains three
+        // strings but only the latter two contribute style classes.
+        collectExpressionLiterals(conditional->ok, literals);
+        collectExpressionLiterals(conditional->ko, literals);
+        return;
+    }
+    if (auto *binary = cast<BinaryExpression *>(expression)) {
+        switch (QSOperator::Op(binary->op)) {
+        case QSOperator::Add:
+        case QSOperator::And:
+        case QSOperator::Or:
+        case QSOperator::Coalesce:
+            collectExpressionLiterals(binary->left, literals);
+            collectExpressionLiterals(binary->right, literals);
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+class StyleBindingVisitor final : public QQmlJS::AST::Visitor {
+public:
+    explicit StyleBindingVisitor(QVector<StyleLiteral> *literals)
+        : m_literals(literals)
+    {
+    }
+
+    void throwRecursionDepthError() override
+    {
+    }
+
+    bool visit(QQmlJS::AST::UiScriptBinding *binding) override
+    {
+        if (!binding->qualifiedId
+            || binding->qualifiedId->toString() != QLatin1String("Lo.style"))
+            return true;
+        if (auto *statement = QQmlJS::AST::cast<QQmlJS::AST::ExpressionStatement *>(
+                binding->statement)) {
+            collectExpressionLiterals(statement->expression, m_literals);
+        }
+        // We already walked the only expression shapes whose string values can
+        // flow into the binding result. A generic AST walk would reintroduce
+        // comparison strings and function arguments as false positives.
+        return false;
+    }
+
+private:
+    QVector<StyleLiteral> *m_literals = nullptr;
+};
+
+QVector<StyleLiteral> scanStyleLiterals(const QString &text)
+{
+    QQmlJS::Engine engine;
+    QQmlJS::Lexer lexer(&engine);
+    engine.setLexer(&lexer);
+    lexer.setCode(text, 1, true);
+    QQmlJS::Parser parser(&engine);
+    if (!parser.parse() || !parser.ast())
+        return scanStyleLiteralsHeuristic(text);
+
+    QVector<StyleLiteral> literals;
+    StyleBindingVisitor visitor(&literals);
+    parser.ast()->accept(&visitor);
+    std::sort(literals.begin(), literals.end(), [](const auto &left, const auto &right) {
+        return left.content.start < right.content.start;
+    });
     return literals;
 }
 

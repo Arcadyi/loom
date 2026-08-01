@@ -103,6 +103,13 @@ Names: `xs sm base lg xl x2l x3l x4l`.
 **Tracking** is in em, for `font.letterSpacing` after multiplying by the pixel
 size: `trackingTighter trackingTight trackingNormal trackingWide trackingWider`.
 
+### `Loom.font` → `QStringList`
+
+Font-family fallback lists: `sans`, `serif`, and `mono`. Design-defined families
+are available through `Loom.font.value("brand")`; utility strings use
+`font-brand`. Qt Quick's `font.family` accepts one family, so the utility selects
+the first available name while the typed token preserves the full fallback list.
+
 ### `Loom.radius` → `qreal`
 
 `none sm base md lg xl x2l x3l full`.
@@ -157,7 +164,7 @@ The four curves' control points are listed in
 
 ### `Loom.breakpoint` → `int`
 
-`sm md lg xl`, the pixel thresholds behind the responsive variants. Exposed for
+`sm md lg xl x2l`, the pixel thresholds behind the responsive variants. Exposed for
 layout logic that needs the number:
 
 ```qml
@@ -166,20 +173,48 @@ GridLayout {
 }
 ```
 
-For per-item responsiveness prefer the [`sm:`–`xl:`
+For per-item responsiveness prefer the [`sm:`–`2xl:`
 variants](responsive.md), which track the item's own window.
 
-## Runtime lookup — `value()`
+Config-defined breakpoint names do not acquire generated QML properties; query
+them with `Loom.breakpoint.value("compact")`. Container thresholds are consumed
+by `@compact:` and `@compact/name:` variants and have no typed singleton group.
 
-Every group has a `value(key)` method taking the *vocabulary* name, for keys
+## Theme and accessibility state
+
+The singleton also exposes reactive application state:
+
+```qml
+Loom.themeMode = Loom.SystemTheme
+Loom.motionPreference = Loom.SystemMotion
+
+Loom.theme         // resolved theme name
+Loom.dark          // whether that theme is dark
+Loom.highContrast  // system accessibility preference
+Loom.reduceMotion  // resolved system/override motion preference
+```
+
+Explicit alternatives are `Loom.ExplicitTheme`, `Loom.ReduceMotion`, and
+`Loom.FullMotion`. See [theming.md](theming.md) for system theme mappings and
+motion variants.
+
+## Runtime lookup for design-defined keys
+
+Token groups have a `value(key)` method taking the *vocabulary* name, for keys
 that have no generated property — anything a design token file added:
 
 ```qml
 Rectangle {
     color: Loom.color.value("brand-500")
     width: Loom.space.value("18")
+    radius: Loom.radius.value("card")
 }
 ```
+
+The same lookup is available on `font`, `shadow`, `opacity`, `duration`,
+`easing`, and `breakpoint`. Because `Loom.text` combines three scales,
+`value(key)` reads a text size while `weight(key)` and `tracking(key)` read the
+other two.
 
 Two things to know:
 

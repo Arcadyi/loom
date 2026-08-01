@@ -21,6 +21,21 @@ QString theme()
     return LoomTokenRegistry::instance()->theme();
 }
 
+void setThemeMode(ThemeMode mode)
+{
+    LoomTokenRegistry::instance()->setThemeMode(
+        mode == ThemeMode::System ? LoomTokenRegistry::ThemeMode::System
+                                  : LoomTokenRegistry::ThemeMode::Explicit);
+}
+
+ThemeMode themeMode()
+{
+    return LoomTokenRegistry::instance()->themeMode()
+            == LoomTokenRegistry::ThemeMode::System
+        ? ThemeMode::System
+        : ThemeMode::Explicit;
+}
+
 bool loadConfig(const QString &filePath)
 {
     return loomLoadConfigFile(filePath);

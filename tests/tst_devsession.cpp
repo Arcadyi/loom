@@ -29,6 +29,7 @@ private slots:
                         .qmlRoots = {QStringLiteral("qml")},
                         .assetRoots = {},
                         .platforms = {QStringLiteral("desktop")},
+                        .platformOptions = {},
                     },
                 .designPath = {},
                 .buildDirectory = project.filePath(QStringLiteral("build")),
@@ -37,6 +38,9 @@ private slots:
                 .generator = QStringLiteral("Ninja"),
                 .executable = project.filePath(QStringLiteral("does-not-exist")),
                 .applicationArguments = {},
+                .platform = QStringLiteral("desktop"),
+                .platformOptions = {},
+                .embeddedProfile = {},
             });
 
         QString error;

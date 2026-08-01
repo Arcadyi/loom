@@ -143,6 +143,11 @@ void DevServer::setHeartbeat(const int intervalMs, const int timeoutMs)
     m_heartbeatTimeoutMs = timeoutMs;
 }
 
+void DevServer::setRemoteAccess(bool enabled)
+{
+    m_remoteAccess = enabled;
+}
+
 bool DevServer::start(QString *error)
 {
     rebuildBundle();
@@ -150,14 +155,18 @@ bool DevServer::start(QString *error)
     // Anything beyond this waits in the kernel backlog rather than becoming a
     // client table entry we then have to time out.
     m_server->setMaxPendingConnections(MaximumClients);
-    if (!m_server->listen(QHostAddress::LocalHost, 0)) {
+    const QHostAddress address =
+        m_remoteAccess ? QHostAddress::AnyIPv4 : QHostAddress::LocalHost;
+    if (!m_server->listen(address, 0)) {
         if (error)
             *error = m_server->errorString();
         return false;
     }
     m_heartbeat->start();
     emit logMessage(
-        QStringLiteral("reload server listening on 127.0.0.1:%1").arg(port()));
+        QStringLiteral("reload server listening on %1:%2")
+            .arg(m_remoteAccess ? QStringLiteral("0.0.0.0") : QStringLiteral("127.0.0.1"))
+            .arg(port()));
     return true;
 }
 

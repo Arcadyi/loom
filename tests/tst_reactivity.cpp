@@ -86,5 +86,5 @@ void ReactivityTests::unmanagedPropertiesSurviveThemeSwitch()
     QCOMPARE(QQmlProperty(item.data(), "border.width").read().toReal(), 7.0);
 }
 
-QTEST_MAIN(ReactivityTests)
+QTEST_GUILESS_MAIN(ReactivityTests)
 #include "tst_reactivity.moc"

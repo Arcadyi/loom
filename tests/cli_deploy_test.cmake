@@ -73,9 +73,17 @@ if(installed_size LESS 100000)
     message(FATAL_ERROR "The installed binary is implausibly small (${installed_size} bytes)")
 endif()
 
-file(GLOB archives "${output}/*.tar.gz")
-if(NOT archives)
-    message(FATAL_ERROR "loom deploy --package produced no archive in ${output}")
+if(WIN32)
+    set(package_glob "*.msi")
+elseif(APPLE)
+    set(package_glob "*.dmg")
+else()
+    set(package_glob "*.deb")
+endif()
+file(GLOB packages "${output}/${package_glob}")
+if(NOT packages)
+    message(FATAL_ERROR
+        "loom deploy --package produced no native ${package_glob} package in ${output}")
 endif()
 
 # The whole point: it has to run. offscreen so no display is needed; the app

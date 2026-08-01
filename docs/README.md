@@ -15,9 +15,9 @@ loop, or upgrading.
 | --- | --- |
 | [styling/utilities.md](styling/utilities.md) | The complete `Lo.style` reference: every class, the property it writes, and the value it resolves to |
 | [styling/tokens.md](styling/tokens.md) | The typed `Loom.*` API and every scale, with values |
-| [styling/theming.md](styling/theming.md) | Semantic tokens, runtime switching, dark mode, custom themes |
-| [styling/responsive.md](styling/responsive.md) | Breakpoint variants and how the tier is decided |
-| [styling/states.md](styling/states.md) | `hover:` `pressed:` `focus:` `disabled:` `dark:`, and how the handlers behave |
+| [styling/theming.md](styling/theming.md) | Semantic tokens, system/custom themes, motion and contrast |
+| [styling/responsive.md](styling/responsive.md) | Viewport and component container queries |
+| [styling/states.md](styling/states.md) | Interaction, control, environment, structure, negation, and group variants |
 | [styling/configuration.md](styling/configuration.md) | The design token file: custom colours, scales and themes |
 | [styling/cookbook.md](styling/cookbook.md) | Complete components — buttons, cards, forms, responsive layouts, Quick Controls |
 | [styling/performance.md](styling/performance.md) | What a styled item actually costs, and how to keep it cheap |

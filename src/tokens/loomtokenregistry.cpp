@@ -1,11 +1,37 @@
 #include "loomtokenregistry.h"
 
+#include <QGuiApplication>
 #include <QLoggingCategory>
 #include <QPointF>
+#include <QStyleHints>
+#include <algorithm>
 
 #include "loomtokendata.h"
 
 Q_STATIC_LOGGING_CATEGORY(lcLoomTokens, "loom.tokens")
+
+namespace {
+
+template <typename Themes, typename Select>
+bool anyThemeContains(const Themes &themes, const QString &key, Select select)
+{
+    return std::any_of(themes.cbegin(), themes.cend(), [&](const auto &theme) {
+        return select(theme).contains(key);
+    });
+}
+
+template <typename Base, typename Themes, typename Select>
+QStringList designWideKeys(const Base &base, const Themes &themes, Select select)
+{
+    QStringList keys = base.keys();
+    for (auto theme = themes.cbegin(); theme != themes.cend(); ++theme)
+        keys.append(select(*theme).keys());
+    keys.sort();
+    keys.removeDuplicates();
+    return keys;
+}
+
+} // namespace
 
 LoomTokenRegistry *LoomTokenRegistry::instance()
 {
@@ -16,6 +42,11 @@ LoomTokenRegistry *LoomTokenRegistry::instance()
 LoomTokenRegistry::LoomTokenRegistry()
 {
     seedDefaults();
+    if (QGuiApplication::instance()) {
+        connect(
+            QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this,
+            [this] { refreshSystemTheme(); });
+    }
 }
 
 void LoomTokenRegistry::resetToDefaults()
@@ -29,6 +60,7 @@ void LoomTokenRegistry::resetToDefaults()
     m_space.clear();
     m_textSizes.clear();
     m_fontWeights.clear();
+    m_fontFamilies.clear();
     m_tracking.clear();
     m_radius.clear();
     m_shadows.clear();
@@ -36,6 +68,12 @@ void LoomTokenRegistry::resetToDefaults()
     m_durations.clear();
     m_easing.clear();
     m_breakpoints.clear();
+    m_containers.clear();
+    m_styleRecipes.clear();
+    m_arbitraryValuePolicy = QStringLiteral("warn");
+    m_themeMode = ThemeMode::Explicit;
+    m_systemLightTheme = QStringLiteral("light");
+    m_systemDarkTheme = QStringLiteral("dark");
 
     seedDefaults();
 }
@@ -78,6 +116,14 @@ void LoomTokenRegistry::seedDefaults()
     LOOM_FONT_WEIGHTS(LOOM_FILL_WEIGHT)
 #undef LOOM_FILL_WEIGHT
 
+    m_fontFamilies.insert(
+        QStringLiteral("sans"), {QStringLiteral("Sans Serif"), QStringLiteral("Arial")});
+    m_fontFamilies.insert(
+        QStringLiteral("serif"), {QStringLiteral("Serif"), QStringLiteral("Times")});
+    m_fontFamilies.insert(
+        QStringLiteral("mono"),
+        {QStringLiteral("Monospace"), QStringLiteral("Courier New")});
+
 #define LOOM_FILL_TRACKING(name, key, em) m_tracking.insert(QStringLiteral(key), em);
     LOOM_TRACKING_TOKENS(LOOM_FILL_TRACKING)
 #undef LOOM_FILL_TRACKING
@@ -115,6 +161,14 @@ void LoomTokenRegistry::seedDefaults()
 #define LOOM_FILL_BREAKPOINT(name, key, px) m_breakpoints.insert(QStringLiteral(key), px);
     LOOM_BREAKPOINT_TOKENS(LOOM_FILL_BREAKPOINT)
 #undef LOOM_FILL_BREAKPOINT
+
+    const QList<std::pair<const char *, int>> containers{
+        {"3xs", 256},  {"2xs", 288},  {"xs", 320},   {"sm", 384},  {"md", 448},
+        {"lg", 512},   {"xl", 576},   {"2xl", 672},  {"3xl", 768}, {"4xl", 896},
+        {"5xl", 1024}, {"6xl", 1152}, {"7xl", 1280},
+    };
+    for (const auto &[name, px] : containers)
+        m_containers.insert(QLatin1String(name), px);
 }
 
 QColor LoomTokenRegistry::resolveColorRef(const QString &ref) const
@@ -157,94 +211,262 @@ bool LoomTokenRegistry::hasColor(const QString &key) const
     return m_colors.contains(key);
 }
 
+bool LoomTokenRegistry::knowsColor(const QString &key) const
+{
+    return m_colors.contains(key)
+        || anyThemeContains(m_themes, key, [](const auto &theme) -> const auto & {
+               return theme.semantic;
+           });
+}
+
 qreal LoomTokenRegistry::space(const QString &key) const
 {
+    if (const auto theme = m_themes.constFind(m_activeTheme);
+        theme != m_themes.constEnd() && theme->overrides.space.contains(key))
+        return theme->overrides.space.value(key);
     return m_space.value(key);
 }
 
 bool LoomTokenRegistry::hasSpace(const QString &key) const
 {
-    return m_space.contains(key);
+    const auto theme = m_themes.constFind(m_activeTheme);
+    return m_space.contains(key)
+        || (theme != m_themes.constEnd() && theme->overrides.space.contains(key));
+}
+
+bool LoomTokenRegistry::knowsSpace(const QString &key) const
+{
+    return m_space.contains(key)
+        || anyThemeContains(m_themes, key, [](const auto &theme) -> const auto & {
+               return theme.overrides.space;
+           });
 }
 
 LoomTextStyle LoomTokenRegistry::textSize(const QString &key) const
 {
+    if (const auto theme = m_themes.constFind(m_activeTheme);
+        theme != m_themes.constEnd() && theme->overrides.textSizes.contains(key))
+        return theme->overrides.textSizes.value(key);
     return m_textSizes.value(key);
 }
 
 bool LoomTokenRegistry::hasTextSize(const QString &key) const
 {
-    return m_textSizes.contains(key);
+    const auto theme = m_themes.constFind(m_activeTheme);
+    return m_textSizes.contains(key)
+        || (theme != m_themes.constEnd() && theme->overrides.textSizes.contains(key));
+}
+
+bool LoomTokenRegistry::knowsTextSize(const QString &key) const
+{
+    return m_textSizes.contains(key)
+        || anyThemeContains(m_themes, key, [](const auto &theme) -> const auto & {
+               return theme.overrides.textSizes;
+           });
 }
 
 int LoomTokenRegistry::fontWeight(const QString &key) const
 {
+    if (const auto theme = m_themes.constFind(m_activeTheme);
+        theme != m_themes.constEnd() && theme->overrides.fontWeights.contains(key))
+        return theme->overrides.fontWeights.value(key);
     return m_fontWeights.value(key, 400);
 }
 
 bool LoomTokenRegistry::hasFontWeight(const QString &key) const
 {
-    return m_fontWeights.contains(key);
+    const auto theme = m_themes.constFind(m_activeTheme);
+    return m_fontWeights.contains(key)
+        || (theme != m_themes.constEnd() && theme->overrides.fontWeights.contains(key));
+}
+
+bool LoomTokenRegistry::knowsFontWeight(const QString &key) const
+{
+    return m_fontWeights.contains(key)
+        || anyThemeContains(m_themes, key, [](const auto &theme) -> const auto & {
+               return theme.overrides.fontWeights;
+           });
+}
+
+QStringList LoomTokenRegistry::fontFamily(const QString &key) const
+{
+    if (const auto theme = m_themes.constFind(m_activeTheme);
+        theme != m_themes.constEnd() && theme->overrides.fontFamilies.contains(key))
+        return theme->overrides.fontFamilies.value(key);
+    return m_fontFamilies.value(key);
+}
+
+bool LoomTokenRegistry::hasFontFamily(const QString &key) const
+{
+    const auto theme = m_themes.constFind(m_activeTheme);
+    return m_fontFamilies.contains(key)
+        || (theme != m_themes.constEnd() && theme->overrides.fontFamilies.contains(key));
+}
+
+bool LoomTokenRegistry::knowsFontFamily(const QString &key) const
+{
+    return m_fontFamilies.contains(key)
+        || anyThemeContains(m_themes, key, [](const auto &theme) -> const auto & {
+               return theme.overrides.fontFamilies;
+           });
 }
 
 qreal LoomTokenRegistry::tracking(const QString &key) const
 {
+    if (const auto theme = m_themes.constFind(m_activeTheme);
+        theme != m_themes.constEnd() && theme->overrides.tracking.contains(key))
+        return theme->overrides.tracking.value(key);
     return m_tracking.value(key);
 }
 
 bool LoomTokenRegistry::hasTracking(const QString &key) const
 {
-    return m_tracking.contains(key);
+    const auto theme = m_themes.constFind(m_activeTheme);
+    return m_tracking.contains(key)
+        || (theme != m_themes.constEnd() && theme->overrides.tracking.contains(key));
+}
+
+bool LoomTokenRegistry::knowsTracking(const QString &key) const
+{
+    return m_tracking.contains(key)
+        || anyThemeContains(m_themes, key, [](const auto &theme) -> const auto & {
+               return theme.overrides.tracking;
+           });
 }
 
 qreal LoomTokenRegistry::radius(const QString &key) const
 {
+    if (const auto theme = m_themes.constFind(m_activeTheme);
+        theme != m_themes.constEnd() && theme->overrides.radius.contains(key))
+        return theme->overrides.radius.value(key);
     return m_radius.value(key);
 }
 
 bool LoomTokenRegistry::hasRadius(const QString &key) const
 {
-    return m_radius.contains(key);
+    const auto theme = m_themes.constFind(m_activeTheme);
+    return m_radius.contains(key)
+        || (theme != m_themes.constEnd() && theme->overrides.radius.contains(key));
+}
+
+bool LoomTokenRegistry::knowsRadius(const QString &key) const
+{
+    return m_radius.contains(key)
+        || anyThemeContains(m_themes, key, [](const auto &theme) -> const auto & {
+               return theme.overrides.radius;
+           });
 }
 
 LoomShadow LoomTokenRegistry::shadow(const QString &key) const
 {
+    if (const auto theme = m_themes.constFind(m_activeTheme);
+        theme != m_themes.constEnd() && theme->overrides.shadows.contains(key))
+        return theme->overrides.shadows.value(key);
     return m_shadows.value(key);
 }
 
 bool LoomTokenRegistry::hasShadow(const QString &key) const
 {
-    return m_shadows.contains(key);
+    const auto theme = m_themes.constFind(m_activeTheme);
+    return m_shadows.contains(key)
+        || (theme != m_themes.constEnd() && theme->overrides.shadows.contains(key));
+}
+
+bool LoomTokenRegistry::knowsShadow(const QString &key) const
+{
+    return m_shadows.contains(key)
+        || anyThemeContains(m_themes, key, [](const auto &theme) -> const auto & {
+               return theme.overrides.shadows;
+           });
 }
 
 qreal LoomTokenRegistry::opacityValue(const QString &key) const
 {
+    if (const auto theme = m_themes.constFind(m_activeTheme);
+        theme != m_themes.constEnd() && theme->overrides.opacity.contains(key))
+        return theme->overrides.opacity.value(key);
     return m_opacity.value(key, 1.0);
 }
 
 bool LoomTokenRegistry::hasOpacityValue(const QString &key) const
 {
-    return m_opacity.contains(key);
+    const auto theme = m_themes.constFind(m_activeTheme);
+    return m_opacity.contains(key)
+        || (theme != m_themes.constEnd() && theme->overrides.opacity.contains(key));
+}
+
+bool LoomTokenRegistry::knowsOpacityValue(const QString &key) const
+{
+    return m_opacity.contains(key)
+        || anyThemeContains(m_themes, key, [](const auto &theme) -> const auto & {
+               return theme.overrides.opacity;
+           });
 }
 
 int LoomTokenRegistry::duration(const QString &key) const
 {
+    if (const auto theme = m_themes.constFind(m_activeTheme);
+        theme != m_themes.constEnd() && theme->overrides.durations.contains(key))
+        return theme->overrides.durations.value(key);
     return m_durations.value(key);
 }
 
 bool LoomTokenRegistry::hasDuration(const QString &key) const
 {
-    return m_durations.contains(key);
+    const auto theme = m_themes.constFind(m_activeTheme);
+    return m_durations.contains(key)
+        || (theme != m_themes.constEnd() && theme->overrides.durations.contains(key));
+}
+
+bool LoomTokenRegistry::knowsDuration(const QString &key) const
+{
+    return m_durations.contains(key)
+        || anyThemeContains(m_themes, key, [](const auto &theme) -> const auto & {
+               return theme.overrides.durations;
+           });
 }
 
 QEasingCurve LoomTokenRegistry::easing(const QString &key) const
 {
+    if (const auto theme = m_themes.constFind(m_activeTheme);
+        theme != m_themes.constEnd() && theme->overrides.easing.contains(key))
+        return theme->overrides.easing.value(key);
     return m_easing.value(key);
+}
+
+bool LoomTokenRegistry::hasEasing(const QString &key) const
+{
+    const auto theme = m_themes.constFind(m_activeTheme);
+    return m_easing.contains(key)
+        || (theme != m_themes.constEnd() && theme->overrides.easing.contains(key));
+}
+
+bool LoomTokenRegistry::knowsEasing(const QString &key) const
+{
+    return m_easing.contains(key)
+        || anyThemeContains(m_themes, key, [](const auto &theme) -> const auto & {
+               return theme.overrides.easing;
+           });
 }
 
 int LoomTokenRegistry::breakpoint(const QString &key) const
 {
     return m_breakpoints.value(key);
+}
+
+bool LoomTokenRegistry::hasBreakpoint(const QString &key) const
+{
+    return m_breakpoints.contains(key);
+}
+
+int LoomTokenRegistry::container(const QString &key) const
+{
+    return m_containers.value(key);
+}
+
+bool LoomTokenRegistry::hasContainer(const QString &key) const
+{
+    return m_containers.contains(key);
 }
 
 QString LoomTokenRegistry::theme() const
@@ -259,15 +481,63 @@ bool LoomTokenRegistry::isDark() const
 
 void LoomTokenRegistry::setTheme(const QString &name)
 {
-    if (name == m_activeTheme)
-        return;
     if (!m_themes.contains(name)) {
         qCWarning(lcLoomTokens).noquote()
             << "Loom.setTheme: unknown theme" << name
             << "- known themes:" << themeNames().join(QLatin1String(", "));
         return;
     }
+    const bool modeChanged = m_themeMode != ThemeMode::Explicit;
+    m_themeMode = ThemeMode::Explicit;
+    if (name == m_activeTheme) {
+        if (modeChanged)
+            emit themeChanged();
+        return;
+    }
     m_activeTheme = name;
+    emit themeChanged();
+    emit tokensChanged();
+}
+
+LoomTokenRegistry::ThemeMode LoomTokenRegistry::themeMode() const
+{
+    return m_themeMode;
+}
+
+void LoomTokenRegistry::setThemeMode(ThemeMode mode)
+{
+    if (m_themeMode == mode && mode != ThemeMode::System)
+        return;
+    const bool modeChanged = m_themeMode != mode;
+    const QString priorTheme = m_activeTheme;
+    m_themeMode = mode;
+    if (mode == ThemeMode::System)
+        refreshSystemTheme();
+    if (mode != ThemeMode::System || (modeChanged && priorTheme == m_activeTheme))
+        emit themeChanged();
+}
+
+void LoomTokenRegistry::setSystemThemes(
+    const QString &lightTheme, const QString &darkTheme)
+{
+    if (m_themes.contains(lightTheme))
+        m_systemLightTheme = lightTheme;
+    if (m_themes.contains(darkTheme))
+        m_systemDarkTheme = darkTheme;
+    if (m_themeMode == ThemeMode::System)
+        refreshSystemTheme();
+}
+
+void LoomTokenRegistry::refreshSystemTheme()
+{
+    if (m_themeMode != ThemeMode::System)
+        return;
+    const bool dark = QGuiApplication::instance()
+        && QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+    const QString wanted = dark ? m_systemDarkTheme : m_systemLightTheme;
+    if (!m_themes.contains(wanted) || wanted == m_activeTheme)
+        return;
+    m_activeTheme = wanted;
     emit themeChanged();
     emit tokensChanged();
 }
@@ -282,16 +552,78 @@ void LoomTokenRegistry::addSpace(const QString &key, qreal px)
     m_space.insert(key, px);
 }
 
+void LoomTokenRegistry::addTextSize(const QString &key, const LoomTextStyle &style)
+{
+    m_textSizes.insert(key, style);
+}
+
+void LoomTokenRegistry::addFontWeight(const QString &key, int weight)
+{
+    m_fontWeights.insert(key, weight);
+}
+
+void LoomTokenRegistry::addFontFamily(const QString &key, const QStringList &families)
+{
+    m_fontFamilies.insert(key, families);
+}
+
+void LoomTokenRegistry::addTracking(const QString &key, qreal em)
+{
+    m_tracking.insert(key, em);
+}
+
+void LoomTokenRegistry::addRadius(const QString &key, qreal px)
+{
+    m_radius.insert(key, px);
+}
+
+void LoomTokenRegistry::addShadow(const QString &key, const LoomShadow &shadow)
+{
+    m_shadows.insert(key, shadow);
+}
+
+void LoomTokenRegistry::addOpacity(const QString &key, qreal value)
+{
+    m_opacity.insert(key, value);
+}
+
+void LoomTokenRegistry::addDuration(const QString &key, int milliseconds)
+{
+    m_durations.insert(key, milliseconds);
+}
+
+void LoomTokenRegistry::addEasing(const QString &key, const QEasingCurve &curve)
+{
+    m_easing.insert(key, curve);
+}
+
 bool LoomTokenRegistry::setBreakpoint(const QString &key, int px)
 {
-    // The four tiers are structural (they map to the sm:..xl: prefixes);
-    // configs may move the thresholds but not invent new tiers. A threshold at
-    // or below zero is met by every window, which makes the tier meaningless
-    // rather than merely unusual, so it is rejected outright.
-    if (!m_breakpoints.contains(key) || px <= 0)
+    if (key.isEmpty() || px <= 0)
         return false;
     m_breakpoints.insert(key, px);
     return true;
+}
+
+bool LoomTokenRegistry::setContainer(const QString &key, int px)
+{
+    if (key.isEmpty() || px <= 0)
+        return false;
+    m_containers.insert(key, px);
+    return true;
+}
+
+void LoomTokenRegistry::setStyleRecipe(const QString &name, const QString &style)
+{
+    if (!name.isEmpty())
+        m_styleRecipes.insert(name, style);
+}
+
+void LoomTokenRegistry::setArbitraryValuePolicy(const QString &policy)
+{
+    if (policy == QLatin1String("allow") || policy == QLatin1String("warn")
+        || policy == QLatin1String("deny"))
+        m_arbitraryValuePolicy = policy;
 }
 
 bool LoomTokenRegistry::defineTheme(
@@ -321,6 +653,38 @@ bool LoomTokenRegistry::defineTheme(
         }
         existing->semantic.insert(it.key(), resolved);
     }
+    if (dark.has_value())
+        existing->dark = *dark;
+    return true;
+}
+
+bool LoomTokenRegistry::defineTheme(
+    const QString &name, const QString &base, const ThemeOverrides &overrides,
+    std::optional<bool> dark)
+{
+    auto existing = m_themes.find(name);
+    if (existing == m_themes.end()) {
+        Theme fresh;
+        if (!base.isEmpty()) {
+            const auto baseTheme = m_themes.constFind(base);
+            if (baseTheme == m_themes.constEnd())
+                return false;
+            fresh = *baseTheme;
+        }
+        existing = m_themes.insert(name, fresh);
+    }
+    for (auto it = overrides.colors.cbegin(); it != overrides.colors.cend(); ++it)
+        existing->semantic.insert(it.key(), it.value());
+    existing->overrides.space.insert(overrides.space);
+    existing->overrides.textSizes.insert(overrides.textSizes);
+    existing->overrides.fontWeights.insert(overrides.fontWeights);
+    existing->overrides.fontFamilies.insert(overrides.fontFamilies);
+    existing->overrides.tracking.insert(overrides.tracking);
+    existing->overrides.radius.insert(overrides.radius);
+    existing->overrides.shadows.insert(overrides.shadows);
+    existing->overrides.opacity.insert(overrides.opacity);
+    existing->overrides.durations.insert(overrides.durations);
+    existing->overrides.easing.insert(overrides.easing);
     if (dark.has_value())
         existing->dark = *dark;
     return true;
@@ -357,68 +721,146 @@ template <typename Hash> QStringList sortedKeys(const Hash &hash)
 
 QStringList LoomTokenRegistry::colorKeys() const
 {
-    QStringList keys = m_colors.keys();
-    // Semantic names live per theme rather than in the palette, and hasColor()
-    // accepts them, so the enumeration has to as well or tooling would call
-    // `bg-surface` unknown.
-    if (const auto theme = m_themes.constFind(m_activeTheme);
-        theme != m_themes.constEnd()) {
-        for (auto it = theme->semantic.constBegin(); it != theme->semantic.constEnd();
-             ++it) {
-            if (!m_colors.contains(it.key()))
-                keys.append(it.key());
-        }
-    }
-    keys.sort();
-    return keys;
+    return designWideKeys(m_colors, m_themes, [](const auto &theme) -> const auto & {
+        return theme.semantic;
+    });
 }
 
 QStringList LoomTokenRegistry::spaceKeys() const
 {
-    return sortedKeys(m_space);
+    return designWideKeys(m_space, m_themes, [](const auto &theme) -> const auto & {
+        return theme.overrides.space;
+    });
 }
 
 QStringList LoomTokenRegistry::textSizeKeys() const
 {
-    return sortedKeys(m_textSizes);
+    return designWideKeys(m_textSizes, m_themes, [](const auto &theme) -> const auto & {
+        return theme.overrides.textSizes;
+    });
 }
 
 QStringList LoomTokenRegistry::fontWeightKeys() const
 {
-    return sortedKeys(m_fontWeights);
+    return designWideKeys(m_fontWeights, m_themes, [](const auto &theme) -> const auto & {
+        return theme.overrides.fontWeights;
+    });
+}
+
+QStringList LoomTokenRegistry::fontFamilyKeys() const
+{
+    return designWideKeys(
+        m_fontFamilies, m_themes,
+        [](const auto &theme) -> const auto & { return theme.overrides.fontFamilies; });
 }
 
 QStringList LoomTokenRegistry::trackingKeys() const
 {
-    return sortedKeys(m_tracking);
+    return designWideKeys(m_tracking, m_themes, [](const auto &theme) -> const auto & {
+        return theme.overrides.tracking;
+    });
 }
 
 QStringList LoomTokenRegistry::radiusKeys() const
 {
-    return sortedKeys(m_radius);
+    return designWideKeys(m_radius, m_themes, [](const auto &theme) -> const auto & {
+        return theme.overrides.radius;
+    });
 }
 
 QStringList LoomTokenRegistry::shadowKeys() const
 {
-    return sortedKeys(m_shadows);
+    return designWideKeys(m_shadows, m_themes, [](const auto &theme) -> const auto & {
+        return theme.overrides.shadows;
+    });
 }
 
 QStringList LoomTokenRegistry::opacityKeys() const
 {
-    return sortedKeys(m_opacity);
+    return designWideKeys(m_opacity, m_themes, [](const auto &theme) -> const auto & {
+        return theme.overrides.opacity;
+    });
 }
 
 QStringList LoomTokenRegistry::durationKeys() const
 {
-    return sortedKeys(m_durations);
+    return designWideKeys(m_durations, m_themes, [](const auto &theme) -> const auto & {
+        return theme.overrides.durations;
+    });
 }
 
 QStringList LoomTokenRegistry::easingKeys() const
 {
-    return sortedKeys(m_easing);
+    return designWideKeys(m_easing, m_themes, [](const auto &theme) -> const auto & {
+        return theme.overrides.easing;
+    });
 }
 
 QStringList LoomTokenRegistry::breakpointKeys() const
 {
-    return sortedKeys(m_breakpoints);
+    QStringList keys = m_breakpoints.keys();
+    std::sort(
+        keys.begin(), keys.end(), [this](const QString &left, const QString &right) {
+            const int leftValue = breakpoint(left);
+            const int rightValue = breakpoint(right);
+            return leftValue == rightValue ? left < right : leftValue < rightValue;
+        });
+    return keys;
+}
+
+QStringList LoomTokenRegistry::containerKeys() const
+{
+    QStringList keys = m_containers.keys();
+    std::sort(
+        keys.begin(), keys.end(), [this](const QString &left, const QString &right) {
+            const int leftValue = container(left);
+            const int rightValue = container(right);
+            return leftValue == rightValue ? left < right : leftValue < rightValue;
+        });
+    return keys;
+}
+
+QString LoomTokenRegistry::styleRecipe(const QString &name) const
+{
+    return m_styleRecipes.value(name);
+}
+
+bool LoomTokenRegistry::hasStyleRecipe(const QString &name) const
+{
+    return m_styleRecipes.contains(name);
+}
+
+QStringList LoomTokenRegistry::styleRecipeKeys() const
+{
+    return sortedKeys(m_styleRecipes);
+}
+
+QString LoomTokenRegistry::arbitraryValuePolicy() const
+{
+    return m_arbitraryValuePolicy;
+}
+
+LoomTokenRegistry::MotionMode LoomTokenRegistry::motionMode() const
+{
+    return m_motionMode;
+}
+
+void LoomTokenRegistry::setMotionMode(MotionMode mode)
+{
+    if (m_motionMode == mode)
+        return;
+    m_motionMode = mode;
+    emit accessibilityChanged();
+}
+
+bool LoomTokenRegistry::reduceMotion() const
+{
+    if (m_motionMode == MotionMode::Reduce)
+        return true;
+    if (m_motionMode == MotionMode::Full)
+        return false;
+    // Qt 6.11 does not expose a cross-platform reduced-motion style hint. The
+    // environment hook gives desktop portals, launchers and test harnesses a
+    // deterministic system-mode bridge until Qt grows one.
+    return qEnvironmentVariableIntValue("LOOM_REDUCE_MOTION") == 1;
 }

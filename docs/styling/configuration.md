@@ -21,17 +21,24 @@ The one `loom new` generates, which is a complete and useful example:
 
 ```json
 {
-  "colors": {
-    "brand": {
-      "400": "#8b7cff",
-      "500": "#6d5cff",
-      "600": "#5a49e0"
+  "$schema": "https://raw.githubusercontent.com/Arcadyi/loom/master/schemas/design-v2.schema.json",
+  "schemaVersion": 2,
+  "tokens": {
+    "colors": {
+      "brand": {
+        "400": "#8b7cff",
+        "500": "#6d5cff",
+        "600": "#5a49e0"
+      }
     }
   },
   "themes": {
-    "light": { "accent": "brand-500" },
-    "dark":  { "accent": "brand-400" }
-  }
+    "light": { "tokens": { "colors": { "accent": "brand-500" } } },
+    "dark":  { "tokens": { "colors": { "accent": "brand-400" } } }
+  },
+  "theme": { "default": "system", "light": "light", "dark": "dark" },
+  "styles": { "card": "bg-surface border border-outline rounded-lg shadow-sm" },
+  "lint": { "arbitraryValues": "warn" }
 }
 ```
 
@@ -55,8 +62,10 @@ Component.onCompleted: Loom.loadConfig(Qt.resolvedUrl("tokens.json"))
 ```
 
 Both accept `file:` and `qrc:` paths. Both return `false` when the file cannot
-be read or parsed. Individually bad entries warn on the `loom.config` logging
-category and are skipped, leaving the rest of the file applied.
+be read, parsed, or validated. Schema v2 validation is transactional: an
+unknown field, invalid token value, theme cycle, or invalid policy leaves the
+complete previous design live. A colour reference that is structurally valid
+but cannot resolve is warned and skipped, leaving the inherited colour.
 
 ## Loading versus reloading
 
@@ -76,33 +85,58 @@ were working stay live. Under `loom dev` that matters more than it sounds,
 because a file is malformed for most of the time someone is typing in it.
 
 On a reload the **active theme is preserved** when it still exists, and beats
-the file's `defaultTheme`. If you switched to dark to look at it and then saved,
+`theme.default`. If you switched to dark to look at it and then saved,
 you meant to restyle dark, not to be thrown back to the default.
 
 ## Schema
 
 The full vocabulary. A JSON Schema is installed at
-`share/loom/schemas/design-v1.schema.json`; point your editor at it for
+`share/loom/schemas/design-v2.schema.json`; point your editor at it for
 completion and validation.
 
 ```json
 {
-  "colors": {
-    "brand": { "500": "#7c5cff", "600": "#6a4be0" },
-    "highlight": "#ffcc00"
+  "schemaVersion": 2,
+  "tokens": {
+    "colors": {
+      "brand": { "500": "#7c5cff", "600": "#6a4be0" },
+      "highlight": "#ffcc00"
+    },
+    "space": { "18": 72 },
+    "textSizes": { "display": { "size": 48, "lineHeight": 52 } },
+    "fontWeights": { "book": 450 },
+    "fontFamilies": { "brand": ["Inter", "Sans Serif"] },
+    "tracking": { "brand": -0.015 },
+    "radius": { "card": 18 },
+    "shadows": { "floating": { "color": "#40000000", "offsetY": 8, "blur": 24 } },
+    "opacity": { "subtle": 0.72 },
+    "durations": { "deliberate": 280 },
+    "easings": { "springy": [0.2, 0.8, 0.2, 1] },
+    "breakpoints": { "2xl": 1536 },
+    "containers": { "content": 720 }
   },
-  "space": { "18": 72 },
-  "breakpoints": { "md": 800 },
   "themes": {
-    "light": { "surface": "#fcfcfc" },
-    "oled":  { "extends": "dark", "surface": "#000000", "dark": true }
+    "light": { "tokens": { "colors": { "surface": "#fcfcfc" } } },
+    "oled":  {
+      "extends": "dark",
+      "dark": true,
+      "tokens": { "colors": { "surface": "#000000" }, "radius": { "card": 12 } }
+    }
   },
-  "defaultTheme": "oled",
+  "theme": { "default": "oled", "light": "light", "dark": "oled" },
+  "styles": { "card": "bg-surface rounded-card p-4" },
+  "lint": { "arbitraryValues": "deny" },
   "iconRoot": "assets/icons"
 }
 ```
 
-### `colors`
+Every scale lives below `tokens`. The available families are `colors`, `space`,
+`textSizes`, `fontWeights`, `fontFamilies`, `tracking`, `radius`, `shadows`,
+`opacity`, `durations`, `easings`, `breakpoints`, and `containers`. Themes can
+override every visual/motion family, but not breakpoints or containers because
+changing those with appearance would also change layout.
+
+### `tokens.colors`
 
 Nested hue objects become `hue-shade` keys — `brand` with a `500` becomes
 `brand-500`. Flat entries keep their name, so `"highlight": "#ffcc00"` becomes
@@ -114,31 +148,31 @@ Everything merges into the built-in palette. You can override a built-in name;
 Values are colour literals: `#rgb`, `#rrggbb`, `#aarrggbb`, or any name
 `QColor::fromString` accepts.
 
-### `space`
+### `tokens.space`
 
 Extra spacing steps, in pixels, usable everywhere `{n}` is: `p-18`, `w-18`,
 `gap-18`, `mt-18`.
 
 ```json
-{ "space": { "18": 72, "128": 512 } }
+{ "schemaVersion": 2, "tokens": { "space": { "18": 72, "128": 512 } } }
 ```
 
 Keys are strings and need not be numeric — `"gutter": 20` gives you `p-gutter` —
 though staying numeric keeps the scale legible.
 
-### `breakpoints`
+### `tokens.breakpoints` and `tokens.containers`
 
-Moves the `sm`/`md`/`lg`/`xl` thresholds. Two rules the loader enforces:
+Moves the `sm` through `2xl` thresholds. Two rules the loader enforces:
 
 - a threshold must be **greater than zero**; one at or below zero is met by
-  every window, which makes the tier meaningless, and is rejected;
-- thresholds should be **strictly widening**. A tier no wider than the one
-  before it warns, because its classes can never be the widest match and will
-  appear to do nothing.
+  every window, which makes the query meaningless, and is rejected;
+- conventional thresholds should be **strictly widening**. A threshold no wider
+  than the one before it warns, because its classes can never be the narrowest
+  matching min-width condition and will appear to do nothing.
 
-The four tiers are structural — they map to the four prefixes — so a config can
-move them but cannot add a fifth or rename one. An unknown key is rejected with
-a warning.
+Breakpoint and container names are dynamic. Built-ins include `sm` through
+`2xl` and `3xs` through `7xl`; a design can add or replace any positive-pixel
+name, which immediately appears in the compiler, catalogue, lint, and LSP.
 
 ### `themes`
 
@@ -150,10 +184,12 @@ in place; any other name defines a new theme.
   "themes": {
     "oled": {
       "extends": "dark",
-      "background": "#000000",
-      "surface": "#0a0a0a",
-      "surface-alt": "surface",
-      "dark": true
+      "dark": true,
+      "tokens": { "colors": {
+        "background": "#000000",
+        "surface": "#0a0a0a",
+        "surface-alt": "surface"
+      } }
     }
   }
 }
@@ -165,7 +201,7 @@ in place; any other name defines a new theme.
   unknown theme.
 - **`dark`** feeds `Loom.dark` and the `dark:` variant. Inherited from the base
   theme when omitted.
-- **Every other key** is a semantic token name mapped to a value.
+- **`tokens`** contains the same visual scales as the root token object.
 
 A value can be a colour literal, a palette key (config-defined included), or
 **a semantic name the theme already has** — inherited from the theme it extends.
@@ -177,12 +213,30 @@ reproducible.
 A value that resolves to none of these warns and is skipped, leaving the
 inherited value in place.
 
-Full detail in [theming.md](theming.md#custom-themes).
+### Recipes and arbitrary-value policy
 
-### `defaultTheme`
+Each `styles` entry is a named recipe. Invoke it with `@name`; recipes may use
+variants and other recipes, and call-site variants compose with their contents:
 
-The theme a fresh process starts in. On a reload, the currently active theme
-wins unless it no longer exists.
+```text
+Rectangle { Lo.style: "@card hover:@card" }
+```
+
+Cycles, missing recipes, nesting beyond 32, and expansion beyond 4096 rules are
+rejected. `lint.arbitraryValues` is `allow`, `warn` (the default), or `deny`.
+Runtime accepts typed arbitrary values in every mode; lint and LSP enforce the
+design-system policy.
+
+Full theme detail is in [theming.md](theming.md#custom-themes).
+
+### `theme`
+
+`theme.default` is a theme name or `"system"`. System mode listens to the
+operating-system colour scheme and maps it through `theme.light` and
+`theme.dark`, which may name custom themes. Assigning `Loom.theme` switches
+back to explicit mode; assigning `Loom.themeMode = Loom.SystemTheme` resumes
+following the OS. On a reload, the current explicit theme wins when it still
+exists, while system mode remains system mode.
 
 ### `iconRoot`
 
@@ -196,21 +250,11 @@ root keeps working across a hot reload.
 
 ## What cannot be configured
 
-Stated plainly, because the omissions are not obvious from the schema. These
-scales are **fixed**:
-
-- radius, text sizes and their line heights, font weights, tracking;
-- shadows — including their alpha, which a dark theme genuinely wants different;
-- opacity steps, durations, easings;
-- the font family. There is no font token in loom at all.
-
-A brand that wants sharp corners changes `rounded-*` at every call site rather
-than redefining the scale. Widening the configurable surface is on the roadmap;
-until then, [`theming.md`](theming.md#what-a-theme-can-and-cannot-change) covers
-the workarounds.
-
-Themes are likewise **colours only**. There is no themed radius, spacing,
-typography or motion.
+Every visual and motion scale is configurable and themeable: colour, spacing,
+typography, font family and weight, tracking, radius, shadow, opacity, duration,
+and easing. Breakpoints and containers are global by design; making them change
+with appearance would also change layout during a theme switch. Structural
+behavior and utility parsing are framework features rather than design tokens.
 
 ## Reach
 
@@ -242,6 +286,7 @@ somewhere — is invisible to the checker, and classes naming its tokens will be
 reported as unknown. Keep the project's tokens in the file `loom.json` names,
 and the checker and the application stay in agreement by construction.
 
-`loom style --catalogue` dumps the whole vocabulary including config-defined
-names. Both the token set and the active theme affect the output, so dump it
-under the same config your application uses.
+`loom style --catalogue --design design/tokens.json` dumps the whole vocabulary
+including config-defined names from every theme, so `theme-name:` classes are
+available before that theme is active. Load the same design your application
+uses.

@@ -32,6 +32,10 @@ QList<StyleUtilityFamily> families(const LoomTokenRegistry *registry)
 
     add(QStringLiteral("bg-"), QStringLiteral("color"), colors);
     add(QStringLiteral("border-"), QStringLiteral("color"), colors);
+    add(QStringLiteral("ring-"), QStringLiteral("color"), colors);
+    add(QStringLiteral("from-"), QStringLiteral("color"), colors);
+    add(QStringLiteral("via-"), QStringLiteral("color"), colors);
+    add(QStringLiteral("to-"), QStringLiteral("color"), colors);
     // text- resolves size keys before colors, so both land under one prefix.
     QStringList textValues = registry->textSizeKeys();
     textValues.append(colors);
@@ -39,11 +43,14 @@ QList<StyleUtilityFamily> families(const LoomTokenRegistry *registry)
     add(QStringLiteral("text-"), QStringLiteral("text size or color"), textValues);
     add(QStringLiteral("font-"), QStringLiteral("font weight"),
         registry->fontWeightKeys());
+    add(QStringLiteral("font-"), QStringLiteral("font family"),
+        registry->fontFamilyKeys());
     add(QStringLiteral("tracking-"), QStringLiteral("tracking"),
         registry->trackingKeys());
     add(QStringLiteral("opacity-"), QStringLiteral("opacity"), registry->opacityKeys());
     add(QStringLiteral("duration-"), QStringLiteral("duration"),
         registry->durationKeys());
+    add(QStringLiteral("ease-"), QStringLiteral("easing"), registry->easingKeys());
     add(QStringLiteral("shadow-"), QStringLiteral("shadow"), registry->shadowKeys());
     add(QStringLiteral("rounded-"), QStringLiteral("radius"), radius);
 
@@ -57,6 +64,8 @@ QList<StyleUtilityFamily> families(const LoomTokenRegistry *registry)
     add(QStringLiteral("w-"), QStringLiteral("spacing"), space);
     add(QStringLiteral("h-"), QStringLiteral("spacing"), space);
     add(QStringLiteral("size-"), QStringLiteral("spacing"), space);
+    add(QStringLiteral("translate-x-"), QStringLiteral("spacing"), space);
+    add(QStringLiteral("translate-y-"), QStringLiteral("spacing"), space);
 
     for (const auto &side : {"", "x", "y", "t", "r", "b", "l"}) {
         add(QStringLiteral("p") + QLatin1String(side) + QLatin1Char('-'),
@@ -87,10 +96,16 @@ StyleCatalogue styleCatalogue()
     // Spans take a cell count and aspect a ratio; neither comes from a token
     // scale, so neither can be enumerated.
     catalogue.numericPrefixes = {
-        QStringLiteral("border-"), QStringLiteral("col-span-"),
-        QStringLiteral("row-span-"), QStringLiteral("aspect-")};
+        QStringLiteral("border-"),     QStringLiteral("col-span-"),
+        QStringLiteral("row-span-"),   QStringLiteral("aspect-"),
+        QStringLiteral("ring-"),       QStringLiteral("rotate-"),
+        QStringLiteral("scale-"),      QStringLiteral("z-"),
+        QStringLiteral("brightness-"), QStringLiteral("contrast-"),
+        QStringLiteral("saturate-")};
 
     catalogue.classes = LoomStyleCompiler::valuelessClasses();
+    for (const QString &recipe : registry->styleRecipeKeys())
+        catalogue.classes.append(QLatin1Char('@') + recipe);
     for (const StyleUtilityFamily &family : catalogue.families) {
         for (const QString &value : family.values)
             catalogue.classes.append(family.prefix + value);

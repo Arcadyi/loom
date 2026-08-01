@@ -69,8 +69,8 @@ qt_add_qml_module(inferredTarget
 file(WRITE "${DIVERGED_DIR}/qml/Main.qml" "import QtQuick\nItem {}\n")
 file(WRITE "${DIVERGED_DIR}/loom.json" [=[
 {
-    "$schema": "https://raw.githubusercontent.com/Arcadyi/loom/main/schemas/project-v1.schema.json",
-    "schemaVersion": 1,
+    "$schema": "https://raw.githubusercontent.com/Arcadyi/loom/master/schemas/project-v2.schema.json",
+    "schemaVersion": 2,
     "project": { "name": "Existing" },
     "qt": { "version": "6.11" },
     "applications": {
@@ -82,7 +82,7 @@ file(WRITE "${DIVERGED_DIR}/loom.json" [=[
             "entry": "Main",
             "qmlRoots": ["qml"],
             "assetRoots": [],
-            "platforms": ["desktop"]
+            "platforms": {"desktop": {}}
         }
     }
 }

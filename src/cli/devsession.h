@@ -3,6 +3,7 @@
 #include "devserver.h"
 #include "projectmanifest.h"
 
+#include <QJsonObject>
 #include <QObject>
 #include <QProcess>
 #include <QStringList>
@@ -34,6 +35,9 @@ public:
         QString generator;
         QString executable;
         QStringList applicationArguments;
+        QString platform = QStringLiteral("desktop");
+        QJsonObject platformOptions;
+        QJsonObject embeddedProfile;
     };
 
     explicit DevSession(Configuration configuration, QObject *parent = nullptr);
@@ -45,6 +49,8 @@ public:
 
 private:
     void startApplication();
+    bool startRemoteApplication(QString *error = nullptr);
+    bool deployRemoteArtifact(QString *error = nullptr);
     void stopApplication();
     void handleNativeFilesChanged();
     // Re-reads loom.json after a rebuild and re-points the server at whatever
@@ -67,4 +73,5 @@ private:
     bool m_restarting = false;
     bool m_finishing = false;
     bool m_eventLoopRunning = false;
+    bool m_remoteDetached = false;
 };

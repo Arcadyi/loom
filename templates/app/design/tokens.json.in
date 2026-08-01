@@ -1,17 +1,26 @@
 {
-  "colors": {
-    "brand": {
-      "400": "#8b7cff",
-      "500": "#6d5cff",
-      "600": "#5a49e0"
+  "$schema": "https://raw.githubusercontent.com/Arcadyi/loom/master/schemas/design-v2.schema.json",
+  "schemaVersion": 2,
+  "tokens": {
+    "colors": {
+      "brand": {
+        "400": "#8b7cff",
+        "500": "#6d5cff",
+        "600": "#5a49e0"
+      }
     }
   },
   "themes": {
     "light": {
-      "accent": "brand-500"
+      "tokens": { "colors": { "accent": "brand-500" } }
     },
     "dark": {
-      "accent": "brand-400"
+      "tokens": { "colors": { "accent": "brand-400" } }
     }
-  }
+  },
+  "theme": { "default": "system", "light": "light", "dark": "dark" },
+  "styles": {
+    "card": "bg-surface border border-outline rounded-lg shadow-sm"
+  },
+  "lint": { "arbitraryValues": "warn" }
 }

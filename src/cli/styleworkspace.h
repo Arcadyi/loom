@@ -30,6 +30,7 @@ public:
     loom::StyleCatalogue catalogue() const;
     ClassMetadata metadata(const QString &klass) const;
     QStringList replacements(const QString &unknown) const;
+    QString arbitraryValuePolicy() const;
 
 signals:
     void vocabularyChanged();

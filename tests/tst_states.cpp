@@ -5,6 +5,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QScopedPointer>
+#include <loom/loom.h>
 
 namespace {
 
@@ -24,6 +25,7 @@ class StateTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void cleanup();
     void hoverVariant();
     void pressedViaNativeProperty();
     void pressedViaTapHandler();
@@ -32,7 +34,16 @@ private slots:
     void disabledVariant();
     void variantComposition();
     void stateVariantBeatsBreakpoint();
+    void controlAndNegatedVariants();
+    void structuralVariants();
+    void namedGroupVariant();
+    void namedThemeVariant();
 };
+
+void StateTests::cleanup()
+{
+    loom::setTheme(QStringLiteral("light"));
+}
 
 // Regression: breakpoint and state variants used to share one "number of
 // prefixes" specificity counter, so at equal counts the later class won. A
@@ -263,6 +274,101 @@ void StateTests::variantComposition()
 
     QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, QPoint(50, 50));
     QTRY_COMPARE(item->property("color").value<QColor>(), QColor(Qt::black));
+}
+
+void StateTests::controlAndNegatedVariants()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(
+        "import QtQuick\nimport Loom\n"
+        "Rectangle {\n"
+        "    property bool checked: false\n"
+        "    Lo.style: \"bg-white not-checked:bg-blue-500 checked:bg-red-500\"\n"
+        "}\n",
+        QUrl());
+    QScopedPointer<QQuickItem> item(qobject_cast<QQuickItem *>(component.create()));
+    QVERIFY2(item, qPrintable(component.errorString()));
+    QTRY_COMPARE(item->property("color").value<QColor>(), QColor(0x3b, 0x82, 0xf6));
+
+    item->setProperty("checked", true);
+    QTRY_COMPARE(item->property("color").value<QColor>(), QColor(0xef, 0x44, 0x44));
+}
+
+void StateTests::structuralVariants()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(
+        "import QtQuick\nimport Loom\n"
+        "Column {\n"
+        "    Lo.style: \"hover:opacity-100\"\n"
+        "    Rectangle { objectName: \"first\"; Lo.style: \"bg-white first:bg-blue-500\" "
+        "}\n"
+        "    Rectangle { objectName: \"middle\"; Lo.style: \"bg-white odd:bg-red-500\" "
+        "}\n"
+        "    Rectangle { objectName: \"last\"; Lo.style: \"bg-white last:bg-black\" }\n"
+        "}\n",
+        QUrl());
+    QScopedPointer<QQuickItem> root(qobject_cast<QQuickItem *>(component.create()));
+    QVERIFY2(root, qPrintable(component.errorString()));
+    auto *first = root->findChild<QQuickItem *>(QStringLiteral("first"));
+    auto *middle = root->findChild<QQuickItem *>(QStringLiteral("middle"));
+    auto *last = root->findChild<QQuickItem *>(QStringLiteral("last"));
+    QVERIFY(first && middle && last);
+
+    QTRY_COMPARE(first->property("color").value<QColor>(), QColor(0x3b, 0x82, 0xf6));
+    // CSS-style positions are one-based, so the second child is even.
+    QCOMPARE(middle->property("color").value<QColor>(), QColor(Qt::white));
+    QCOMPARE(last->property("color").value<QColor>(), QColor(Qt::black));
+
+    // Child insertion and later visibility changes both invalidate structural
+    // positions. The new child did not exist when subscriptions were first
+    // installed, which used to leave `last:` stale after it was hidden.
+    auto *added = new QQuickItem(root.data());
+    added->setParentItem(root.data());
+    QTRY_COMPARE(last->property("color").value<QColor>(), QColor(Qt::white));
+    added->setVisible(false);
+    QTRY_COMPARE(last->property("color").value<QColor>(), QColor(Qt::black));
+}
+
+void StateTests::namedGroupVariant()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(
+        "import QtQuick\nimport Loom\n"
+        "Item {\n"
+        "    property bool checked: false\n"
+        "    Lo.group: \"menu\"\n"
+        "    Rectangle { objectName: \"child\"; Lo.style: \"bg-white "
+        "group-checked/menu:bg-blue-500\" }\n"
+        "}\n",
+        QUrl());
+    QScopedPointer<QQuickItem> root(qobject_cast<QQuickItem *>(component.create()));
+    QVERIFY2(root, qPrintable(component.errorString()));
+    auto *child = root->findChild<QQuickItem *>(QStringLiteral("child"));
+    QVERIFY(child);
+    QTRY_COMPARE(child->property("color").value<QColor>(), QColor(Qt::white));
+
+    root->setProperty("checked", true);
+    QTRY_COMPARE(child->property("color").value<QColor>(), QColor(0x3b, 0x82, 0xf6));
+}
+
+void StateTests::namedThemeVariant()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(
+        "import QtQuick\nimport Loom\n"
+        "Rectangle { Lo.style: \"bg-white theme-dark:bg-blue-500\" }\n",
+        QUrl());
+    QScopedPointer<QQuickItem> item(qobject_cast<QQuickItem *>(component.create()));
+    QVERIFY2(item, qPrintable(component.errorString()));
+    QTRY_COMPARE(item->property("color").value<QColor>(), QColor(Qt::white));
+
+    loom::setTheme(QStringLiteral("dark"));
+    QTRY_COMPARE(item->property("color").value<QColor>(), QColor(0x3b, 0x82, 0xf6));
 }
 
 QTEST_MAIN(StateTests)

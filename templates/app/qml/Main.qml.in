@@ -53,7 +53,7 @@ ApplicationWindow {
         }
 
         Rectangle {
-            Lo.style: "bg-surface border border-outline rounded-lg hover:bg-surface-alt transition-colors"
+            Lo.style: "@card hover:bg-surface-alt transition-colors"
             Layout.alignment: Qt.AlignHCenter
             implicitWidth: 260
             implicitHeight: 48

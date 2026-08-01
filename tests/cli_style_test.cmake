@@ -73,9 +73,46 @@ if(bad_result EQUAL 0)
     message(FATAL_ERROR
         "loom style accepted an unknown class:\n${bad_output}\n${bad_error}")
 endif()
-if(NOT bad_error MATCHES "Bad\\.qml:5: unknown utility class 'bg-blurple-500'")
+if(NOT bad_error MATCHES
+    "Bad\\.qml:5:[0-9]+: error: unknown utility class 'bg-blurple-500'")
     message(FATAL_ERROR
         "loom style did not report the file and line of the unknown class:\n${bad_error}")
+endif()
+
+execute_process(
+    COMMAND "${LOOM_EXE}" style --check --json "${TEST_DIR}/qml"
+    RESULT_VARIABLE json_result
+    OUTPUT_VARIABLE json_output
+    ERROR_VARIABLE json_error
+)
+if(json_result EQUAL 0
+    OR NOT json_output MATCHES "\"code\"[ \t]*:[ \t]*\"unknownUtility\""
+    OR NOT json_output MATCHES "\"errors\"[ \t]*:[ \t]*1")
+    message(FATAL_ERROR
+        "loom style --json did not emit structured diagnostics:\n"
+        "${json_output}\n${json_error}")
+endif()
+
+file(WRITE "${TEST_DIR}/qml/Arbitrary.qml"
+"import QtQuick
+import Loom
+
+Item {
+    Lo.style: \"p-[13px] bg-[#7c5cff]\"
+}
+")
+execute_process(
+    COMMAND "${LOOM_EXE}" style --check --json "${TEST_DIR}/qml/Arbitrary.qml"
+    RESULT_VARIABLE arbitrary_result
+    OUTPUT_VARIABLE arbitrary_output
+    ERROR_VARIABLE arbitrary_error
+)
+if(NOT arbitrary_result EQUAL 0
+    OR NOT arbitrary_output MATCHES "\"warnings\"[ \t]*:[ \t]*2"
+    OR NOT arbitrary_output MATCHES "\"code\"[ \t]*:[ \t]*\"arbitraryValue\"")
+    message(FATAL_ERROR
+        "arbitrary-value policy was not reported as warnings:\n"
+        "${arbitrary_output}\n${arbitrary_error}")
 endif()
 
 # The two modes are mutually exclusive rather than one silently winning.

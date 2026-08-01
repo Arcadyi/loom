@@ -24,5 +24,6 @@ private:
     int test(const QStringList &arguments);
     int develop(const QStringList &arguments);
     int deploy(const QStringList &arguments);
+    int migrate(const QStringList &arguments);
     void printHelp() const;
 };

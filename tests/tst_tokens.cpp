@@ -68,7 +68,9 @@ void TokenTests::tokensResolveInQml()
         "property real halfOpacity: Loom.opacity.o50\n"
         "property int quick: Loom.duration.d150\n"
         "property int weight: Loom.text.bold\n"
-        "property int bpMd: Loom.breakpoint.md"));
+        "property string sans: Loom.font.sans[0]\n"
+        "property int bpMd: Loom.breakpoint.md\n"
+        "property int bp2xl: Loom.breakpoint.x2l"));
     QVERIFY2(object, qPrintable(component.errorString()));
     QCOMPARE(object->property("blue").value<QColor>(), QColor(0x3b, 0x82, 0xf6));
     QCOMPARE(object->property("semantic").value<QColor>(), QColor(Qt::white));
@@ -78,7 +80,9 @@ void TokenTests::tokensResolveInQml()
     QCOMPARE(object->property("halfOpacity").toReal(), 0.5);
     QCOMPARE(object->property("quick").toInt(), 150);
     QCOMPARE(object->property("weight").toInt(), 700);
+    QCOMPARE(object->property("sans").toString(), QStringLiteral("Sans Serif"));
     QCOMPARE(object->property("bpMd").toInt(), 768);
+    QCOMPARE(object->property("bp2xl").toInt(), 1536);
 }
 
 void TokenTests::compositeTokensResolveInQml()
@@ -145,5 +149,5 @@ void TokenTests::easingTokensAreBezierCurves()
     QVERIFY(curve.valueForProgress(0.9) > 0.9);
 }
 
-QTEST_MAIN(TokenTests)
+QTEST_GUILESS_MAIN(TokenTests)
 #include "tst_tokens.moc"

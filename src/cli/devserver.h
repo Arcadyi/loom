@@ -44,6 +44,9 @@ public:
     // Tunable mainly so tests do not have to wait out a 20 second timeout; the
     // defaults are what a development session uses.
     void setHeartbeat(int intervalMs, int timeoutMs);
+    // Physical-device development is the one mode that cannot use loopback.
+    // Authentication remains mandatory; callers must opt in explicitly.
+    void setRemoteAccess(bool enabled);
 
     // Absolute path to the project's design token file, from the manifest's
     // "design" key. Empty (the default) means the project declares none and no
@@ -124,4 +127,5 @@ private:
     // one that was running through it.
     QByteArray m_design;
     QString m_token;
+    bool m_remoteAccess = false;
 };

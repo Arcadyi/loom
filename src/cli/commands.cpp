@@ -18,6 +18,9 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
@@ -136,6 +139,20 @@ QString executablePathFor(const QString &buildDirectory, const QString &target)
     return preferred;
 }
 
+// Executable suffixes and bundle layout are properties of the *target* system,
+// not the host running loom. In particular a Windows host cross-compiling
+// embedded Linux must not look for Target.exe merely because loom.exe itself
+// was built on Windows.
+QString embeddedExecutablePathFor(const QString &buildDirectory, const QString &target)
+{
+    const QDir directory(buildDirectory);
+    const QString preferred = directory.filePath(QStringLiteral("bin/") + target);
+    if (QFileInfo(preferred).isFile())
+        return preferred;
+    const QString legacy = directory.filePath(target);
+    return QFileInfo(legacy).isFile() ? legacy : preferred;
+}
+
 // The prefix loom itself was installed into, or an empty string when running
 // from a build tree where no CMake package exists. Generated projects do
 // find_package(loom CONFIG REQUIRED), so without this every build in a fresh
@@ -208,13 +225,69 @@ struct ProjectContext {
     // none. Resolved here rather than at each use so every command anchors it
     // to the manifest instead of the working directory.
     QString designPath;
+    QJsonObject platformOptions;
+    QJsonObject embeddedProfile;
 };
+
+QString findArtifact(const QString &directory, const QStringList &suffixes)
+{
+    QStringList matches;
+    QDirIterator iterator(
+        directory, QDir::Files | QDir::Readable, QDirIterator::Subdirectories);
+    while (iterator.hasNext()) {
+        const QString path = iterator.next();
+        for (const QString &suffix : suffixes) {
+            if (path.endsWith(suffix, Qt::CaseInsensitive)) {
+                matches.append(path);
+                break;
+            }
+        }
+    }
+    matches.sort();
+    return matches.isEmpty() ? QString() : matches.constLast();
+}
+
+QString findBundle(const QString &directory, const QString &name)
+{
+    QDirIterator iterator(
+        directory, QStringList{name + QStringLiteral(".app")}, QDir::Dirs,
+        QDirIterator::Subdirectories);
+    QStringList matches;
+    while (iterator.hasNext())
+        matches.append(iterator.next());
+    matches.sort();
+    return matches.isEmpty() ? QString() : matches.constLast();
+}
+
+QStringList adbArguments(const QJsonObject &options)
+{
+    const QString device = options.value(QStringLiteral("device")).toString();
+    return device.isEmpty() ? QStringList{} : QStringList{QStringLiteral("-s"), device};
+}
+
+QString embeddedHost(const QJsonObject &profile)
+{
+    const QString host = profile.value(QStringLiteral("host")).toString();
+    const QString user = profile.value(QStringLiteral("user")).toString();
+    return user.isEmpty() ? host : user + QLatin1Char('@') + host;
+}
+
+QStringList sshArguments(const QJsonObject &profile)
+{
+    QStringList arguments;
+    const int port = profile.value(QStringLiteral("port")).toInt(22);
+    if (port != 22)
+        arguments.append({QStringLiteral("-p"), QString::number(port)});
+    arguments.append(embeddedHost(profile));
+    return arguments;
+}
 
 // Shared by `loom lint` and `loom style`. Loads the project's design tokens
 // first, so a class built from a project-defined token (bg-brand-500) is not
 // reported as unknown. A default-constructed context means "no project", which
 // is how an explicit path outside any project is checked.
-int runStyleCheck(const ProjectContext &context, const QStringList &files)
+int runStyleCheck(
+    const ProjectContext &context, const QStringList &files, bool json = false)
 {
     QTextStream out(stdout);
     QTextStream err(stderr);
@@ -232,17 +305,48 @@ int runStyleCheck(const ProjectContext &context, const QStringList &files)
             return reportError(error);
     }
 
+    int errors = 0;
+    int warnings = 0;
+    QJsonArray diagnostics;
     for (const auto &finding : findings) {
-        err << finding.file << ':' << finding.line << ": unknown utility class '"
-            << finding.klass << "'\n";
+        if (finding.error)
+            ++errors;
+        else
+            ++warnings;
+        if (json) {
+            diagnostics.append(
+                QJsonObject{
+                    {QStringLiteral("file"), finding.file},
+                    {QStringLiteral("line"), finding.line},
+                    {QStringLiteral("column"), finding.column},
+                    {QStringLiteral("severity"),
+                     finding.error ? QStringLiteral("error") : QStringLiteral("warning")},
+                    {QStringLiteral("code"), finding.code},
+                    {QStringLiteral("class"), finding.klass},
+                    {QStringLiteral("message"), finding.message},
+                });
+        } else {
+            err << finding.file << ':' << finding.line << ':' << finding.column << ": "
+                << (finding.error ? "error" : "warning") << ": " << finding.message
+                << " [" << finding.code << "]\n";
+        }
     }
-    if (!findings.isEmpty()) {
-        err << "loom: " << findings.size() << " unknown class(es) in " << files.size()
-            << " file(s)\n";
-        return cli::Failure;
+    if (json) {
+        out << QJsonDocument(
+                   QJsonObject{
+                       {QStringLiteral("filesChecked"), files.size()},
+                       {QStringLiteral("errors"), errors},
+                       {QStringLiteral("warnings"), warnings},
+                       {QStringLiteral("diagnostics"), diagnostics},
+                   })
+                   .toJson(QJsonDocument::Indented);
+    } else if (!findings.isEmpty()) {
+        err << "loom: " << errors << " error(s), " << warnings << " warning(s) in "
+            << files.size() << " file(s)\n";
     }
-    out << "loom: " << files.size() << " file(s) checked, no unknown classes\n";
-    return cli::Success;
+    if (findings.isEmpty() && !json)
+        out << "loom: " << files.size() << " file(s) checked, no findings\n";
+    return errors > 0 ? cli::Failure : cli::Success;
 }
 
 // Every QML file the manifest declares, which is what qmlformat and the
@@ -267,8 +371,7 @@ int resolveProjectContext(
 {
     context.target = parsed.value(QStringLiteral("target"), QStringLiteral("desktop"));
     // Checked against the known list first, so a typo says "unknown target
-    // 'dekstop'" instead of sending the user to the roadmap with "the dekstop
-    // adapter is not implemented".
+    // 'dekstop'" rather than looking like a platform-adapter failure.
     if (!isKnownTarget(context.target)) {
         return cli::reportUsageError(
             spec,
@@ -293,26 +396,133 @@ int resolveProjectContext(
             parsed.value(QStringLiteral("app")), context.application, &error)) {
         return reportError(error);
     }
-    // Gives the manifest's "platforms" list its first actual use.
-    if (!context.application.platforms.isEmpty()
-        && !context.application.platforms.contains(context.target)) {
+    if (!context.application.platforms.contains(context.target)) {
         return reportError(
             QStringLiteral("application '%1' does not list '%2' in its platforms (%3)")
                 .arg(
                     context.application.target, context.target,
                     context.application.platforms.join(QStringLiteral(", "))));
     }
-    if (context.target != QStringLiteral("desktop")) {
-        return reportError(
-            QStringLiteral("the %1 adapter is not implemented in this build")
-                .arg(context.target));
-    }
-
     context.buildDirectory =
         buildDirectoryFor(context.root, context.target, context.configuration);
     context.cmakeArguments = cmakePrefixArguments(parsed.value(QStringLiteral("prefix")));
     context.generator =
         parsed.value(QStringLiteral("generator"), QStringLiteral("Ninja"));
+    context.platformOptions =
+        context.application.platformOptions.value(context.target).toObject();
+
+    const auto absoluteOption = [&context](const QString &value) {
+        if (value.isEmpty() || QFileInfo(value).isAbsolute())
+            return value;
+        return QDir(context.root).absoluteFilePath(value);
+    };
+    if (context.target == QLatin1String("android")) {
+        QString qtPath =
+            context.platformOptions.value(QStringLiteral("qtPath")).toString();
+        if (qtPath.isEmpty())
+            qtPath = qEnvironmentVariable("QT_ANDROID_PATH");
+        qtPath = absoluteOption(qtPath);
+        if (qtPath.isEmpty())
+            return reportError(QStringLiteral(
+                "android platforms.qtPath (or QT_ANDROID_PATH) is required"));
+        const QString toolchain =
+            QDir(qtPath).filePath(QStringLiteral("lib/cmake/Qt6/qt.toolchain.cmake"));
+        if (!QFileInfo(toolchain).isFile())
+            return reportError(QStringLiteral("Qt Android toolchain was not found at %1")
+                                   .arg(toolchain));
+        context.cmakeArguments.append(
+            QStringLiteral("-DCMAKE_TOOLCHAIN_FILE=") + toolchain);
+        QString hostQt =
+            context.platformOptions.value(QStringLiteral("hostQtPath")).toString();
+        if (hostQt.isEmpty())
+            hostQt = qEnvironmentVariable("QT_HOST_PATH");
+        if (!hostQt.isEmpty())
+            context.cmakeArguments.append(
+                QStringLiteral("-DQT_HOST_PATH=") + absoluteOption(hostQt));
+        QString abi = context.platformOptions.value(QStringLiteral("abi")).toString();
+        const auto abis = context.platformOptions.value(QStringLiteral("abis")).toArray();
+        if (abi.isEmpty())
+            abi = abis.isEmpty() ? QStringLiteral("arm64-v8a") : abis.at(0).toString();
+        const int api = context.platformOptions.value(QStringLiteral("api")).toInt(36);
+        context.cmakeArguments.append(QStringLiteral("-DANDROID_ABI=") + abi);
+        if (!abis.isEmpty()) {
+            QStringList abiNames;
+            for (const auto &entry : abis)
+                abiNames.append(entry.toString());
+            context.cmakeArguments.append(
+                QStringLiteral("-DQT_ANDROID_ABIS=") + abiNames.join(QLatin1Char(';')));
+        }
+        context.cmakeArguments.append(
+            QStringLiteral("-DANDROID_PLATFORM=android-") + QString::number(api));
+    } else if (context.target == QLatin1String("ios")) {
+#if !defined(Q_OS_MACOS)
+        return reportError(QStringLiteral("the iOS adapter requires macOS and Xcode"));
+#else
+        QString qtPath =
+            context.platformOptions.value(QStringLiteral("qtPath")).toString();
+        if (qtPath.isEmpty())
+            qtPath = qEnvironmentVariable("QT_IOS_PATH");
+        qtPath = absoluteOption(qtPath);
+        if (qtPath.isEmpty())
+            return reportError(
+                QStringLiteral("ios platforms.qtPath (or QT_IOS_PATH) is required"));
+        const QString toolchain =
+            QDir(qtPath).filePath(QStringLiteral("lib/cmake/Qt6/qt.toolchain.cmake"));
+        if (!QFileInfo(toolchain).isFile())
+            return reportError(
+                QStringLiteral("Qt iOS toolchain was not found at %1").arg(toolchain));
+        context.cmakeArguments.append(
+            QStringLiteral("-DCMAKE_TOOLCHAIN_FILE=") + toolchain);
+        QString hostQt =
+            context.platformOptions.value(QStringLiteral("hostQtPath")).toString();
+        if (hostQt.isEmpty())
+            hostQt = qEnvironmentVariable("QT_HOST_PATH");
+        if (!hostQt.isEmpty())
+            context.cmakeArguments.append(
+                QStringLiteral("-DQT_HOST_PATH=") + absoluteOption(hostQt));
+        const QString destination =
+            context.platformOptions.value(QStringLiteral("destination"))
+                .toString(QStringLiteral("simulator"));
+        const QString sdk = context.platformOptions.value(QStringLiteral("sdk"))
+                                .toString(
+                                    destination == QLatin1String("device")
+                                        ? QStringLiteral("iphoneos")
+                                        : QStringLiteral("iphonesimulator"));
+        context.cmakeArguments.append(QStringLiteral("-DCMAKE_OSX_SYSROOT=") + sdk);
+        const QString team =
+            context.platformOptions.value(QStringLiteral("team")).toString();
+        if (!team.isEmpty()) {
+            context.cmakeArguments.append(
+                QStringLiteral("-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=") + team);
+        }
+        if (!parsed.isSet(QStringLiteral("generator")))
+            context.generator = QStringLiteral("Xcode");
+#endif
+    } else if (context.target == QLatin1String("embedded")) {
+        const QString profileName =
+            context.platformOptions.value(QStringLiteral("profile")).toString();
+        context.embeddedProfile =
+            manifest.embeddedProfiles().value(profileName).toObject();
+        if (profileName.isEmpty() || context.embeddedProfile.isEmpty())
+            return reportError(QStringLiteral(
+                "embedded platforms.profile must name an embeddedProfiles entry"));
+        const QString toolchain = absoluteOption(
+            context.embeddedProfile.value(QStringLiteral("toolchainFile")).toString());
+        if (toolchain.isEmpty() || !QFileInfo(toolchain).isFile())
+            return reportError(
+                QStringLiteral("embedded profile '%1' has no usable toolchainFile")
+                    .arg(profileName));
+        context.cmakeArguments.append(
+            QStringLiteral("-DCMAKE_TOOLCHAIN_FILE=") + toolchain);
+        const QString sysroot = absoluteOption(
+            context.embeddedProfile.value(QStringLiteral("sysroot")).toString());
+        if (!sysroot.isEmpty())
+            context.cmakeArguments.append(QStringLiteral("-DCMAKE_SYSROOT=") + sysroot);
+        const QString hostQt = absoluteOption(
+            context.embeddedProfile.value(QStringLiteral("hostQtPath")).toString());
+        if (!hostQt.isEmpty())
+            context.cmakeArguments.append(QStringLiteral("-DQT_HOST_PATH=") + hostQt);
+    }
     // Always names the application, not just the manifest: which one gets built
     // used to be invisible, and was decided by alphabetical order.
     cli::reportProgress(QStringLiteral("using %1 (application %2)")
@@ -369,6 +579,8 @@ int Commands::execute(const QStringList &arguments)
         return develop(tail);
     if (command == QStringLiteral("deploy"))
         return deploy(tail);
+    if (command == QStringLiteral("migrate"))
+        return migrate(tail);
     QTextStream(stderr) << "loom: unknown command '" << command << "'; run 'loom help'"
                         << Qt::endl;
     return cli::UsageError;
@@ -774,6 +986,13 @@ int Commands::style(const QStringList &arguments)
                  QStringLiteral(
                      "Print the utility vocabulary as JSON, for editor "
                      "completion.")},
+                {QStringLiteral("json"),
+                 {},
+                 QStringLiteral("Emit machine-readable diagnostics as JSON.")},
+                {QStringLiteral("design"), QStringLiteral("path"),
+                 QStringLiteral(
+                     "Load a schema-v2 design file for tokens, recipes, and lint "
+                     "policy.")},
                 {QStringLiteral("app"), QStringLiteral("target"),
                  QStringLiteral("Application whose qmlRoots to check.")},
             },
@@ -801,6 +1020,10 @@ int Commands::style(const QStringList &arguments)
             return cli::reportUsageError(
                 spec, QStringLiteral("--check and --catalogue are mutually exclusive"));
         }
+        const QString design = parsed.value(QStringLiteral("design"));
+        if (!design.isEmpty() && !loom::loadConfig(QFileInfo(design).absoluteFilePath()))
+            return reportError(
+                QStringLiteral("could not load design tokens %1").arg(design));
         QTextStream(stdout) << QString::fromUtf8(loom::styleCatalogueJson());
         return cli::Success;
     }
@@ -815,13 +1038,22 @@ int Commands::style(const QStringList &arguments)
                 return reportError(QStringLiteral("no such path %1").arg(path));
             files.append(stylecheck::qmlFilesUnder(path));
         }
-        return runStyleCheck(ProjectContext{}, files);
+        ProjectContext explicitContext;
+        const QString design = parsed.value(QStringLiteral("design"));
+        if (!design.isEmpty())
+            explicitContext.designPath = QFileInfo(design).absoluteFilePath();
+        return runStyleCheck(
+            explicitContext, files, parsed.isSet(QStringLiteral("json")));
     }
 
     ProjectContext context;
     if (const auto status = resolveProjectContext(parsed, spec, context))
         return status;
-    return runStyleCheck(context, qmlFilesOf(context));
+    const QString design = parsed.value(QStringLiteral("design"));
+    if (!design.isEmpty())
+        context.designPath = QFileInfo(design).absoluteFilePath();
+    return runStyleCheck(
+        context, qmlFilesOf(context), parsed.isSet(QStringLiteral("json")));
 }
 
 int Commands::languageServer(const QStringList &arguments)
@@ -1026,6 +1258,13 @@ int Commands::test(const QStringList &arguments)
             BuildRunner::build(context.buildDirectory, {}, context.configuration)) {
         return status;
     }
+    if (context.target != QLatin1String("desktop")) {
+        QTextStream(stdout)
+            << "Cross-compiled the project and its test targets for " << context.target
+            << ". Device UI smoke coverage is provided by the hosted emulator jobs; "
+               "CTest execution remains a desktop-host operation.\n";
+        return cli::Success;
+    }
     // --no-tests=error: without it, a project whose tests silently stopped being
     // built reports a green run with zero tests.
     return BuildRunner::run(
@@ -1082,10 +1321,18 @@ int Commands::develop(const QStringList &arguments)
     if (const auto status = BuildRunner::build(buildDirectory, app.target, config))
         return status;
 
-    const auto executable = executablePathFor(buildDirectory, app.target);
-    if (!QFileInfo(executable).isFile()) {
-        return reportError(
-            QStringLiteral("built executable was not found at %1").arg(executable));
+    QString executable;
+    if (context.target == QLatin1String("android"))
+        executable = findArtifact(buildDirectory, {QStringLiteral(".apk")});
+    else if (context.target == QLatin1String("ios"))
+        executable = findBundle(buildDirectory, app.target);
+    else if (context.target == QLatin1String("embedded"))
+        executable = embeddedExecutablePathFor(buildDirectory, app.target);
+    else
+        executable = executablePathFor(buildDirectory, app.target);
+    if (executable.isEmpty() || !QFileInfo::exists(executable)) {
+        return reportError(QStringLiteral("built %1 artifact was not found under %2")
+                               .arg(context.target, buildDirectory));
     }
 
     DevSession session(
@@ -1099,11 +1346,204 @@ int Commands::develop(const QStringList &arguments)
             .generator = context.generator,
             .executable = executable,
             .applicationArguments = parsed.passthrough(),
+            .platform = context.target,
+            .platformOptions = context.platformOptions,
+            .embeddedProfile = context.embeddedProfile,
         });
     const auto status = session.run(&error);
     if (!error.isEmpty())
         return reportError(error);
     return status;
+}
+
+int Commands::migrate(const QStringList &arguments)
+{
+    const CommandSpec spec{
+        .name = QStringLiteral("migrate"),
+        .summary = QStringLiteral("Preview or apply the schema-v2 project migration."),
+        .usage = QStringLiteral("loom migrate --to 2 [--apply]"),
+        .options =
+            {
+                {QStringLiteral("to"), QStringLiteral("version"),
+                 QStringLiteral("Target schema version; only 2 is supported.")},
+                {QStringLiteral("apply"),
+                 {},
+                 QStringLiteral("Atomically write migrated files.")},
+            },
+    };
+    ParsedCommand parsed;
+    switch (cli::parseCommand(spec, arguments, parsed)) {
+    case ParseOutcome::HelpPrinted:
+        return cli::Success;
+    case ParseOutcome::Rejected:
+        return cli::UsageError;
+    case ParseOutcome::Ready:
+        break;
+    }
+    if (parsed.value(QStringLiteral("to")) != QLatin1String("2"))
+        return cli::reportUsageError(spec, QStringLiteral("--to must be 2"));
+
+    const QString manifestPath = findManifest(QDir::currentPath());
+    if (manifestPath.isEmpty())
+        return reportError(
+            QStringLiteral("No loom.json found in this directory or its parents"));
+    QFile manifestFile(manifestPath);
+    if (!manifestFile.open(QIODevice::ReadOnly))
+        return reportError(QStringLiteral("could not read %1").arg(manifestPath));
+    QJsonParseError parseError;
+    const QByteArray originalManifestBytes = manifestFile.readAll();
+    QJsonDocument manifestDocument =
+        QJsonDocument::fromJson(originalManifestBytes, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !manifestDocument.isObject())
+        return reportError(QStringLiteral("invalid JSON in %1").arg(manifestPath));
+
+    QJsonObject manifest = manifestDocument.object();
+    const QJsonValue sourceVersion = manifest.value(QStringLiteral("schemaVersion"));
+    if (!sourceVersion.isDouble() || sourceVersion.toDouble() != 1.0) {
+        if (sourceVersion.isDouble() && sourceVersion.toDouble() == 2.0) {
+            QTextStream(stdout) << manifestPath << " already uses schema v2.\n";
+            return cli::Success;
+        }
+        return reportError(QStringLiteral("only project schema v1 can migrate to v2"));
+    }
+    manifest.insert(QStringLiteral("schemaVersion"), 2);
+    manifest.insert(
+        QStringLiteral("$schema"),
+        QStringLiteral(
+            "https://raw.githubusercontent.com/Arcadyi/loom/master/schemas/"
+            "project-v2.schema.json"));
+    QJsonObject applications = manifest.value(QStringLiteral("applications")).toObject();
+    for (auto it = applications.begin(); it != applications.end(); ++it) {
+        QJsonObject application = it->toObject();
+        if (application.value(QStringLiteral("platforms")).isArray()) {
+            QJsonObject platforms;
+            for (const auto &entry :
+                 application.value(QStringLiteral("platforms")).toArray())
+                if (entry.isString())
+                    platforms.insert(entry.toString(), QJsonObject{});
+            application.insert(QStringLiteral("platforms"), platforms);
+            it.value() = application;
+        }
+    }
+    manifest.insert(QStringLiteral("applications"), applications);
+
+    QString designPath;
+    QJsonObject design;
+    QByteArray originalDesignBytes;
+    const QString relativeDesign = manifest.value(QStringLiteral("design")).toString();
+    if (!relativeDesign.isEmpty()) {
+        designPath = QFileInfo(QFileInfo(manifestPath).absolutePath(), relativeDesign)
+                         .absoluteFilePath();
+        QFile designFile(designPath);
+        if (!designFile.open(QIODevice::ReadOnly))
+            return reportError(QStringLiteral("could not read %1").arg(designPath));
+        originalDesignBytes = designFile.readAll();
+        QJsonDocument designDocument =
+            QJsonDocument::fromJson(originalDesignBytes, &parseError);
+        if (parseError.error != QJsonParseError::NoError || !designDocument.isObject())
+            return reportError(QStringLiteral("invalid JSON in %1").arg(designPath));
+        const QJsonObject old = designDocument.object();
+        const QJsonValue designVersion = old.value(QStringLiteral("schemaVersion"));
+        if (designVersion.isDouble() && designVersion.toDouble() == 2.0) {
+            design = old;
+        } else {
+            if (!designVersion.isUndefined()
+                && (!designVersion.isDouble() || designVersion.toDouble() != 1.0)) {
+                return reportError(
+                    QStringLiteral("only design schema v1 can migrate to v2"));
+            }
+            design.insert(
+                QStringLiteral("$schema"),
+                QStringLiteral(
+                    "https://raw.githubusercontent.com/Arcadyi/loom/master/schemas/"
+                    "design-v2.schema.json"));
+            design.insert(QStringLiteral("schemaVersion"), 2);
+            QJsonObject tokens;
+            for (const auto &family :
+                 {QStringLiteral("colors"), QStringLiteral("space"),
+                  QStringLiteral("breakpoints")}) {
+                if (old.contains(family))
+                    tokens.insert(family, old.value(family));
+            }
+            if (!tokens.isEmpty())
+                design.insert(QStringLiteral("tokens"), tokens);
+            QJsonObject themes;
+            const QJsonObject oldThemes = old.value(QStringLiteral("themes")).toObject();
+            for (auto themeIt = oldThemes.constBegin(); themeIt != oldThemes.constEnd();
+                 ++themeIt) {
+                const QJsonObject oldTheme = themeIt->toObject();
+                QJsonObject converted;
+                QJsonObject colors;
+                for (auto value = oldTheme.constBegin(); value != oldTheme.constEnd();
+                     ++value) {
+                    if (value.key() == QLatin1String("extends")
+                        || value.key() == QLatin1String("dark"))
+                        converted.insert(value.key(), value.value());
+                    else
+                        colors.insert(value.key(), value.value());
+                }
+                if (!colors.isEmpty())
+                    converted.insert(
+                        QStringLiteral("tokens"),
+                        QJsonObject{{QStringLiteral("colors"), colors}});
+                themes.insert(themeIt.key(), converted);
+            }
+            if (!themes.isEmpty())
+                design.insert(QStringLiteral("themes"), themes);
+            design.insert(
+                QStringLiteral("theme"),
+                QJsonObject{
+                    {QStringLiteral("default"),
+                     old.value(QStringLiteral("defaultTheme"))
+                         .toString(QStringLiteral("light"))},
+                    {QStringLiteral("light"), QStringLiteral("light")},
+                    {QStringLiteral("dark"), QStringLiteral("dark")},
+                });
+            if (old.contains(QStringLiteral("iconRoot")))
+                design.insert(
+                    QStringLiteral("iconRoot"), old.value(QStringLiteral("iconRoot")));
+        }
+    }
+
+    const QByteArray manifestBytes =
+        QJsonDocument(manifest).toJson(QJsonDocument::Indented);
+    const QByteArray designBytes = QJsonDocument(design).toJson(QJsonDocument::Indented);
+    if (!parsed.isSet(QStringLiteral("apply"))) {
+        QTextStream(stdout) << "Would migrate " << manifestPath << ":\n" << manifestBytes;
+        if (!designPath.isEmpty())
+            QTextStream(stdout) << "Would migrate " << designPath << ":\n" << designBytes;
+        return cli::Success;
+    }
+    const auto write = [](const QString &path, const QByteArray &bytes, QString *error) {
+        QSaveFile file(path);
+        if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size()
+            || !file.commit()) {
+            *error = file.errorString();
+            return false;
+        }
+        return true;
+    };
+    QString error;
+    if (!designPath.isEmpty() && !write(designPath, designBytes, &error))
+        return reportError(
+            QStringLiteral("could not migrate %1: %2").arg(designPath, error));
+    if (!write(manifestPath, manifestBytes, &error)) {
+        const QString manifestError = error;
+        if (!designPath.isEmpty()) {
+            QString rollbackError;
+            if (!write(designPath, originalDesignBytes, &rollbackError)) {
+                return reportError(
+                    QStringLiteral(
+                        "could not migrate %1 (%2), and rollback of %3 also failed: %4")
+                        .arg(manifestPath, manifestError, designPath, rollbackError));
+            }
+        }
+        return reportError(
+            QStringLiteral("could not migrate %1: %2; prior files were restored")
+                .arg(manifestPath, manifestError));
+    }
+    QTextStream(stdout) << "Migrated project and design documents to schema v2.\n";
+    return cli::Success;
 }
 
 int Commands::deploy(const QStringList &arguments)
@@ -1115,7 +1555,7 @@ int Commands::deploy(const QStringList &arguments)
     options.append(
         {QStringLiteral("package"),
          {},
-         QStringLiteral("Also produce an archive with CPack.")});
+         QStringLiteral("Also produce a native desktop package with CPack.")});
 
     const CommandSpec spec{
         .name = QStringLiteral("deploy"),
@@ -1158,6 +1598,87 @@ int Commands::deploy(const QStringList &arguments)
             context.buildDirectory, context.application.target, context.configuration)) {
         return status;
     }
+    if (context.target != QLatin1String("desktop")
+        && parsed.isSet(QStringLiteral("package"))) {
+        return cli::reportUsageError(
+            spec,
+            QStringLiteral(
+                "--package produces native desktop packages only; mobile and "
+                "embedded deploy directly to their selected target"));
+    }
+
+    if (context.target == QLatin1String("android")) {
+        const QString apk =
+            findArtifact(context.buildDirectory, {QStringLiteral(".apk")});
+        if (apk.isEmpty())
+            return reportError(
+                QStringLiteral("Android build succeeded but no APK was found under %1")
+                    .arg(context.buildDirectory));
+        QStringList adbInstallArguments = adbArguments(context.platformOptions);
+        adbInstallArguments.append(
+            {QStringLiteral("install"), QStringLiteral("-r"), apk});
+        if (const int status =
+                BuildRunner::run(QStringLiteral("adb"), adbInstallArguments))
+            return status;
+        QTextStream(stdout) << "Installed " << apk
+                            << " on the selected Android device.\n";
+        return cli::Success;
+    }
+    if (context.target == QLatin1String("ios")) {
+        const QString bundle =
+            findBundle(context.buildDirectory, context.application.target);
+        if (bundle.isEmpty())
+            return reportError(
+                QStringLiteral(
+                    "iOS build succeeded but no .app bundle was found under %1")
+                    .arg(context.buildDirectory));
+        const QString destination =
+            context.platformOptions.value(QStringLiteral("destination"))
+                .toString(QStringLiteral("simulator"));
+        const QString device = context.platformOptions.value(QStringLiteral("device"))
+                                   .toString(QStringLiteral("booted"));
+        if (destination == QLatin1String("simulator")) {
+            return BuildRunner::run(
+                QStringLiteral("xcrun"),
+                {QStringLiteral("simctl"), QStringLiteral("install"), device, bundle});
+        }
+        return BuildRunner::run(
+            QStringLiteral("xcrun"),
+            {QStringLiteral("devicectl"), QStringLiteral("device"),
+             QStringLiteral("install"), QStringLiteral("app"), QStringLiteral("--device"),
+             device, bundle});
+    }
+    if (context.target == QLatin1String("embedded")) {
+        const QString executable =
+            embeddedExecutablePathFor(context.buildDirectory, context.application.target);
+        if (!QFileInfo(executable).isFile())
+            return reportError(QStringLiteral("embedded executable was not found at %1")
+                                   .arg(executable));
+        const QString remoteDir =
+            context.embeddedProfile.value(QStringLiteral("remoteDir")).toString();
+        QStringList mkdirArguments = sshArguments(context.embeddedProfile);
+        mkdirArguments.append(QStringLiteral("mkdir -p -- '%1'")
+                                  .arg(QString(remoteDir).replace(
+                                      QLatin1Char('\''), QStringLiteral("'\\''"))));
+        if (const int status = BuildRunner::run(QStringLiteral("ssh"), mkdirArguments))
+            return status;
+        QStringList rsyncArguments{QStringLiteral("-az")};
+        const int port = context.embeddedProfile.value(QStringLiteral("port")).toInt(22);
+        if (port != 22)
+            rsyncArguments.append(
+                {QStringLiteral("-e"), QStringLiteral("ssh -p %1").arg(port)});
+        rsyncArguments.append(
+            {executable,
+             embeddedHost(context.embeddedProfile) + QLatin1Char(':') + remoteDir
+                 + QLatin1Char('/')});
+        if (const int status = BuildRunner::run(QStringLiteral("rsync"), rsyncArguments))
+            return status;
+        QTextStream(stdout) << "Transferred " << executable << " to "
+                            << embeddedHost(context.embeddedProfile) << ':' << remoteDir
+                            << "/.\n";
+        return cli::Success;
+    }
+
     if (const auto status = BuildRunner::run(
             QStringLiteral("cmake"),
             {QStringLiteral("--install"), context.buildDirectory,
@@ -1208,6 +1729,7 @@ void Commands::printHelp() const
            "  clean       Remove loom's build and deploy trees\n"
            "  test        Build and run the project's tests\n"
            "  deploy      Package and deploy for a target\n\n"
+           "  migrate     Preview or apply schema migrations\n\n"
            "Common options:\n"
            "  --target <desktop|android|ios|embedded>\n"
            "  --config <Debug|Release|RelWithDebInfo|MinSizeRel>\n"

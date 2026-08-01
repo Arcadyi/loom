@@ -14,7 +14,7 @@ The resolved path is printed on every project command:
 loom: using /home/you/src/MyApp/loom.json (application MyApp)
 ```
 
-A JSON Schema ships alongside it at `share/loom/schemas/project-v1.schema.json`, and CI
+A JSON Schema ships alongside it at `share/loom/schemas/project-v2.schema.json`, and CI
 validates a freshly generated manifest against it.
 
 ---
@@ -23,8 +23,8 @@ validates a freshly generated manifest against it.
 
 ```json
 {
-    "$schema": "https://raw.githubusercontent.com/Arcadyi/loom/main/schemas/project-v1.schema.json",
-    "schemaVersion": 1,
+    "$schema": "https://raw.githubusercontent.com/Arcadyi/loom/master/schemas/project-v2.schema.json",
+    "schemaVersion": 2,
     "project": {
         "name": "MyApp",
         "defaultApplication": "MyApp"
@@ -42,7 +42,20 @@ validates a freshly generated manifest against it.
             "entry": "Main",
             "qmlRoots": ["qml"],
             "assetRoots": ["assets"],
-            "platforms": ["desktop", "android", "ios", "embedded"]
+          "platforms": {
+                "desktop": {},
+                "android": { "abi": "arm64-v8a", "api": 36 },
+                "ios": { "destination": "simulator" },
+                "embedded": { "profile": "board" }
+            }
+        }
+    },
+    "embeddedProfiles": {
+        "board": {
+            "toolchainFile": "toolchains/board.cmake",
+            "sysroot": "/opt/board/sysroot",
+            "host": "board.local",
+            "remoteDir": "/opt/myapp"
         }
     }
 }
@@ -54,11 +67,12 @@ validates a freshly generated manifest against it.
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `schemaVersion` | yes | Must be `1`. Anything else is refused. |
+| `schemaVersion` | yes | Must be `2`. Use `loom migrate --to 2` for a v1 project. |
 | `project` | yes | See below. |
-| `qt` | yes | `{ "version": "6.11" }`. Only `6.11` is accepted. |
+| `qt` | yes | Minimum Qt version. Loom requires `6.11` or newer. |
 | `applications` | yes | Map of target name to application. At least one. |
 | `design` | no | Path to a design token file, relative to this manifest. See below. |
+| `embeddedProfiles` | no | Named cross-toolchain, sysroot and SSH deployment profiles. |
 | `$schema` | no | Informational. |
 
 ### `design`
@@ -66,7 +80,7 @@ validates a freshly generated manifest against it.
 Names the project's design token file — colours, spacing, breakpoints and
 themes. A separate file rather than a section of this one, so a design system
 can be shared between projects and loaded on its own with `loom::loadConfig()`.
-Its own schema is `share/loom/schemas/design-v1.schema.json`, and its contents
+Its own schema is `share/loom/schemas/design-v2.schema.json`, and its contents
 are documented in [configuration.md](../styling/configuration.md).
 
 Three things read it, and they must agree:
@@ -102,10 +116,15 @@ Every field is required.
 | `entry` | Root QML type, without `.qml`. |
 | `qmlRoots` | Directories, relative to the manifest, holding QML. Watched and bundled during development. At least one. |
 | `assetRoots` | Directories bundled under `assets/`. May be empty. |
-| `platforms` | Which targets this application supports. Any of `desktop`, `android`, `ios`, `embedded`. |
+| `platforms` | Object of enabled targets and adapter settings. Keys are `desktop`, `android`, `ios`, `embedded`. |
 
-`platforms` is enforced: `loom build --target android` on an application that does not list
+`platforms` must enable at least one target and is enforced: `loom build --target android` on an application that does not contain
 `android` is refused, naming what it does list.
+
+Android accepts `qtPath`, `hostQtPath`, `abi`/`abis`, `api`, and an optional ADB
+`device`. iOS accepts `qtPath`, `hostQtPath`, `sdk`, `destination`, `device`,
+signing `team`, and the host address used by a physical device. Embedded selects a named
+`embeddedProfiles` entry. Relative kit/toolchain paths resolve from `loom.json`.
 
 ---
 
@@ -143,6 +162,7 @@ Supported, and validated on load. Manifests are checked beyond the schema's stru
 - `id` must be present. The schema always required it; older loom versions did not check,
   so a hand-written manifest missing it loaded and produced an empty bundle identifier.
 - `platforms` entries must be known values.
+- an application's `target` must match its key in the `applications` map.
 - `defaultApplication`, if present, must name an application that exists.
 - `uri` must be a valid dotted identifier.
 - `target`, `entry` and `qmlRoots` must be non-empty.

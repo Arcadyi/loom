@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QGuiApplication>
+#include <QPointer>
 #include <QQmlApplicationEngine>
 #include <QString>
 
@@ -82,11 +83,13 @@ private:
     // Loads the design tokens loom_add_application compiled into the module's
     // resources, when the project declared a DESIGN file.
     void loadCompiledDesign();
+    void installInspector();
 
     QGuiApplication m_application;
     QQmlApplicationEngine m_engine;
     EngineInitializer m_initializer;
     std::unique_ptr<ReloadController> m_reloadController;
+    QPointer<QObject> m_inspector;
     bool m_developmentRuntimeEnabled = false;
 };
 

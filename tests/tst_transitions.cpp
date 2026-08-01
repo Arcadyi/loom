@@ -150,5 +150,5 @@ void TransitionTests::transitionNoneDisables()
     QTRY_COMPARE_WITH_TIMEOUT(colorOf(item.data()), QColor(Qt::black), 100);
 }
 
-QTEST_MAIN(TransitionTests)
+QTEST_GUILESS_MAIN(TransitionTests)
 #include "tst_transitions.moc"

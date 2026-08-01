@@ -4,7 +4,8 @@
 
 - Qt 6.11 or newer (Quick, Qml, Network; QmlPrivate for the runtime)
 - CMake 3.22 or newer, Ninja, C++20 compiler
-- Linux is the validated platform
+- Linux, macOS, and Windows desktop builds are hosted; Android and iOS use
+  hosted emulator/simulator jobs
 
 ## Install
 
@@ -59,6 +60,10 @@ hello/
 
 Try it: with `loom dev` running, change a colour in `design/tokens.json` and
 save.
+
+Press Ctrl+Shift+I to open the development inspector. Hover a styled item to
+see its utility string, active variants, theme, and resolved property writes;
+click to lock the selection.
 
 ## Adding Loom to an existing project
 

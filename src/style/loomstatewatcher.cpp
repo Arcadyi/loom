@@ -76,6 +76,24 @@ RectangularShadow {
 }
 )";
 
+constexpr const char ringQml[] = R"(import QtQuick
+Rectangle {
+    required property Item target
+    readonly property Item radiusSource:
+        !target ? null
+        : target.radius !== undefined ? target
+        : target.background !== undefined ? target.background
+        : null
+    parent: target
+    anchors.fill: target
+    z: 1000000
+    color: "transparent"
+    enabled: false
+    radius: radiusSource && radiusSource.radius !== undefined
+        ? radiusSource.radius : 0
+}
+)";
+
 QQmlComponent *cachedComponent(QQmlEngine *engine, const char *source)
 {
     static QHash<QPair<QQmlEngine *, const char *>, QQmlComponent *> cache;
@@ -110,6 +128,7 @@ QQuickItem *loomCreateStateWatcher(QQuickItem *target, QObject *owner)
     }
     watcher->setParent(owner);
     watcher->setParentItem(target);
+    watcher->setProperty("_loomInternal", true);
     return watcher;
 }
 
@@ -131,5 +150,27 @@ QQuickItem *loomCreateShadowItem(QQuickItem *target, QObject *owner)
         return nullptr;
     }
     shadow->setParent(owner);
+    shadow->setProperty("_loomInternal", true);
     return shadow;
+}
+
+QQuickItem *loomCreateRingItem(QQuickItem *target, QObject *owner)
+{
+    QQmlEngine *engine = qmlEngine(target);
+    if (!engine) {
+        qCWarning(lcLoomState) << "Lo.style: ring-* needs a QML engine; item" << target
+                               << "was not created by one";
+        return nullptr;
+    }
+    QQmlComponent *component = cachedComponent(engine, ringQml);
+    auto *ring = qobject_cast<QQuickItem *>(component->createWithInitialProperties(
+        {{QStringLiteral("target"), QVariant::fromValue(target)}}));
+    if (!ring) {
+        qCWarning(lcLoomState) << "Lo.style: failed to create ring overlay:"
+                               << component->errorString();
+        return nullptr;
+    }
+    ring->setParent(owner);
+    ring->setProperty("_loomInternal", true);
+    return ring;
 }

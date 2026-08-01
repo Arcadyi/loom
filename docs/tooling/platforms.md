@@ -1,112 +1,128 @@
-# Platforms
+# Platform adapters
 
-## Status at a glance
+The same `loom build`, `dev`, `test`, and `deploy` commands select a platform
+with `--target`. Each application opts into targets and provides target options
+under `applications.<target>.platforms` in `loom.json`.
 
-| Target | `loom doctor` | `loom build` / `dev` / `deploy` | Validated by CI |
-| --- | --- | --- | --- |
-| `desktop` — Linux | yes | yes | **yes** |
-| `desktop` — macOS | yes | yes | no |
-| `desktop` — Windows | yes | yes | no |
-| `android` | yes | **no** | no |
-| `ios` | yes | **no** | no |
-| `embedded` | yes | **no** | no |
+| Target | Build | Development transport | Deploy | Hosted validation |
+| --- | --- | --- | --- | --- |
+| Linux desktop | CMake/Ninja | loopback TCP | install + DEB | build/test/package |
+| macOS desktop | CMake/Ninja | loopback TCP | app bundle + DMG | build/test/package |
+| Windows desktop | CMake/Ninja | loopback TCP | executable + MSI | build/test/package |
+| Android | Qt Android toolchain | authenticated TCP through `adb reverse` | `adb install -r` | emulator build/install/launch |
+| iOS | Qt iOS toolchain/Xcode | simulator host or explicitly enabled device LAN | `simctl` / `devicectl` | simulator build/install/launch |
+| Embedded Linux | project toolchain/sysroot | authenticated TCP through SSH reverse tunnel | rsync + SSH | project/board owned |
 
-`--target android|ios|embedded` is accepted by the argument parser and then
-refused:
+`loom doctor --target ...` checks host prerequisites. Platform paths can be
+relative to the manifest or supplied by the documented environment variables.
 
-```console
-$ loom build --target android
-loom: the android adapter is not implemented in this build
-```
+## Desktop and native packages
 
-Only `loom doctor` does real work for those targets, reporting on the toolchain
-it would need. Everything below the desktop section is a **roadmap**, not a
-description of what ships.
+Desktop uses the ordinary CMake configure/build/test flow. `loom deploy`
+installs into `.loom/dist/desktop-<config>` by default. `--package` invokes
+CPack and deliberately supports native desktop packages only:
 
-## Desktop
+- Linux: DEB;
+- macOS: DragNDrop DMG;
+- Windows: WiX MSI.
 
-**Linux is the validated platform.** It is what CI builds and tests, and what
-the end-to-end scaffold-build-test suite runs against.
-
-macOS and Windows are *untested*. The desktop adapter is written to be portable
-— the same configure/build workflow and the same outbound loopback TCP
-connection — and the known platform-specific paths are handled (application
-bundles on macOS, `.exe` suffixes on Windows), but nothing verifies them.
-
-Two known gaps if you try:
-
-- the install step's system-library exclusions are Linux FHS paths, so a
-  `cmake --install` on another platform may try to vendor system libraries;
-- `loom dev` has no signal handling on non-Unix platforms, so a non-interactive
-  kill can orphan the child application holding the reload port.
-
-Treat both as unsupported until CI covers them.
-
-### Deployment
-
-`loom deploy` performs an ordinary `cmake --install` into a prefix and can
-produce a CPack archive. It does **not** bundle Qt, and there is currently no
-option to. Producing a self-contained artifact is left to a dedicated packaging
-tool such as `linuxdeploy` or `appimage-builder`, run over the installed prefix.
-
-#### Why Qt is not bundled
-
-Both routes Qt offers were measured on Linux with Qt 6.11, against a
-distribution Qt rooted at `/usr`:
-
-- `qt_generate_deploy_qml_app_script` produces a 247 MB tree that includes
-  `ld-linux-x86-64.so.2` itself, and the resulting binary core-dumps.
-- `qt_deploy_runtime_dependencies`, with the system directories excluded and the
-  Qt libraries named back in — the approach that successfully ships loom's own
-  CLI — fails inside `file(GET_RUNTIME_DEPENDENCIES)` with "file unknown error",
-  with and without `ADDITIONAL_MODULES` for the QML plugins.
-
-The difference appears to be console application versus GUI application with
-plugins, rather than anything about the distribution Qt: loom's own `bin/loom`
-does bundle Qt this second way and resolves it from its own `lib/`. Until that
-is understood, `loom_install_application` produces a correct, ordinary install
-that runs against the Qt the host already has.
-
----
-
-# Roadmap
-
-Nothing in this section is implemented. It records the intended design so the
-shape is not re-invented later.
+The generated application enables the appropriate CPack generator. Packaging
+requires its host tool (`dpkg`, platform disk-image tools, or WiX). Qt runtime
+deployment remains governed by `loom_install_application`; inspect and sign the
+result as required by the destination platform.
 
 ## Android
 
-`loom doctor --target android` **works today**: it checks CMake, Ninja,
-Qt 6.11, Java, `sdkmanager` and ADB, and reports what is missing.
+```json
+"android": {
+  "qtPath": "/opt/Qt/6.11.1/android_arm64_v8a",
+  "hostQtPath": "/opt/Qt/6.11.1/gcc_64",
+  "abi": "arm64-v8a",
+  "api": 36,
+  "device": "emulator-5554"
+}
+```
 
-Planned: the setup provider will install API 36, build-tools 36.0.0,
-platform-tools, NDK 27.2.12479018, and the selected Qt Android ABI, after the
-user confirms each provider and accepts its licenses. Development transport will
-use `adb reverse`, so the application can keep the same outbound loopback
-protocol it uses on desktop.
+`qtPath` may instead come from `QT_ANDROID_PATH`, and `hostQtPath` from
+`QT_HOST_PATH`. Supported ABIs are `arm64-v8a`, `armeabi-v7a`, and `x86_64`.
+The adapter passes Qt's Android toolchain, ABI, and API level to CMake.
+
+- `loom build --target android` produces the APK.
+- `loom deploy --target android` installs it with ADB.
+- `loom dev --target android` installs it, establishes `adb reverse`, and
+  starts the activity with the authenticated reload connection arguments.
+
+Native source changes rebuild, reinstall, and restart the application. QML,
+asset, and design changes use the normal hot-reload protocol.
 
 ## iOS
 
-`loom doctor --target ios` **works today** on macOS.
+```json
+"ios": {
+  "qtPath": "/Users/me/Qt/6.11.1/ios",
+  "hostQtPath": "/Users/me/Qt/6.11.1/macos",
+  "sdk": "iphonesimulator",
+  "destination": "simulator",
+  "device": "booted"
+}
+```
 
-Planned: configuration will require macOS with Xcode and a Qt 6.11 iOS kit. The
-tool can validate and invoke those, but cannot create an Apple developer account
-or silently manage signing and provisioning. Simulator transport will use the
-host; physical devices will require an explicitly selected LAN address and a
-generated local-network usage declaration.
+`QT_IOS_PATH` and `QT_HOST_PATH` are the path fallbacks. iOS builds require
+macOS, Xcode, a Qt iOS kit, and its matching host Qt. Simulator builds default
+to the Xcode generator and use `simctl` for installation and launch.
+
+For a physical device, set `destination` to `device`, select a `device`, and
+provide `host`, the device-reachable address of the development machine. Loom
+then explicitly binds the reload server for remote access and launches through
+`devicectl`. Authentication remains mandatory; remote listening is never
+enabled merely because an iOS target exists. Signing, provisioning, developer
+accounts, and local-network usage declarations remain application-owned Apple
+configuration.
 
 ## Embedded Linux
 
-`loom doctor --target embedded` **works today**.
+Embedded applications select a named, project-owned profile:
 
-Planned: projects will provide a named profile containing the target Qt
-`qt-cmake`, sysroot, SSH host and remote application directory. The adapter will
-build with the target toolchain, transfer with rsync, create an SSH tunnel for
-reload traffic, and launch the remote process. Board-vendor SDK installation
-stays provider-specific.
+```json
+{
+  "embeddedProfiles": {
+    "panel": {
+      "toolchainFile": "cmake/panel-toolchain.cmake",
+      "hostQtPath": "/opt/Qt/6.11.1/gcc_64",
+      "sysroot": "/opt/panel/sysroot",
+      "host": "panel.local",
+      "user": "root",
+      "remoteDir": "/opt/apps/myapp",
+      "environment": { "QT_QPA_PLATFORM": "eglfs" },
+      "launchCommand": "./MyApp"
+    }
+  },
+  "applications": {
+    "MyApp": {
+      "platforms": { "embedded": { "profile": "panel" } }
+    }
+  }
+}
+```
 
-## Excluded from v1
+The adapter configures with the profile's CMake toolchain and sysroot, copies
+the executable with rsync, and launches over SSH. Development adds an SSH
+reverse tunnel so the target still makes an outbound authenticated connection
+from its point of view. `port` defaults to 22; `user`, `hostQtPath`,
+`environment`, and `launchCommand` are optional.
 
-Qt for WebAssembly and Qt for MCUs require different runtime, packaging and
-transport assumptions, and are not represented as aliases for the native
-adapters.
+Vendor SDK acquisition, target-side Qt installation, graphics drivers, and
+board access are necessarily profile-specific. The hosted workflows therefore
+validate the adapter code and schema, while a real board job belongs in the
+consuming project's CI.
+
+## Tests on cross targets
+
+`loom test --target android|ios|embedded` cross-compiles the application's test
+targets. It does not pretend host CTest can execute target binaries. The Loom
+repository's emulator/simulator workflows supply launch smoke coverage;
+application projects can add device-native test runners appropriate to their
+hardware and signing environment.
+
+Qt for WebAssembly and Qt for MCUs are intentionally not aliases for these
+native adapters; their runtime, packaging, and transport assumptions differ.

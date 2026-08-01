@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0
+
+- Introduced clean project/design schema v2 documents and `loom migrate --to 2`.
+- Added recipes, arbitrary values with policy enforcement, dynamic viewport and
+  container queries, system themes, complete token families, richer state/group
+  variants, typography, transforms, cursors, gradients, rings, and opt-in filters.
+- Added AST-backed lint/LSP diagnostics, JSON style reports, and an in-app
+  Ctrl+Shift+I development inspector.
+- Added Android, iOS, and embedded configure/build/deploy/dev adapters, hosted
+  emulator validation, and native DEB/DMG/MSI release packaging.
+
 ## 0.3.0
 
 **Editor IntelliSense.** `loom lsp` is a `qmlls` proxy that keeps Qt's normal

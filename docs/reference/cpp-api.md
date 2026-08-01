@@ -27,10 +27,14 @@ runtime half.
 ```cpp
 namespace loom {
 
+enum class ThemeMode { Explicit, System };
+
 const char *version();
 
 void setTheme(const QString &name);
 QString theme();
+void setThemeMode(ThemeMode mode);
+ThemeMode themeMode();
 
 bool loadConfig(const QString &filePath);
 bool reloadConfig(const QString &filePath);
@@ -44,7 +48,7 @@ QUrl iconRoot();
 
 ### `version()`
 
-The library version, e.g. `"0.2.1"`. Compiled in, so it reports the library you
+The library version, e.g. `"0.4.0"`. Compiled in, so it reports the library you
 linked against rather than the headers you built with.
 
 ### `setTheme()` / `theme()`
@@ -57,6 +61,13 @@ An unknown name warns on the `loom.tokens` category and leaves the theme
 unchanged, rather than resolving every semantic colour to nothing. `"light"` and
 `"dark"` are built in; a [design token file](../styling/configuration.md) can
 add more.
+
+### `setThemeMode()` / `themeMode()`
+
+`ThemeMode::System` follows the operating system color scheme and selects the
+design's `theme.light` or `theme.dark` mapping. `setTheme()` switches back to
+`ThemeMode::Explicit`. The equivalent QML properties are `Loom.themeMode` and
+`Loom.theme`.
 
 ### `loadConfig()` / `reloadConfig()`
 
@@ -74,9 +85,9 @@ for most of the time someone is typing in it.
 Call either before the engine loads the scene for a flicker-free start, or at
 any later point.
 
-On a reload the **currently active theme wins** over the file's `defaultTheme`,
-unless it no longer exists. Someone who switched to dark to look at it and then
-saved meant to restyle dark.
+On a reload the **currently active explicit theme wins** over `theme.default`
+unless it no longer exists. System theme mode remains system mode and uses the
+reloaded light/dark mappings.
 
 ### `reloadConfigData()`
 
@@ -119,7 +130,7 @@ struct StyleUtilityFamily {
 
 struct StyleCatalogue {
     QString version;
-    QString theme;               // semantic names come from the active theme
+    QString theme;               // active theme at generation time
     QStringList variants;
     QStringList classes;         // every enumerable class, no variant prefixes
     QList<StyleUtilityFamily> families;
@@ -143,8 +154,10 @@ Two consequences:
 - the catalogue reflects the **current registry contents**, so a config that
   defines extra colours widens it — dump it after loading the same config your
   application uses;
-- it also reflects the **active theme**, because semantic colour names come from
-  it. A theme defining extra semantic names changes the output.
+- it includes token names introduced by **every configured theme**, so tooling
+  can validate and complete `theme-name:` rules before that theme is active.
+  `theme` records which theme was active when the catalogue was produced; it
+  does not narrow the vocabulary.
 
 `numericPrefixes` covers families that additionally accept a bare number, which
 cannot be enumerated: `border-2`, `border-0.5`. Completion should offer the
@@ -205,6 +218,11 @@ The generated `main.cpp` gates it on `#ifndef NDEBUG`, so a Release,
 RelWithDebInfo or MinSizeRel build has **no reload path compiled in at all** —
 not a disabled one. That is the production boundary; see
 [architecture.md](architecture.md).
+
+Development builds also install the Ctrl+Shift+I style inspector. It identifies
+the styled item under the pointer and displays its raw class string, active
+theme and states, and resolved property writes. Click to lock the selection. It
+is absent from production builds with the rest of the development runtime.
 
 ### `run(moduleUri, entryType)`
 

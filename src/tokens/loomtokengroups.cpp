@@ -44,10 +44,76 @@ LoomTextStyle LoomTextGroup::value(const QString &key) const
     return LoomTokenRegistry::instance()->textSize(key);
 }
 
+int LoomTextGroup::weight(const QString &key) const
+{
+    return LoomTokenRegistry::instance()->fontWeight(key);
+}
+
+qreal LoomTextGroup::tracking(const QString &key) const
+{
+    return LoomTokenRegistry::instance()->tracking(key);
+}
+
+qreal LoomRadiusGroup::value(const QString &key) const
+{
+    return LoomTokenRegistry::instance()->radius(key);
+}
+
 LoomRadiusGroup::LoomRadiusGroup(QObject *parent)
     : QObject(parent)
 {
     wireToRegistry(this);
+}
+
+LoomFontGroup::LoomFontGroup(QObject *parent)
+    : QObject(parent)
+{
+    wireToRegistry(this);
+}
+
+QStringList LoomFontGroup::sans() const
+{
+    return value(QStringLiteral("sans"));
+}
+
+QStringList LoomFontGroup::serif() const
+{
+    return value(QStringLiteral("serif"));
+}
+
+QStringList LoomFontGroup::mono() const
+{
+    return value(QStringLiteral("mono"));
+}
+
+QStringList LoomFontGroup::value(const QString &key) const
+{
+    return LoomTokenRegistry::instance()->fontFamily(key);
+}
+
+LoomShadow LoomShadowGroup::value(const QString &key) const
+{
+    return LoomTokenRegistry::instance()->shadow(key);
+}
+
+qreal LoomOpacityGroup::value(const QString &key) const
+{
+    return LoomTokenRegistry::instance()->opacityValue(key);
+}
+
+int LoomDurationGroup::value(const QString &key) const
+{
+    return LoomTokenRegistry::instance()->duration(key);
+}
+
+QEasingCurve LoomEasingGroup::value(const QString &key) const
+{
+    return LoomTokenRegistry::instance()->easing(key);
+}
+
+int LoomBreakpointGroup::value(const QString &key) const
+{
+    return LoomTokenRegistry::instance()->breakpoint(key);
 }
 
 LoomShadowGroup::LoomShadowGroup(QObject *parent)

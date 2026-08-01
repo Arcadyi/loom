@@ -3,6 +3,7 @@
 #include <QColor>
 #include <QObject>
 #include <QUrl>
+#include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
 #include "loomtokengroups.h"
@@ -18,6 +19,7 @@ class LoomTokens : public QObject {
     Q_PROPERTY(LoomColorGroup *color READ color CONSTANT)
     Q_PROPERTY(LoomSpaceGroup *space READ space CONSTANT)
     Q_PROPERTY(LoomTextGroup *text READ text CONSTANT)
+    Q_PROPERTY(LoomFontGroup *font READ font CONSTANT)
     Q_PROPERTY(LoomRadiusGroup *radius READ radius CONSTANT)
     Q_PROPERTY(LoomShadowGroup *shadow READ shadow CONSTANT)
     Q_PROPERTY(LoomOpacityGroup *opacity READ opacity CONSTANT)
@@ -27,14 +29,25 @@ class LoomTokens : public QObject {
     Q_PROPERTY(QUrl iconRoot READ iconRoot WRITE setIconRoot NOTIFY iconRootChanged)
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
     Q_PROPERTY(bool dark READ isDark NOTIFY themeChanged)
+    Q_PROPERTY(ThemeMode themeMode READ themeMode WRITE setThemeMode NOTIFY themeChanged)
+    Q_PROPERTY(bool highContrast READ highContrast NOTIFY accessibilityChanged)
+    Q_PROPERTY(
+        MotionPreference motionPreference READ motionPreference WRITE setMotionPreference
+            NOTIFY accessibilityChanged)
+    Q_PROPERTY(bool reduceMotion READ reduceMotion NOTIFY accessibilityChanged)
 
 public:
+    enum ThemeMode { ExplicitTheme, SystemTheme };
+    Q_ENUM(ThemeMode)
+    enum MotionPreference { SystemMotion, ReduceMotion, FullMotion };
+    Q_ENUM(MotionPreference)
     explicit LoomTokens(QObject *parent = nullptr);
 
     QString version() const;
     LoomColorGroup *color() const;
     LoomSpaceGroup *space() const;
     LoomTextGroup *text() const;
+    LoomFontGroup *font() const;
     LoomRadiusGroup *radius() const;
     LoomShadowGroup *shadow() const;
     LoomOpacityGroup *opacity() const;
@@ -51,6 +64,12 @@ public:
     QString theme() const;
     void setTheme(const QString &name);
     bool isDark() const;
+    ThemeMode themeMode() const;
+    void setThemeMode(ThemeMode mode);
+    bool highContrast() const;
+    MotionPreference motionPreference() const;
+    void setMotionPreference(MotionPreference preference);
+    bool reduceMotion() const;
 
     Q_INVOKABLE QStringList themes() const;
     // Load a JSON config (see docs/styling/configuration.md). Accepts file: and qrc:
@@ -72,15 +91,20 @@ public:
     // because `Loom.color.*` notifies. An invalid color serves the asset as
     // authored.
     Q_INVOKABLE QUrl icon(const QUrl &source, const QColor &color = {}) const;
+    // Development-inspector data for an Item. Returns an empty map when the
+    // object has no Lo attached state; it does not create one as a side effect.
+    Q_INVOKABLE QVariantMap inspect(QObject *object) const;
 
 signals:
     void themeChanged();
     void iconRootChanged();
+    void accessibilityChanged();
 
 private:
     LoomColorGroup *m_color;
     LoomSpaceGroup *m_space;
     LoomTextGroup *m_text;
+    LoomFontGroup *m_font;
     LoomRadiusGroup *m_radius;
     LoomShadowGroup *m_shadow;
     LoomOpacityGroup *m_opacity;

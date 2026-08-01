@@ -13,8 +13,9 @@ Rectangle {
 }
 ```
 
-There are **1702 classes** in the built-in vocabulary. This document lists all
-of them by family, with the property each writes and the value it resolves to.
+The vocabulary is generated from the live token, theme, breakpoint, container,
+and recipe registries. This document lists the families and their resolved
+properties.
 `loom style --catalogue` emits the same list as JSON, generated from the
 parser's own tables — see [../tooling/cli.md](../tooling/cli.md).
 
@@ -40,10 +41,12 @@ and warns on a type that does not. What that costs you is in
 ## Grammar
 
 ```
-class    := variant* utility modifier?
-variant  := ( "sm" | "md" | "lg" | "xl"                      // breakpoint
-            | "hover" | "pressed" | "focus" | "disabled" | "dark" ) ":"
-modifier := "/" ( 0 .. 100 )        // colour opacity; bg-*, text-*, border-* only
+class    := variant* ( utility | "@" recipe ) modifier?
+variant  := ( breakpoint | "max-" breakpoint | "min-[" px "]" | "max-[" px "]"
+            | "@" container ( "/" name )?
+            | state | "not-" state | "group-" state ( "/" name )?
+            | "theme-" theme ) ":"
+modifier := "/" ( 0 .. 100 )        // colour opacity on every colour utility
 ```
 
 Variant prefixes compose in any order and combine as **AND** —
@@ -55,6 +58,16 @@ Classes are separated by any run of spaces. The string may be a binding —
 `Lo.style: checked ? "bg-accent" : "bg-surface"` — and re-applies when it
 changes.
 
+Typed arbitrary values use brackets: `p-[13]`, `w-[240px]`, `bg-[#7c5cff]`,
+`opacity-[0.72]`, `rotate-[17]`. Negative values are accepted where the
+underlying concept supports them (`-mt-4`, `-translate-x-1/2`, `-rotate-12`).
+Fractional `w-1/2`, `h-2/3`, and translation classes stay live as sizes change.
+
+Named recipes from the design file expand at compile time. `@card` inserts the
+recipe, and a call-site variant distributes across every expanded rule:
+`hover:@card`. Recipes can include other recipes; cycles, missing recipes,
+nesting past 32, and expansions past 4096 rules are rejected.
+
 ## How a string becomes property writes
 
 Worth knowing, because most surprises come from one of these five steps.
@@ -63,8 +76,9 @@ Worth knowing, because most surprises come from one of these five steps.
    process-wide cache. Binding `Lo.style` to an expression that flips between
    two values costs one hash lookup per flip after the first compile. An unknown
    class is dropped here, with a warning.
-2. **Filter.** On each apply, rules whose breakpoint tier exceeds the current
-   window width, or whose state bits are not all active, are discarded.
+2. **Filter.** On each apply, rules whose viewport/container bounds do not
+   match, or whose target/group state conditions are not satisfied, are
+   discarded.
 3. **Resolve.** Surviving rules turn token *names* into values against the
    active theme. Rules store names, never resolved values — which is why a theme
    switch re-applies without recompiling.
@@ -115,8 +129,9 @@ A trailing `/0`–`/100` scales a colour's alpha:
 Rectangle { Lo.style: "bg-surface/70 border border-outline/25" }
 ```
 
-It applies to the three colour families only, and composes with every variant
-(`hover:bg-accent/80`, `dark:text-foreground/50`).
+It applies to background, text, border, ring, and gradient-stop colours, and
+composes with every variant (`hover:bg-accent/80`,
+`dark:text-foreground/50`).
 
 Three properties worth stating exactly:
 
@@ -136,10 +151,17 @@ Three properties worth stating exactly:
 | `text-{size}` | `font.pixelSize` | see the [text scale](#text) |
 | | `lineHeight`, `lineHeightMode` | also written where the type has both; the mode is `Text.FixedHeight` |
 | `font-{weight}` | `font.weight` | `thin` 100 … `black` 900 |
+| `font-{family}` | `font.family` | `sans`, `serif`, `mono`, or a design token |
 | `tracking-{k}` | `font.letterSpacing` | em × the applied pixel size, in absolute px |
 | `italic` / `not-italic` | `font.italic` | `true` / `false` |
 | `underline` / `no-underline` | `font.underline` | `true` / `false` |
 | `line-through` | `font.strikeout` | `true` |
+| `text-left` / `text-center` / `text-right` / `text-justify` | `horizontalAlignment` | Qt alignment |
+| `text-ellipsis` / `text-clip` / `truncate` | `elide` and, for `truncate`, no wrap | text overflow |
+| `line-clamp-{n}` / `line-clamp-none` | `maximumLineCount` | line limit |
+| `uppercase` / `lowercase` / `capitalize` / `normal-case` | `font.capitalization` | capitalization |
+| `whitespace-normal` / `whitespace-nowrap` / `wrap-anywhere` | `wrapMode` | wrapping |
+| `leading-{size}` | `lineHeight` | a text-size token's line height |
 
 Everything here except `text-{color}` is keyed off the target having a `font`
 property, so it works on Text, TextInput, TextEdit, and every Quick Control that
@@ -194,11 +216,12 @@ Layouts, `ListView`, and Controls built on them.
 | `w-{n}` `h-{n}` | `width` / `height` | from the [spacing scale](#spacing) |
 | `size-{n}` | both | |
 | `w-full` `h-full` | `width` / `height` = the parent's | kept in sync as the parent resizes |
+| `w-{n}/{d}` `h-{n}/{d}` | parent size × the fraction | kept in sync |
 
 `w-full` copies the parent's width and keeps copying it; it is not a constraint
-system and not an anchor. There is no percentage or fractional width — `w-1/2`
-is not a class. For proportional layout use anchors, a Layout with
-`Layout.fillWidth`, or bind `width` yourself.
+system and not an anchor. Fractions such as `w-1/2` and `h-2/3` are also live
+copies of a parent dimension. For constraint-based proportional layout, use a
+Layout or a binding.
 
 ## Border and radius
 
@@ -229,15 +252,27 @@ Rectangle. The built-in styles' backgrounds are; a hand-written
 | --- | --- |
 | `opacity-{k}` | `opacity`, from the [opacity scale](#opacity) |
 | `visible` | `visible: true` |
-| `hidden` / `invisible` | `visible: false` |
+| `hidden` | `visible: false` — removed from positioner layout |
+| `invisible` | `opacity: 0` — keeps its layout slot |
 | `shadow[-{k}]` | a managed drop shadow — see below |
 | `shadow-none` | removes it |
 
-`hidden` is Tailwind's spelling and the accurate one: `visible: false` removes
-the item from positioner layout. `invisible` is currently a synonym for it. In
-Tailwind proper, `invisible` keeps the layout box (`opacity: 0`), which loom
-cannot yet express because opacity is a separate utility that would fight it;
-the divergence is noted in [limitations.md](limitations.md).
+### Transforms, cursors, rings, gradients, and filters
+
+| Family | Examples | Runtime form |
+| --- | --- | --- |
+| transform | `rotate-45`, `scale-110`, `translate-x-1/2`, `origin-bottom-right` | native Item properties plus a managed `Translate` |
+| cursor | `cursor-pointer`, `cursor-text`, `cursor-grab` | the Item's native cursor |
+| ring | `ring`, `ring-4`, `ring-accent/50` | a managed outline child |
+| gradient | `bg-linear-to-r from-blue-500 via-violet-500 to-pink-500` | a managed Rectangle gradient |
+| filter | `blur-md`, `brightness-125`, `contrast-75`, `saturate-150`, `grayscale` | `MultiEffect` through `Item.layer.effect` |
+
+Filter utilities require `Lo.effects: true`. This explicit ownership opt-in is
+what permits Loom to replace `Item.layer.effect`; clearing the classes or the
+opt-in restores the previous effect and layer-enabled value. Rings and
+gradients manage their own visual objects and do not take layer-effect
+ownership. Rectangle gradients are axis-aligned, so diagonal directions use
+the nearest deterministic axis.
 
 ### Shadows
 
@@ -373,6 +408,11 @@ Four things transitions do **not** cover:
 `transition-none` composes with variants, so `dark:transition-none` disables
 motion in one theme.
 
+`Loom.motionPreference` can be `SystemMotion`, `ReduceMotion`, or `FullMotion`.
+Reduced motion disables every Loom transition and activates the
+`motion-reduce:` variant. System mode uses `LOOM_REDUCE_MOTION=1` as the
+cross-platform bridge until Qt exposes an OS reduced-motion style hint.
+
 ---
 
 ## Scales
@@ -478,7 +518,7 @@ Cubic beziers matching the CSS timing functions.
 
 ### Breakpoints
 
-`sm` 640, `md` 768, `lg` 1024, `xl` 1280 px. See
+`sm` 640, `md` 768, `lg` 1024, `xl` 1280, `2xl` 1536 px. See
 [responsive.md](responsive.md).
 
 ---
@@ -487,12 +527,13 @@ Cubic beziers matching the CSS timing functions.
 
 | Prefix | Applies when | Detail |
 | --- | --- | --- |
-| `sm:` `md:` `lg:` `xl:` | the window is at least that wide | [responsive.md](responsive.md) |
-| `hover:` | the pointer is over the item | [states.md](states.md) |
-| `pressed:` | the item is pressed | [states.md](states.md) |
-| `focus:` | the item has active focus | [states.md](states.md) |
-| `disabled:` | the item is not enabled | [states.md](states.md) |
-| `dark:` | the active theme is dark | [theming.md](theming.md) |
+| viewport | `sm:`, `2xl:`, `max-md:`, `min-[900px]:`, `max-[1200px]:` | [responsive.md](responsive.md) |
+| container | `@md:`, `@max-lg:`, `@md/sidebar:` | nearest `Lo.container` | [responsive.md](responsive.md) |
+| interaction | `hover:`, `pressed:`, `focus:`, `focus-visible:`, `focus-within:` | [states.md](states.md) |
+| control | `checked:`, `down:`, `selected:`, `editable:`, `read-only:`, `active:` | [states.md](states.md) |
+| environment | `dark:`, `theme-violet:`, `rtl:`, `portrait:`, `window-active:`, `high-contrast:`, `motion-reduce:` | state and theme |
+| structural | `first:`, `last:`, `only:`, `odd:`, `even:` | visible sibling position |
+| negation/group | `not-disabled:`, `group-hover:`, `group-checked/menu:` | [states.md](states.md) |
 
 ## Specificity — which rule wins
 
@@ -500,14 +541,14 @@ When two classes in one string write the same property, loom ranks them on
 **two independent axes**, states outranking breakpoints:
 
 1. how many **state** variants the class has (`hover:`, `dark:`, …);
-2. then its **breakpoint** tier (`xl:` > `lg:` > `md:` > `sm:` > none);
+2. then its responsive constraint depth and exact viewport/container bounds;
 3. then position in the string — later wins.
 
 ```qml
 // At 1024 px: red normally, black while hovered.
 Lo.style: "bg-white hover:bg-black md:bg-red-500"
 
-// md:hover: outranks hover: — the breakpoint breaks the tie between two
+// md:hover: outranks hover: — the responsive condition breaks the tie between two
 // rules that both carry one state variant.
 Lo.style: "hover:bg-black md:hover:bg-blue-500"
 ```

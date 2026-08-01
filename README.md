@@ -27,9 +27,9 @@ Rectangle {
 }
 ```
 
-Both resolve from the same token registry, so themes (light/dark or custom),
-runtime theme switching, responsive breakpoints, and state variants
-(`hover:` `pressed:` `focus:` `disabled:` `dark:`) work identically in both.
+Both resolve from the same token registry, so system/custom themes, runtime
+theme switching, viewport and container queries, and the full state/group
+variant set work identically in both.
 
 ## Tooling
 
@@ -72,9 +72,13 @@ For CLion and other IDEs that require the executable itself to be named
 settings.
 See [the editor setup reference](docs/tooling/cli.md#loom-lsp).
 
+The same project commands target desktop, Android, iOS, and embedded Linux.
+Hosted jobs cover Linux/macOS/Windows, Android emulators, and iOS simulators;
+desktop releases produce native DEB, DMG, and MSI packages.
+
 ## Status
 
-Version 0.3.0, early development. Linux-validated; Qt 6.11, C++20, CMake ≥ 3.22.
+Version 0.4.0, early development. Qt 6.11, C++20, CMake ≥ 3.22.
 
 The styling half and the tooling half were separate projects (`loom` and
 `respin`) through 0.1.0 and merged for 0.2.0.

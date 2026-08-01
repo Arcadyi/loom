@@ -23,6 +23,7 @@ ApplicationDefinition testApplication()
         .qmlRoots = {QStringLiteral("qml")},
         .assetRoots = {},
         .platforms = {QStringLiteral("desktop")},
+        .platformOptions = {},
     };
 }
 

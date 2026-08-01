@@ -14,6 +14,16 @@ Rectangle {
 | `focus:` | the item has active focus | `Item.activeFocus` |
 | `disabled:` | the item is not enabled | `!Item.enabled` |
 | `dark:` | the active theme is dark | the token registry — see [theming.md](theming.md) |
+| `checked:` `down:` `highlighted:` `selected:` | same-named boolean property | Quick Controls or a custom item |
+| `editable:` `read-only:` `active:` | same-named boolean property | target property |
+| `focus-within:` | focused item is the target or a descendant | active-focus chain |
+| `focus-visible:` | visual focus, or active focus reached by keyboard | native `visualFocus` plus window input modality |
+| `rtl:` `ltr:` | application layout direction | `QGuiApplication` |
+| `portrait:` `landscape:` | window aspect | target window |
+| `window-active:` | target window is active | target window |
+| `high-contrast:` | platform requests high contrast | accessibility style hints |
+| `motion-reduce:` | reduced motion preference | `Loom.motionPreference` / environment bridge |
+| `first:` `last:` `only:` `odd:` `even:` | position among visible siblings | parent child order |
 
 Variants compose in any order and combine as **AND**: `hover:pressed:bg-red-500`
 needs both. `dark:` is a state variant like the others, so `dark:hover:` works
@@ -48,10 +58,9 @@ past the threshold — which is the behaviour you want for styling anyway.
 
 ### `focus:`
 
-Plain `activeFocus`. `focus-visible` semantics — showing a focus ring for
-keyboard navigation but not for a mouse click — need to know *how* focus
-arrived, which Qt Quick does not report. Out of scope for v1 rather than
-approximated badly.
+`focus:` is plain `activeFocus`. `focus-visible:` prefers a Control's native
+`visualFocus`; a shared application input-modality tracker supplies accurate
+keyboard-versus-pointer behavior for plain Items.
 
 ### `disabled:`
 
@@ -99,8 +108,8 @@ Lo.style: "bg-white hover:bg-black md:bg-red-500"
 Lo.style: "hover:bg-black pressed:bg-blue-500 hover:pressed:bg-green-500"
 ```
 
-Between two classes with the same number of state variants, the breakpoint tier
-breaks the tie, and then position in the string. The full ordering is in
+Between two classes with the same number of state variants, responsive
+constraints break the tie, and then position in the string. The full ordering is in
 [utilities.md](utilities.md#specificity--which-rule-wins).
 
 A combination that can never match — `disabled:hover:` on a control that stops
@@ -135,13 +144,15 @@ Button {
 }
 ```
 
-Loom has no variants for Controls-specific states such as `checked`, `down` or
-`highlighted`. Bind those yourself:
+Controls-specific variants are property-driven and work without a watcher:
 
 ```qml
 CheckBox {
-    Lo.style: checked ? "bg-accent rounded" : "bg-surface rounded"
+    Lo.style: "bg-surface checked:bg-accent down:opacity-70 rounded"
 }
 ```
 
-The string is a binding like any other, and re-compiling it is a cache lookup.
+Negation is available for every state (`not-checked:`), and an ancestor can
+publish state to descendants with `Lo.group: "menu"` and
+`group-hover/menu:`/`group-not-disabled/menu:`. Group lookup uses the nearest
+matching attached ancestor and does not install duplicate input handlers.

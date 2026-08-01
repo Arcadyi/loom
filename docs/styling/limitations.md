@@ -92,48 +92,33 @@ flicker-critical properties.
   rather than to an inherited color, so icon sets that stroke with it (Lucide,
   Feather, Bootstrap Icons) render black until something recolours them.
 
-## Vocabulary Tailwind has and loom does not
+## Vocabulary Tailwind has and Loom still does not
 
-Worth knowing before you reach for a class that is not there. None of these are
-in the 1702, and a string naming one is reported as unknown.
+The remaining boundary is mostly structural. A string naming one of these is
+reported as unknown rather than approximated with surprising behavior.
 
-| Missing | What to do instead |
+| Missing | Why / what to use |
 | --- | --- |
-| **Container-level alignment** — `items-*`, `justify-*` | Qt Quick Layouts have no container alignment property; only the per-child `Layout.alignment` that [`self-*`](utilities.md#layout-only) writes |
-| **Sibling anchors** — `anchors.left: sidebar.right` | no class can name another item's `id`. Write it in QML |
-| **Grid and flex containers** — `flex`, `grid` | a class cannot change an item's *type*. Use `RowLayout`/`ColumnLayout`/`GridLayout` and style the children |
-| **Positional offsets** — `top-4`, `inset-x-2` | `pin-t mt-4`: the [pin classes](utilities.md#layout) set the anchor, `m-*` supplies the offset |
-| **Fractional widths** — `w-1/2` | a Layout with `fill-x`, or bind `width` |
-| **Arbitrary values** — `p-[13]`, `bg-[#7c5cff]` | add the value to the [design token file](configuration.md), or use `Loom.space.*` in a binding |
-| **Negative values** — `-mt-4` | write the anchor margin directly |
-| **Text layout** — `text-center`, `truncate`, `line-clamp-*`, `uppercase`, `leading-*` alone | the underlying Text properties: `horizontalAlignment`, `elide`, `maximumLineCount`, `font.capitalization`, `lineHeight` |
-| **Font family** — `font-sans`, `font-mono` | `font.family`. There is no font token in loom at all |
-| **Transforms** — `rotate-*`, `scale-*`, `translate-*`, `origin-*` | `rotation`, `scale`, `transform` |
-| **Overflow and cursor** — `overflow-hidden`, `cursor-pointer` | `clip: true`; a `HoverHandler` with `cursorShape` |
-| **Rings, gradients, filters** — `ring-*`, `bg-gradient-*`, `blur-*` | a sibling Rectangle; `Gradient`; `QtQuick.Effects.MultiEffect` |
-| **More variants** — `group-hover:`, `first:`, `last:`, `checked:`, `max-md:`, `not-*`, `rtl:` | bind the style string to the condition, as in [the cookbook](cookbook.md#styling-quick-controls) |
-| **`@apply` / named class sets** | no component layer exists; factor the QML into a component instead |
+| **Container-level alignment** — `items-*`, `justify-*` | Qt Quick Layouts expose alignment per child, through [`self-*`](utilities.md#layout-only), rather than as a container property |
+| **Sibling anchors** — `anchors.left: sidebar.right` | a class cannot name another QML `id`; write the anchor in QML |
+| **Changing structure** — `flex`, `grid`, column counts | a class cannot change an item's QML type; use `RowLayout`, `ColumnLayout`, `GridLayout`, positioners, or views |
+| **Named sibling/peer selectors** | Loom groups walk ancestors. Qt ownership and visual stacking do not provide a stable CSS-like previous-sibling selector |
+| **Pseudo-elements and generated content** | declare the Item or Text explicitly |
+| **Multiple composed user effects** | filter utilities own the one `Item.layer.effect` slot and therefore require `Lo.effects: true`; compose a custom `MultiEffect` yourself when Loom should not own it |
 
-The general shape: loom covers **appearance** and **placement**, but not
-*structure* — it can anchor and align an item, and cannot change what kind of
-item it is or how its container arranges children. It also offers no escape
-hatch for values outside the token scales. Where a utility is missing,
-the typed `Loom.*` API and ordinary QML properties are the intended answer, not
-a workaround.
+Loom covers appearance, state, responsive/container conditions, and placement;
+ordinary QML remains the structural language.
 
 ## Tooling limitations
 
-- **Only `desktop` builds.** `--target android|ios|embedded` is accepted and
-  then rejected: only `loom doctor` inspects those toolchains today. See
-  [../tooling/platforms.md](../tooling/platforms.md).
-- **Linux is the validated platform.** Windows and macOS paths exist in the
-  code and are not covered by CI.
-- **`loom deploy` does not bundle Qt**, and has no option to. See
-  [why](../tooling/platforms.md#why-qt-is-not-bundled).
-- **The class checker reads string literals**, so it cannot see a class assembled
-  at run time, and it reports any string literal inside a `Lo.style` binding —
-  including one that is not a class at all. See
-  [../tooling/cli.md](../tooling/cli.md).
+- Desktop builds are hosted on Linux, macOS, and Windows; Android and iOS have
+  hosted emulator/simulator jobs. Embedded builds require a project-owned SDK,
+  sysroot, and reachable board, so CI cannot provide a universal target.
+- Native desktop packages are DEB, DMG, and MSI. Mobile and embedded targets
+  deploy through their platform adapters rather than CPack.
+- The AST-based checker sees literal fragments in nested expressions,
+  concatenations, and ternaries. A class assembled entirely from runtime data
+  cannot be proven statically. See [../tooling/cli.md](../tooling/cli.md).
 - **`loom lsp` sees literal class fragments, not arbitrary JavaScript.** It can
   complete and check quoted results in concatenations and ternaries, but not a
   class assembled entirely at run time. See [the LSP command](../tooling/cli.md#loom-lsp).

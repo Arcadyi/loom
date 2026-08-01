@@ -13,6 +13,7 @@ struct ApplicationDefinition {
     QStringList qmlRoots;
     QStringList assetRoots;
     QStringList platforms;
+    QJsonObject platformOptions;
 };
 
 class ProjectManifest {
@@ -30,6 +31,7 @@ public:
     QJsonObject toJson() const;
     QString projectName() const;
     QString qtVersion() const;
+    QJsonObject embeddedProfiles() const;
 
     // Path to the design token file (colors, space, breakpoints, themes),
     // relative to the manifest, or empty when the project defines none. A
@@ -68,6 +70,7 @@ private:
     QString m_qtVersion = QStringLiteral("6.11");
     QString m_defaultApplication;
     QString m_design;
+    QJsonObject m_embeddedProfiles;
     QList<ApplicationDefinition> m_applications;
 };
 

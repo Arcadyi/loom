@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(loom VERSION 0.3.0 LANGUAGES CXX)
+project(loom VERSION 0.4.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -233,6 +233,7 @@ if(LOOM_BUILD_CLI)
         loom
         Qt6::Core
         Qt6::Network
+        Qt6::QmlPrivate
     )
     target_compile_features(loom_cli_core PUBLIC cxx_std_20)
     target_compile_definitions(loom_cli_core PUBLIC
@@ -490,7 +491,32 @@ set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/Arcadyi/loom")
 set(CPACK_PACKAGE_CONTACT "loom contributors")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
-set(CPACK_GENERATOR "TGZ;ZIP")
+if(WIN32)
+    set(CPACK_GENERATOR "WIX")
+elseif(APPLE)
+    set(CPACK_GENERATOR "DragNDrop")
+else()
+    set(CPACK_GENERATOR "DEB")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "loom contributors")
+    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+    # CPack otherwise shells out to dpkg to discover this value and silently
+    # falls back to i386 on non-Debian build hosts. Release builders are not
+    # required to have dpkg, so map CMake's processor name explicitly.
+    string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" loom_deb_processor)
+    if(loom_deb_processor MATCHES "^(x86_64|amd64)$")
+        set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
+    elseif(loom_deb_processor MATCHES "^(aarch64|arm64)$")
+        set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "arm64")
+    elseif(loom_deb_processor MATCHES "^(armv7|armv7l)$")
+        set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "armhf")
+    elseif(loom_deb_processor MATCHES "^(i[3-6]86|x86)$")
+        set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "i386")
+    elseif(loom_deb_processor STREQUAL "ppc64le")
+        set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "ppc64el")
+    else()
+        set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "${loom_deb_processor}")
+    endif()
+endif()
 set(CPACK_SOURCE_GENERATOR "TGZ")
 # Anchored at the tree root so a source package never ships a build tree, an
 # install tree, or editor state. Without this, `cpack --config

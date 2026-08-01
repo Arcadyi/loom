@@ -1,6 +1,6 @@
 # The `loom` command
 
-One binary, thirteen subcommands. `loom <command> --help` prints the same
+One binary, fourteen subcommands. `loom <command> --help` prints the same
 information as the reference below.
 
 | Command | Does |
@@ -18,6 +18,7 @@ information as the reference below.
 | [`loom fmt`](#loom-fmt) | `qmlformat` over the project's QML |
 | [`loom clean`](#loom-clean) | Remove the `.loom/` build and deploy trees |
 | [`loom deploy`](#loom-deploy) | Install to a prefix, optionally packaged |
+| [`loom migrate`](#loom-migrate) | Preview or apply the schema-v1 to v2 migration |
 
 ## Common options
 
@@ -25,7 +26,7 @@ Accepted by `build`, `test`, `lint`, `fmt`, `clean`, `dev` and `deploy`:
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--target <platform>` | `desktop` | Platform to build for. **Only `desktop` builds today** — the others are accepted and then rejected; see [platforms.md](platforms.md) |
+| `--target <platform>` | `desktop` | `desktop`, `android`, `ios`, or `embedded`; see [platforms.md](platforms.md) |
 | `--config <configuration>` | `Debug` | CMake build type: `Debug`, `Release`, `RelWithDebInfo`, `MinSizeRel` |
 | `--prefix <path>` | — | Extra CMake prefix path. loom finds its own package without this |
 | `--app <target>` | the manifest's default | Which application to act on in a multi-application project |
@@ -43,9 +44,8 @@ Accepted by `build`, `test`, `lint`, `fmt`, `clean`, `dev` and `deploy`:
 | 127 | a subprocess could not be started |
 | 128 | a subprocess crashed |
 
-`--json` on `loom doctor` is the only batch command that emits structured
-output. `loom lsp` instead reserves stdout for its long-running LSP transport;
-the remaining commands emit human-readable text.
+`loom doctor --json` and `loom style --check --json` emit structured output.
+`loom lsp` reserves stdout for its long-running protocol transport.
 
 ---
 
@@ -111,11 +111,11 @@ Ninja, Qt and its modules, the loom CMake package, and the `Loom` QML module's
 `qmldir` and `qmltypes`.
 
 `--json` emits the report as a structured document, which is also what makes it
-scriptable. It is the only batch command with machine-readable output; `loom
-lsp` is a persistent protocol server rather than a report.
+scriptable. The style checker has its own JSON diagnostics; `loom lsp` is a
+persistent protocol server rather than a report.
 
-`--target android|ios|embedded` inspects those toolchains — the only place
-non-desktop targets do anything today.
+`--target android|ios|embedded` adds the platform-specific prerequisites used
+by the corresponding build and deployment adapter.
 
 Run it first when anything is unexpected; most entries in
 [troubleshooting.md](troubleshooting.md) start here.
@@ -152,6 +152,12 @@ $ loom dev
 ```
 
 Everything after `--` is passed to the application rather than to loom.
+
+In development builds, the visual inspector is installed automatically. Press
+Ctrl+Shift+I to toggle it, hover to inspect a styled Item, and click to lock the
+selection. It shows the type, object name, source utility string, active theme
+and states, and resolved property writes. Set `LOOM_INSPECTOR=0` to disable it.
+The overlay is not compiled into release behavior.
 
 Use a Debug configuration. The generated `main.cpp` enables the development
 runtime only where `NDEBUG` is undefined, so `--config Release` builds and runs
@@ -210,7 +216,19 @@ loom style [--check | --catalogue] [--app target] [path...]
 ```
 
 The class check on its own, or the vocabulary as JSON. `--check` is the default.
-The rest of this page covers it in detail.
+`--json` produces diagnostics with file, line, column, severity, code, class,
+and message. `--design <path>` loads tokens, recipes, breakpoints, themes, and
+the arbitrary-value policy even when checking explicit paths outside a project:
+
+```console
+loom style --check --json --design design/tokens.json qml/
+loom style --catalogue --design design/tokens.json
+```
+
+The checker uses Qt's QML AST rather than regular expressions. It reads literal
+fragments in nested expressions, concatenations, and ternary results while
+ignoring condition strings. Fully data-generated class names remain a runtime
+concern.
 
 ## `loom lsp`
 
@@ -310,17 +328,33 @@ every configuration with `--all`.
 loom deploy [--output path] [--package] [options]
 ```
 
-Runs `cmake --install` into a prefix, and optionally produces an archive with
-CPack.
+On desktop, runs `cmake --install` into a prefix and optionally invokes CPack.
+On Android, installs the APK with ADB. On iOS, installs the app bundle with
+`simctl` or `devicectl`. On embedded Linux, creates the remote directory and
+transfers the executable with rsync over SSH.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `--output <path>` | `.loom/dist/<target>-<config>` | Install prefix |
-| `--package` | off | Also produce an archive with CPack |
+| `--package` | off | Produce DEB, DMG, or MSI with CPack; desktop only |
 
-**Qt is not bundled**, and there is no option to. The target host needs Qt. See
-[why](platforms.md#why-qt-is-not-bundled), and use `linuxdeploy` or
-`appimage-builder` over the installed prefix for a self-contained artifact.
+See [platforms.md](platforms.md) for toolchain options, transport, native
+package prerequisites, signing, and target-side Qt responsibilities.
+
+## `loom migrate`
+
+```
+loom migrate --to 2 [--apply]
+```
+
+Converts a schema-v1 `loom.json` and its referenced design file to the clean
+schema-v2 shape. Preview is the default and writes nothing. `--apply` writes
+both documents with `QSaveFile`; if the manifest commit fails after the design
+commit, Loom restores the original design document.
+
+The migration changes platform arrays to option objects, nests design scales
+under `tokens`, nests theme overrides under `tokens.colors`, and replaces
+`defaultTheme` with the `theme` object.
 
 ---
 
@@ -365,12 +399,10 @@ add_test(NAME style_classes
 
 ### What it can and cannot see
 
-Only **string literals** are checked. `Lo.style: someProperty` is skipped rather
-than reported — the checker cannot evaluate a binding, and flagging it would
-punish a legitimate pattern.
-
-Bindings that wrap across lines are followed, whether the operator trails one
-line or leads the next, up to eight lines.
+The checker walks Qt's QML AST. `Lo.style: someProperty` is skipped rather than
+reported — it cannot evaluate runtime data — but quoted fragments are followed
+at any nesting depth through concatenations, logical/coalescing expressions,
+and ternary results. Ternary conditions are deliberately ignored.
 
 A trailing dangling prefix is treated as a concatenation, not a typo, because
 that is how a class gets built from a binding:
@@ -380,19 +412,12 @@ Lo.style: "bg-accent size-14 rounded-" + model.key   // `rounded-` is fine here
 Lo.style: "bg- text-sm"                              // `bg-` is reported
 ```
 
-Only the *last* class in a literal is exempt; a dangling prefix anywhere else is
-still a typo.
-
-The one false positive worth knowing: **every string literal in the binding is
-checked**, including one that is not a class at all.
+A quoted fragment ending in a utility-family prefix is exempt because it may be
+the static half of a concatenation. A complete unknown class is still reported.
 
 ```qml
-// Reports `brand` as an unknown class.
+// The AST checker ignores the condition and checks both result strings.
 Lo.style: "bg-surface " + (Loom.theme === "brand" ? "rounded-none" : "rounded-lg")
-
-// Fine — the theme name is out of the binding.
-readonly property bool sharp: Loom.theme === "brand"
-Lo.style: "bg-surface " + (sharp ? "rounded-none" : "rounded-lg")
 ```
 
 ## Completion data
@@ -401,12 +426,12 @@ Lo.style: "bg-surface " + (sharp ? "rounded-none" : "rounded-lg")
 $ loom style --catalogue > loom.utilities.json
 ```
 
-This one needs no project: an editor asking for completion data should not have
-to be inside one.
+This needs no project for the built-in vocabulary. Pass
+`--design design/tokens.json` to include project token and recipe names.
 
 ```json
 {
-  "version": "0.3.0",
+  "version": "0.4.0",
   "theme": "light",
   "variants": ["dark", "disabled", "focus", "hover", "lg", "md", "pressed", "sm", "xl"],
   "classes": ["bg-accent", "bg-amber-100", "...", "w-full"],
@@ -418,7 +443,6 @@ to be inside one.
 ```
 
 - `classes` — every class that can be enumerated, without variant prefixes.
-  1702 with the default token set.
 - `families` — the same data grouped by prefix, when you want to complete the
   prefix first and the value second.
 - `numericPrefixes` — prefixes that additionally accept a bare number
@@ -427,8 +451,9 @@ to be inside one.
 
 The catalogue is generated from the parser's own tables and the live token
 registry, never a second hand-maintained list, and a test asserts every class it
-emits parses. It therefore reflects the **current** registry — both the token
-set and the active theme affect the output.
+emits parses. It reflects the **current** registry and includes token names from
+every configured theme, which keeps `theme-name:` completion stable across
+theme switches.
 
 Run inside a project, `loom style` loads the design token file named by the
 manifest's `design` key first, so a project's own colours and spacing count:

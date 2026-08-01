@@ -63,13 +63,25 @@ const LoomTargetProfile *LoomTargetProfile::forType(const QMetaObject *metaObjec
     if (hasFont) {
         set(LoomUtility::TextSize, "font.pixelSize");
         set(LoomUtility::FontWeight, "font.weight");
+        set(LoomUtility::FontFamily, "font.family");
         set(LoomUtility::Italic, "font.italic");
         set(LoomUtility::Underline, "font.underline");
         set(LoomUtility::LineThrough, "font.strikeout");
         set(LoomUtility::Tracking, "font.letterSpacing");
+        set(LoomUtility::TextCapitalization, "font.capitalization");
     }
+    if (hasProperty(metaObject, "horizontalAlignment"))
+        set(LoomUtility::TextAlignment, "horizontalAlignment");
+    if (hasProperty(metaObject, "elide"))
+        set(LoomUtility::TextElide, "elide");
+    if (hasProperty(metaObject, "maximumLineCount"))
+        set(LoomUtility::TextMaximumLines, "maximumLineCount");
+    if (hasProperty(metaObject, "wrapMode"))
+        set(LoomUtility::TextWrapMode, "wrapMode");
     profile->m_lineHeight = hasProperty(metaObject, "lineHeight")
         && hasProperty(metaObject, "lineHeightMode");
+    if (profile->m_lineHeight)
+        set(LoomUtility::LineHeight, "lineHeight");
 
     // Duck-typed: any type declaring the conventional property names opts in
     // (all Quick Controls, Row/Column/Grid/Flow and the Layouts for spacing,
@@ -123,6 +135,11 @@ const LoomTargetProfile *LoomTargetProfile::forType(const QMetaObject *metaObjec
     set(LoomUtility::HeightFull, "height");
     set(LoomUtility::Opacity, "opacity");
     set(LoomUtility::Visible, "visible");
+    set(LoomUtility::Clip, "clip");
+    set(LoomUtility::ZOrder, "z");
+    set(LoomUtility::Rotation, "rotation");
+    set(LoomUtility::Scale, "scale");
+    set(LoomUtility::TransformOrigin, "transformOrigin");
 
     cache.emplace(metaObject, std::move(owned));
     return profile;

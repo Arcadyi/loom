@@ -4,6 +4,8 @@
 #include <QSet>
 #include <algorithm>
 
+#include "style/loomstylecompiler.h"
+
 namespace lsp {
 
 namespace {
@@ -109,8 +111,33 @@ QJsonArray StyleIntelligence::diagnostics(
     m_workspace->activateForFile(filePath);
     QJsonArray diagnostics;
     for (const auto &token : document.styleTokens()) {
-        if (m_workspace->metadata(token.text).valid)
+        if (m_workspace->metadata(token.text).valid) {
+            const QString policy = m_workspace->arbitraryValuePolicy();
+            if (policy == QLatin1String("allow"))
+                continue;
+            const auto compiled = LoomStyleCompiler::compile(token.text);
+            const bool arbitrary = std::any_of(
+                compiled->rules.cbegin(), compiled->rules.cend(),
+                [](const LoomStyleRule &rule) { return rule.arbitrary; });
+            if (!arbitrary)
+                continue;
+            diagnostics.append(
+                QJsonObject{
+                    {QStringLiteral("range"),
+                     document.rangeObject(token.range, encoding)},
+                    {QStringLiteral("severity"), policy == QLatin1String("deny") ? 1 : 2},
+                    {QStringLiteral("source"), QStringLiteral("loom")},
+                    {QStringLiteral("code"), QStringLiteral("arbitraryValue")},
+                    {QStringLiteral("message"),
+                     QStringLiteral("Arbitrary value '%1' is %2 by design policy")
+                         .arg(
+                             token.text,
+                             policy == QLatin1String("deny")
+                                 ? QStringLiteral("denied")
+                                 : QStringLiteral("discouraged"))},
+                });
             continue;
+        }
         const QStringList replacements = m_workspace->replacements(token.text);
         QJsonArray replacementJson;
         for (const auto &replacement : replacements)

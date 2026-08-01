@@ -66,8 +66,14 @@ void CatalogueTests::everyClassParses()
 void CatalogueTests::everyVariantCombines()
 {
     const loom::StyleCatalogue catalogue = loom::styleCatalogue();
-    QCOMPARE(
-        catalogue.variants.size(), 9); // sm md lg xl + hover pressed focus disabled dark
+    for (const auto &expected :
+         {QStringLiteral("sm"), QStringLiteral("2xl"), QStringLiteral("hover"),
+          QStringLiteral("focus-visible"), QStringLiteral("checked"),
+          QStringLiteral("motion-reduce"), QStringLiteral("first"),
+          QStringLiteral("group-hover")})
+        QVERIFY2(
+            catalogue.variants.contains(expected),
+            qPrintable(QStringLiteral("catalogue omitted variant: %1").arg(expected)));
 
     for (const QString &variant : catalogue.variants) {
         const QString klass = variant + QLatin1Char(':') + QLatin1String("bg-surface");
@@ -105,7 +111,8 @@ void CatalogueTests::catalogueWidensWithConfig()
     const loom::StyleCatalogue before = loom::styleCatalogue();
     QVERIFY(!before.classes.contains(QStringLiteral("bg-brand")));
 
-    const QString path = writeConfig(R"({"colors": {"brand": "#123456"}})");
+    const QString path =
+        writeConfig(R"({"schemaVersion":2,"tokens":{"colors":{"brand":"#123456"}}})");
     QVERIFY(loom::loadConfig(path));
 
     const loom::StyleCatalogue after = loom::styleCatalogue();
@@ -135,5 +142,5 @@ void CatalogueTests::jsonShape()
     QVERIFY(!family.value(QStringLiteral("values")).toArray().isEmpty());
 }
 
-QTEST_MAIN(CatalogueTests)
+QTEST_APPLESS_MAIN(CatalogueTests)
 #include "tst_catalogue.moc"

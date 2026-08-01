@@ -1,13 +1,22 @@
 #include "loomstyleattached.h"
 
+#include <QAccessibilityHints>
+#include <QEvent>
+#include <QGuiApplication>
 #include <QLoggingCategory>
 #include <QMetaProperty>
+#include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QQmlListReference>
 #include <QQmlProperty>
 #include <QQuickWindow>
 #include <QSet>
+#include <QStyleHints>
 #include <QVector2D>
+#include <QtQml/qqml.h>
+#include <algorithm>
+#include <utility>
 
 #include "loomstatewatcher.h"
 #include "loomtargetprofile.h"
@@ -26,6 +35,65 @@ QColor withAlpha(QColor color, quint8 alphaPercent)
         return color;
     color.setAlphaF(color.alphaF() * (alphaPercent / 100.0f));
     return color;
+}
+
+bool activeThemeHasToken(const LoomStyleRule &rule, const LoomTokenRegistry *registry)
+{
+    if (rule.arbitrary || rule.key.isEmpty())
+        return true;
+    switch (rule.utility) {
+    case LoomUtility::BgColor:
+    case LoomUtility::TextColor:
+    case LoomUtility::BorderColor:
+    case LoomUtility::RingColor:
+    case LoomUtility::GradientFrom:
+    case LoomUtility::GradientVia:
+    case LoomUtility::GradientTo:
+        return registry->hasColor(rule.key);
+    case LoomUtility::TextSize:
+    case LoomUtility::LineHeight:
+        return registry->hasTextSize(rule.key);
+    case LoomUtility::FontWeight:
+        return registry->hasFontWeight(rule.key);
+    case LoomUtility::FontFamily:
+        return registry->hasFontFamily(rule.key);
+    case LoomUtility::Tracking:
+        return registry->hasTracking(rule.key);
+    case LoomUtility::Radius:
+    case LoomUtility::RadiusTopLeft:
+    case LoomUtility::RadiusTopRight:
+    case LoomUtility::RadiusBottomRight:
+    case LoomUtility::RadiusBottomLeft:
+        return registry->hasRadius(rule.key);
+    case LoomUtility::Opacity:
+        return registry->hasOpacityValue(rule.key);
+    case LoomUtility::Shadow:
+        return registry->hasShadow(rule.key);
+    case LoomUtility::TransitionDuration:
+        return registry->hasDuration(rule.key);
+    case LoomUtility::TransitionEase:
+        return registry->hasEasing(rule.key);
+    case LoomUtility::PaddingTop:
+    case LoomUtility::PaddingRight:
+    case LoomUtility::PaddingBottom:
+    case LoomUtility::PaddingLeft:
+    case LoomUtility::MarginTop:
+    case LoomUtility::MarginRight:
+    case LoomUtility::MarginBottom:
+    case LoomUtility::MarginLeft:
+    case LoomUtility::Gap:
+    case LoomUtility::Width:
+    case LoomUtility::Height:
+    case LoomUtility::LayoutMinWidth:
+    case LoomUtility::LayoutMaxWidth:
+    case LoomUtility::LayoutMinHeight:
+    case LoomUtility::LayoutMaxHeight:
+    case LoomUtility::TranslateX:
+    case LoomUtility::TranslateY:
+        return registry->hasSpace(rule.key);
+    default:
+        return true;
+    }
 }
 
 void warnUnsupportedOnce(const QMetaObject *type, LoomUtility utility, const QString &key)
@@ -89,6 +157,71 @@ struct ResolvedWrite {
     QVariant value;
 };
 
+class InputModalityTracker final : public QObject {
+public:
+    static InputModalityTracker *instance()
+    {
+        static InputModalityTracker tracker;
+        return &tracker;
+    }
+
+    void subscribe(QObject *object)
+    {
+        for (const auto &subscriber : std::as_const(m_subscribers)) {
+            if (subscriber == object)
+                return;
+        }
+        m_subscribers.append(object);
+    }
+
+    bool keyboard() const
+    {
+        return m_keyboard;
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        Q_UNUSED(watched)
+        bool keyboard = m_keyboard;
+        switch (event->type()) {
+        case QEvent::KeyPress:
+        case QEvent::Shortcut:
+            keyboard = true;
+            break;
+        case QEvent::MouseButtonPress:
+        case QEvent::TouchBegin:
+        case QEvent::TabletPress:
+            keyboard = false;
+            break;
+        default:
+            return false;
+        }
+        if (keyboard == m_keyboard)
+            return false;
+        m_keyboard = keyboard;
+        for (auto it = m_subscribers.begin(); it != m_subscribers.end();) {
+            if (!*it) {
+                it = m_subscribers.erase(it);
+                continue;
+            }
+            QMetaObject::invokeMethod(*it, "scheduleApply", Qt::QueuedConnection);
+            ++it;
+        }
+        return false;
+    }
+
+private:
+    InputModalityTracker()
+    {
+        if (QCoreApplication::instance())
+            QCoreApplication::instance()->installEventFilter(this);
+    }
+
+    QList<QPointer<QObject>> m_subscribers;
+    bool m_keyboard = true;
+};
+
 } // namespace
 
 LoomStyleAttached::LoomStyleAttached(QObject *parent)
@@ -112,6 +245,9 @@ LoomStyleAttached::LoomStyleAttached(QObject *parent)
     connect(
         LoomTokenRegistry::instance(), &LoomTokenRegistry::vocabularyChanged, this,
         &LoomStyleAttached::recompile);
+    connect(
+        LoomTokenRegistry::instance(), &LoomTokenRegistry::accessibilityChanged, this,
+        &LoomStyleAttached::scheduleApply);
 }
 
 void LoomStyleAttached::recompile()
@@ -139,11 +275,146 @@ void LoomStyleAttached::setStyle(const QString &style)
     scheduleApply();
 }
 
+bool LoomStyleAttached::container() const
+{
+    return m_container;
+}
+
+void LoomStyleAttached::setContainer(bool container)
+{
+    if (m_container == container)
+        return;
+    m_container = container;
+    emit contextChanged();
+    scheduleApply();
+}
+
+QString LoomStyleAttached::containerName() const
+{
+    return m_containerName;
+}
+
+void LoomStyleAttached::setContainerName(const QString &name)
+{
+    if (m_containerName == name)
+        return;
+    m_containerName = name;
+    emit contextChanged();
+    scheduleApply();
+}
+
+QString LoomStyleAttached::group() const
+{
+    return m_group;
+}
+
+void LoomStyleAttached::setGroup(const QString &name)
+{
+    if (m_group == name)
+        return;
+    m_group = name;
+    emit contextChanged();
+    scheduleApply();
+}
+
+bool LoomStyleAttached::effects() const
+{
+    return m_effects;
+}
+
+void LoomStyleAttached::setEffects(bool enabled)
+{
+    if (m_effects == enabled)
+        return;
+    m_effects = enabled;
+    emit effectsChanged();
+    scheduleApply();
+}
+
+bool LoomStyleAttached::matchesGroup(
+    const QString &name, quint32 required, quint32 forbidden) const
+{
+    if ((!name.isEmpty() && m_group != name) || (name.isEmpty() && m_group.isEmpty()))
+        return false;
+    const quint32 states = activeStates();
+    return (states & required) == required && (states & forbidden) == 0;
+}
+
+void LoomStyleAttached::subscribeExternalStates(quint32 states)
+{
+    const quint32 combined = m_externalStates | states;
+    if (combined == m_externalStates)
+        return;
+    m_externalStates = combined;
+    updateSubscriptions();
+}
+
+QVariantMap LoomStyleAttached::debugInfo() const
+{
+    QVariantMap resolved;
+    for (auto it = m_lastWritten.constBegin(); it != m_lastWritten.constEnd(); ++it)
+        resolved.insert(it.key(), it.value());
+
+    QStringList states;
+    const quint32 active = m_target ? activeStates() : 0;
+    const struct {
+        quint32 state;
+        const char *name;
+    } names[] = {
+        {LoomHoverState, "hover"},
+        {LoomPressedState, "pressed"},
+        {LoomFocusState, "focus"},
+        {LoomDisabledState, "disabled"},
+        {LoomDarkState, "dark"},
+        {LoomCheckedState, "checked"},
+        {LoomDownState, "down"},
+        {LoomHighlightedState, "highlighted"},
+        {LoomSelectedState, "selected"},
+        {LoomEditableState, "editable"},
+        {LoomReadOnlyState, "read-only"},
+        {LoomActiveState, "active"},
+        {LoomFocusWithinState, "focus-within"},
+        {LoomFocusVisibleState, "focus-visible"},
+        {LoomRtlState, "rtl"},
+        {LoomLtrState, "ltr"},
+        {LoomPortraitState, "portrait"},
+        {LoomLandscapeState, "landscape"},
+        {LoomWindowActiveState, "window-active"},
+        {LoomHighContrastState, "high-contrast"},
+        {LoomMotionReduceState, "motion-reduce"},
+        {LoomFirstState, "first"},
+        {LoomLastState, "last"},
+        {LoomOnlyState, "only"},
+        {LoomOddState, "odd"},
+        {LoomEvenState, "even"},
+    };
+    for (const auto &entry : names) {
+        if (active & entry.state)
+            states.append(QLatin1String(entry.name));
+    }
+
+    return {
+        {QStringLiteral("type"),
+         m_target ? QString::fromLatin1(m_target->metaObject()->className()) : QString()},
+        {QStringLiteral("objectName"), m_target ? m_target->objectName() : QString()},
+        {QStringLiteral("style"), m_style},
+        {QStringLiteral("theme"), LoomTokenRegistry::instance()->theme()},
+        {QStringLiteral("states"), states},
+        {QStringLiteral("resolved"), resolved},
+        {QStringLiteral("ruleCount"), m_compiled ? m_compiled->rules.size() : 0},
+        {QStringLiteral("container"), m_container},
+        {QStringLiteral("containerName"), m_containerName},
+        {QStringLiteral("group"), m_group},
+        {QStringLiteral("effects"), m_effects},
+    };
+}
+
 void LoomStyleAttached::scheduleApply()
 {
     if (m_applyQueued || !m_target)
         return;
     m_applyQueued = true;
+    emit contextChanged();
     // Queued on purpose, twice over: it coalesces bursts (theme switch plus
     // resize plus hover in one turn is one apply), and it defers the first
     // apply past object creation, so Lo.style wins over the item's own initial
@@ -155,6 +426,14 @@ void LoomStyleAttached::scheduleApply()
             applyNow();
         },
         Qt::QueuedConnection);
+}
+
+void LoomStyleAttached::refreshContextSubscriptions()
+{
+    // New siblings and newly selected container/group ancestors were not
+    // present in the old subscription set. Refresh it before recomputing.
+    updateSubscriptions();
+    scheduleApply();
 }
 
 bool LoomStyleAttached::connectPropertyNotify(QObject *sender, const char *propertyName)
@@ -173,7 +452,7 @@ bool LoomStyleAttached::connectPropertyNotify(QObject *sender, const char *prope
 
 void LoomStyleAttached::updateSubscriptions()
 {
-    const quint8 states = m_compiled ? m_compiled->usedStates : 0;
+    const quint32 states = (m_compiled ? m_compiled->usedStates : 0) | m_externalStates;
 
     if ((states & (LoomHoverState | LoomPressedState)) && !m_watcher) {
         m_nativePressed = false;
@@ -207,7 +486,68 @@ void LoomStyleAttached::updateSubscriptions()
             m_target, &QQuickItem::enabledChanged, this,
             &LoomStyleAttached::scheduleApply, Qt::UniqueConnection);
 
-    if (m_compiled && m_compiled->usesBreakpoints) {
+    const struct {
+        quint32 state;
+        const char *property;
+    } propertyStates[] = {
+        {LoomCheckedState, "checked"},         {LoomDownState, "down"},
+        {LoomHighlightedState, "highlighted"}, {LoomSelectedState, "selected"},
+        {LoomEditableState, "editable"},       {LoomReadOnlyState, "readOnly"},
+        {LoomActiveState, "active"},
+    };
+    for (const auto &entry : propertyStates) {
+        if (states & entry.state)
+            connectPropertyNotify(m_target, entry.property);
+    }
+    if (states & LoomFocusVisibleState) {
+        InputModalityTracker::instance()->subscribe(this);
+        if (!connectPropertyNotify(m_target, "visualFocus"))
+            connect(
+                m_target, &QQuickItem::activeFocusChanged, this,
+                &LoomStyleAttached::scheduleApply, Qt::UniqueConnection);
+    }
+    if (states & (LoomRtlState | LoomLtrState)) {
+        if (auto *application =
+                qobject_cast<QGuiApplication *>(QCoreApplication::instance()))
+            connect(
+                application, &QGuiApplication::layoutDirectionChanged, this,
+                &LoomStyleAttached::scheduleApply, Qt::UniqueConnection);
+    }
+    if (states & LoomHighContrastState) {
+        if (auto *hints = QGuiApplication::styleHints()->accessibility()) {
+            connect(
+                hints, &QAccessibilityHints::contrastPreferenceChanged, this,
+                &LoomStyleAttached::scheduleApply, Qt::UniqueConnection);
+        }
+    }
+    if (states
+        & (LoomFirstState | LoomLastState | LoomOnlyState | LoomOddState
+           | LoomEvenState)) {
+        // Lo.style is assigned before a declarative child is inserted into its
+        // visual parent. Defer the subscription refresh until that insertion
+        // has completed; otherwise structural variants created in QML never
+        // observe later sibling additions.
+        connect(
+            m_target, &QQuickItem::parentChanged, this,
+            &LoomStyleAttached::refreshContextSubscriptions,
+            Qt::ConnectionType(Qt::QueuedConnection | Qt::UniqueConnection));
+        if (QQuickItem *parent = m_target->parentItem()) {
+            connect(
+                parent, &QQuickItem::childrenChanged, this,
+                &LoomStyleAttached::refreshContextSubscriptions, Qt::UniqueConnection);
+            for (QQuickItem *sibling : parent->childItems()) {
+                connect(
+                    sibling, &QQuickItem::visibleChanged, this,
+                    &LoomStyleAttached::scheduleApply, Qt::UniqueConnection);
+            }
+        }
+    }
+
+    if (m_compiled
+        && (m_compiled->usesBreakpoints
+            || (states
+                & (LoomPortraitState | LoomLandscapeState | LoomWindowActiveState
+                   | LoomFocusWithinState)))) {
         connect(
             m_target, &QQuickItem::windowChanged, this, &LoomStyleAttached::trackWindow,
             Qt::UniqueConnection);
@@ -231,14 +571,78 @@ void LoomStyleAttached::updateSubscriptions()
         connect(
             m_target, &QQuickItem::widthChanged, this, &LoomStyleAttached::scheduleApply,
             Qt::UniqueConnection);
+    if (m_compiled && m_compiled->usesTranslate) {
+        connect(
+            m_target, &QQuickItem::widthChanged, this, &LoomStyleAttached::scheduleApply,
+            Qt::UniqueConnection);
+        connect(
+            m_target, &QQuickItem::heightChanged, this, &LoomStyleAttached::scheduleApply,
+            Qt::UniqueConnection);
+    }
+    if (m_compiled && (m_compiled->usesContainers || m_compiled->usesGroups)) {
+        connect(
+            m_target, &QQuickItem::parentChanged, this,
+            &LoomStyleAttached::refreshContextSubscriptions,
+            Qt::ConnectionType(Qt::QueuedConnection | Qt::UniqueConnection));
+        // Observe every already-attached ancestor, not only the one matching
+        // right now. A bound Lo.group/Lo.containerName can turn a previously
+        // irrelevant ancestor into the selected context without reparenting.
+        for (QQuickItem *ancestor = m_target->parentItem(); ancestor;
+             ancestor = ancestor->parentItem()) {
+            if (auto *attached = qobject_cast<LoomStyleAttached *>(
+                    qmlAttachedPropertiesObject<Lo>(ancestor, false))) {
+                connect(
+                    attached, &LoomStyleAttached::contextChanged, this,
+                    &LoomStyleAttached::refreshContextSubscriptions,
+                    Qt::UniqueConnection);
+            }
+        }
+        QSet<QString> containerNames;
+        QSet<QString> groupNames;
+        for (const auto &rule : m_compiled->rules) {
+            if (rule.containerMinWidth > 0
+                || rule.containerMaxWidth != std::numeric_limits<int>::max())
+                containerNames.insert(rule.containerName);
+            if (rule.groupStateMask || rule.groupStateNotMask)
+                groupNames.insert(rule.groupName);
+        }
+        for (const QString &name : containerNames) {
+            if (QQuickItem *item = containerItem(name)) {
+                connect(
+                    item, &QQuickItem::widthChanged, this,
+                    &LoomStyleAttached::scheduleApply, Qt::UniqueConnection);
+            }
+        }
+        for (const QString &name : groupNames) {
+            if (auto *attached = groupContext(name)) {
+                quint32 required = 0;
+                for (const auto &rule : m_compiled->rules) {
+                    if (rule.groupName == name)
+                        required |= rule.groupStateMask | rule.groupStateNotMask;
+                }
+                attached->subscribeExternalStates(required);
+            }
+        }
+    }
 }
 
 void LoomStyleAttached::trackWindow()
 {
     disconnect(m_windowWidthConn);
-    if (QQuickWindow *window = m_target->window())
+    disconnect(m_windowHeightConn);
+    disconnect(m_windowActiveConn);
+    disconnect(m_windowFocusConn);
+    if (QQuickWindow *window = m_target->window()) {
         m_windowWidthConn = connect(
             window, &QWindow::widthChanged, this, &LoomStyleAttached::scheduleApply);
+        m_windowHeightConn = connect(
+            window, &QWindow::heightChanged, this, &LoomStyleAttached::scheduleApply);
+        m_windowActiveConn = connect(
+            window, &QWindow::activeChanged, this, &LoomStyleAttached::scheduleApply);
+        m_windowFocusConn = connect(
+            window, &QQuickWindow::activeFocusItemChanged, this,
+            &LoomStyleAttached::scheduleApply);
+    }
     scheduleApply();
 }
 
@@ -255,9 +659,9 @@ void LoomStyleAttached::trackParent()
     scheduleApply();
 }
 
-quint8 LoomStyleAttached::activeStates() const
+quint32 LoomStyleAttached::activeStates() const
 {
-    quint8 states = 0;
+    quint32 states = 0;
     if (m_watcher && m_watcher->property("hovered").toBool())
         states |= LoomHoverState;
     const bool pressed = m_nativePressed
@@ -271,6 +675,74 @@ quint8 LoomStyleAttached::activeStates() const
         states |= LoomDisabledState;
     if (LoomTokenRegistry::instance()->isDark())
         states |= LoomDarkState;
+    const auto boolProperty = [this](const char *name) {
+        const QVariant value = m_target->property(name);
+        return value.isValid() && value.toBool();
+    };
+    if (boolProperty("checked"))
+        states |= LoomCheckedState;
+    if (boolProperty("down"))
+        states |= LoomDownState;
+    if (boolProperty("highlighted"))
+        states |= LoomHighlightedState;
+    if (boolProperty("selected"))
+        states |= LoomSelectedState;
+    if (boolProperty("editable"))
+        states |= LoomEditableState;
+    if (boolProperty("readOnly"))
+        states |= LoomReadOnlyState;
+    if (boolProperty("active"))
+        states |= LoomActiveState;
+    if (boolProperty("visualFocus")
+        || (m_target->metaObject()->indexOfProperty("visualFocus") < 0
+            && m_target->hasActiveFocus()
+            && InputModalityTracker::instance()->keyboard()))
+        states |= LoomFocusVisibleState;
+    if (QGuiApplication::layoutDirection() == Qt::RightToLeft)
+        states |= LoomRtlState;
+    else
+        states |= LoomLtrState;
+    if (QQuickWindow *window = m_target->window()) {
+        if (window->width() >= window->height())
+            states |= LoomLandscapeState;
+        else
+            states |= LoomPortraitState;
+        if (window->isActive())
+            states |= LoomWindowActiveState;
+        for (QQuickItem *focus = window->activeFocusItem(); focus;
+             focus = focus->parentItem()) {
+            if (focus == m_target) {
+                states |= LoomFocusWithinState;
+                break;
+            }
+        }
+    }
+    if (QGuiApplication::styleHints()->accessibility()
+        && QGuiApplication::styleHints()->accessibility()->contrastPreference()
+            == Qt::ContrastPreference::HighContrast)
+        states |= LoomHighContrastState;
+    if (LoomTokenRegistry::instance()->reduceMotion())
+        states |= LoomMotionReduceState;
+    if (QQuickItem *parent = m_target->parentItem()) {
+        QList<QQuickItem *> siblings;
+        for (QQuickItem *sibling : parent->childItems()) {
+            if (sibling->isVisible() && !sibling->property("_loomInternal").toBool())
+                siblings.append(sibling);
+        }
+        const qsizetype index = siblings.indexOf(m_target);
+        if (index >= 0) {
+            if (index == 0)
+                states |= LoomFirstState;
+            if (index == siblings.size() - 1)
+                states |= LoomLastState;
+            if (siblings.size() == 1)
+                states |= LoomOnlyState;
+            if ((index + 1) % 2 == 1)
+                states |= LoomOddState;
+            else
+                states |= LoomEvenState;
+        }
+    }
     return states;
 }
 
@@ -453,24 +925,32 @@ QString LoomStyleAttached::backgroundPath(LoomUtility utility) const
     return QStringLiteral("background.") + path;
 }
 
-int LoomStyleAttached::breakpointTier() const
+QQuickItem *LoomStyleAttached::containerItem(const QString &name) const
 {
-    QQuickWindow *window = m_target->window();
-    if (!window)
-        return 0;
-    const int width = window->width();
-    auto *registry = LoomTokenRegistry::instance();
-    static const char *const names[] = {"sm", "md", "lg", "xl"};
-    int tier = 0;
-    for (int i = 0; i < 4; ++i) {
-        // Stop at the first threshold the width does not reach. Continuing
-        // would let a later, smaller threshold in a non-monotonic config
-        // promote the tier past a breakpoint whose own threshold is unmet.
-        if (width < registry->breakpoint(QLatin1String(names[i])))
-            break;
-        tier = i + 1;
+    for (QQuickItem *item = m_target ? m_target->parentItem() : nullptr; item;
+         item = item->parentItem()) {
+        auto *attached = qobject_cast<LoomStyleAttached *>(
+            qmlAttachedPropertiesObject<Lo>(item, false));
+        if (!attached || !attached->container())
+            continue;
+        if (name.isEmpty() || attached->containerName() == name)
+            return item;
     }
-    return tier;
+    return nullptr;
+}
+
+LoomStyleAttached *LoomStyleAttached::groupContext(const QString &name) const
+{
+    for (QQuickItem *item = m_target ? m_target->parentItem() : nullptr; item;
+         item = item->parentItem()) {
+        auto *attached = qobject_cast<LoomStyleAttached *>(
+            qmlAttachedPropertiesObject<Lo>(item, false));
+        if (!attached || attached->group().isEmpty())
+            continue;
+        if (name.isEmpty() || attached->group() == name)
+            return attached;
+    }
+    return nullptr;
 }
 
 void LoomStyleAttached::applyNow()
@@ -480,11 +960,43 @@ void LoomStyleAttached::applyNow()
 
     struct Desired {
         QVariant value;
-        quint8 specificity;
+        quint64 specificity;
     };
     QHash<QString, Desired> desired;
     QString shadowKey;
-    quint8 shadowSpecificity = 0;
+    quint64 shadowSpecificity = 0;
+    int cursorShape = int(Qt::ArrowCursor);
+    quint64 cursorSpecificity = 0;
+    bool cursorSet = false;
+    qreal translateX = 0;
+    qreal translateY = 0;
+    quint64 translateXSpecificity = 0;
+    quint64 translateYSpecificity = 0;
+    bool translateXSet = false;
+    bool translateYSet = false;
+    qreal ringWidth = 0;
+    QColor ringColor;
+    quint64 ringWidthSpecificity = 0;
+    quint64 ringColorSpecificity = 0;
+    bool ringWidthSet = false;
+    int gradientDirection = 4;
+    QColor gradientFrom;
+    QColor gradientVia;
+    QColor gradientTo;
+    quint64 gradientDirectionSpecificity = 0;
+    quint64 gradientFromSpecificity = 0;
+    quint64 gradientViaSpecificity = 0;
+    quint64 gradientToSpecificity = 0;
+    bool gradientDirectionSet = false;
+    qreal filterBlur = 0;
+    qreal filterBrightness = 100;
+    qreal filterContrast = 100;
+    qreal filterSaturation = 100;
+    quint64 filterBlurSpecificity = 0;
+    quint64 filterBrightnessSpecificity = 0;
+    quint64 filterContrastSpecificity = 0;
+    quint64 filterSaturationSpecificity = 0;
+    bool filterSet = false;
     // Tracking is em-relative, so it can only be resolved once the winning
     // text size for this pass is known. Deferred rather than computed in the
     // rule loop, where it silently used the item's pre-existing pixel size
@@ -492,7 +1004,9 @@ void LoomStyleAttached::applyNow()
     struct {
         QString key;
         QString path;
-        quint8 specificity = 0;
+        qreal literal = 0;
+        quint64 specificity = 0;
+        bool arbitrary = false;
         bool set = false;
     } tracking;
     // Tailwind defaults: 150ms, cubic-bezier(0.4, 0, 0.2, 1).
@@ -500,23 +1014,83 @@ void LoomStyleAttached::applyNow()
         LoomTransitionMode mode = LoomTransitionMode::None;
         QString durationKey = QStringLiteral("150");
         QString easeKey = QStringLiteral("in-out");
-        quint8 modeSpecificity = 0;
-        quint8 durationSpecificity = 0;
-        quint8 easeSpecificity = 0;
+        quint64 modeSpecificity = 0;
+        quint64 durationSpecificity = 0;
+        quint64 easeSpecificity = 0;
     } transition;
 
     if (m_compiled) {
         auto *registry = LoomTokenRegistry::instance();
         const LoomTargetProfile *profile =
             LoomTargetProfile::forType(m_target->metaObject());
-        const quint8 states = activeStates();
-        const int tier = breakpointTier();
+        const quint32 states = activeStates();
+        const int viewportWidth = m_target->window() ? m_target->window()->width() : 0;
 
         for (const LoomStyleRule &rule : m_compiled->rules) {
-            if (rule.minBreakpoint > tier)
+            if (rule.minWidth > viewportWidth || rule.maxWidth < viewportWidth)
                 continue;
+            if (rule.containerMinWidth > 0
+                || rule.containerMaxWidth != std::numeric_limits<int>::max()) {
+                QQuickItem *container = containerItem(rule.containerName);
+                if (!container || container->width() < rule.containerMinWidth
+                    || container->width() > rule.containerMaxWidth)
+                    continue;
+            }
             if ((rule.stateMask & states) != rule.stateMask)
                 continue;
+            if ((rule.stateNotMask & states) != 0)
+                continue;
+            if (!rule.themeName.isEmpty() && registry->theme() != rule.themeName)
+                continue;
+            if (rule.groupStateMask || rule.groupStateNotMask) {
+                const auto *group = groupContext(rule.groupName);
+                if (!group
+                    || !group->matchesGroup(
+                        rule.groupName, rule.groupStateMask, rule.groupStateNotMask))
+                    continue;
+            }
+            if (!activeThemeHasToken(rule, registry))
+                continue;
+
+            const auto colorFor = [registry, &rule] {
+                return withAlpha(
+                    rule.arbitrary ? QColor::fromString(rule.key)
+                                   : registry->color(rule.key),
+                    rule.alphaPercent);
+            };
+
+            if (rule.utility == LoomUtility::CursorShape) {
+                if (rule.specificity >= cursorSpecificity) {
+                    cursorShape = int(rule.literal);
+                    cursorSpecificity = rule.specificity;
+                    cursorSet = true;
+                }
+                continue;
+            }
+            if (rule.utility == LoomUtility::TranslateX
+                || rule.utility == LoomUtility::TranslateY) {
+                qreal value = rule.arbitrary ? rule.literal : registry->space(rule.key);
+                if (rule.fraction > 0) {
+                    value = (rule.utility == LoomUtility::TranslateX ? m_target->width()
+                                                                     : m_target->height())
+                        * rule.fraction;
+                }
+                if (rule.negative)
+                    value = -value;
+                qreal &target =
+                    rule.utility == LoomUtility::TranslateX ? translateX : translateY;
+                quint64 &specificity = rule.utility == LoomUtility::TranslateX
+                    ? translateXSpecificity
+                    : translateYSpecificity;
+                bool &set = rule.utility == LoomUtility::TranslateX ? translateXSet
+                                                                    : translateYSet;
+                if (rule.specificity >= specificity) {
+                    target = value;
+                    specificity = rule.specificity;
+                    set = true;
+                }
+                continue;
+            }
 
             if (rule.utility == LoomUtility::Shadow) {
                 // Not a property write: applied through the managed effect
@@ -524,6 +1098,76 @@ void LoomStyleAttached::applyNow()
                 if (rule.specificity >= shadowSpecificity) {
                     shadowKey = rule.key;
                     shadowSpecificity = rule.specificity;
+                }
+                continue;
+            }
+            if (rule.utility == LoomUtility::RingWidth) {
+                if (rule.specificity >= ringWidthSpecificity) {
+                    ringWidth = rule.literal;
+                    ringWidthSpecificity = rule.specificity;
+                    ringWidthSet = true;
+                }
+                continue;
+            }
+            if (rule.utility == LoomUtility::RingColor) {
+                if (rule.specificity >= ringColorSpecificity) {
+                    ringColor = colorFor();
+                    ringColorSpecificity = rule.specificity;
+                }
+                continue;
+            }
+            if (rule.utility == LoomUtility::GradientDirection) {
+                if (rule.specificity >= gradientDirectionSpecificity) {
+                    gradientDirection = int(rule.literal);
+                    gradientDirectionSpecificity = rule.specificity;
+                    gradientDirectionSet = true;
+                }
+                continue;
+            }
+            if (rule.utility == LoomUtility::GradientFrom
+                || rule.utility == LoomUtility::GradientVia
+                || rule.utility == LoomUtility::GradientTo) {
+                QColor *target = rule.utility == LoomUtility::GradientFrom ? &gradientFrom
+                    : rule.utility == LoomUtility::GradientVia             ? &gradientVia
+                                                                           : &gradientTo;
+                quint64 *specificity = rule.utility == LoomUtility::GradientFrom
+                    ? &gradientFromSpecificity
+                    : rule.utility == LoomUtility::GradientVia ? &gradientViaSpecificity
+                                                               : &gradientToSpecificity;
+                if (rule.specificity >= *specificity) {
+                    *target = colorFor();
+                    *specificity = rule.specificity;
+                }
+                continue;
+            }
+            if (rule.utility >= LoomUtility::FilterBlur
+                && rule.utility <= LoomUtility::FilterSaturation) {
+                qreal *target = nullptr;
+                quint64 *specificity = nullptr;
+                switch (rule.utility) {
+                case LoomUtility::FilterBlur:
+                    target = &filterBlur;
+                    specificity = &filterBlurSpecificity;
+                    break;
+                case LoomUtility::FilterBrightness:
+                    target = &filterBrightness;
+                    specificity = &filterBrightnessSpecificity;
+                    break;
+                case LoomUtility::FilterContrast:
+                    target = &filterContrast;
+                    specificity = &filterContrastSpecificity;
+                    break;
+                case LoomUtility::FilterSaturation:
+                    target = &filterSaturation;
+                    specificity = &filterSaturationSpecificity;
+                    break;
+                default:
+                    break;
+                }
+                if (target && rule.specificity >= *specificity) {
+                    *target = rule.literal;
+                    *specificity = rule.specificity;
+                    filterSet = true;
                 }
                 continue;
             }
@@ -563,10 +1207,16 @@ void LoomStyleAttached::applyNow()
             case LoomUtility::TextColor:
             case LoomUtility::BorderColor:
                 writes.append(
-                    {path, withAlpha(registry->color(rule.key), rule.alphaPercent)});
+                    {path,
+                     withAlpha(
+                         rule.arbitrary ? QColor::fromString(rule.key)
+                                        : registry->color(rule.key),
+                         rule.alphaPercent)});
                 break;
             case LoomUtility::TextSize: {
-                const LoomTextStyle size = registry->textSize(rule.key);
+                const LoomTextStyle size = rule.arbitrary
+                    ? LoomTextStyle{rule.literal, rule.literal * 1.5}
+                    : registry->textSize(rule.key);
                 writes.append({path, size.size});
                 if (profile->supportsLineHeight()) {
                     // 1 == Text.FixedHeight; the enum only exists in QML.
@@ -577,6 +1227,26 @@ void LoomStyleAttached::applyNow()
             }
             case LoomUtility::FontWeight:
                 writes.append({path, registry->fontWeight(rule.key)});
+                break;
+            case LoomUtility::FontFamily:
+                writes.append(
+                    {path,
+                     rule.arbitrary ? rule.key
+                                    : registry->fontFamily(rule.key).value(0)});
+                break;
+            case LoomUtility::TextAlignment:
+            case LoomUtility::TextElide:
+            case LoomUtility::TextMaximumLines:
+            case LoomUtility::TextCapitalization:
+            case LoomUtility::TextWrapMode:
+            case LoomUtility::TransformOrigin:
+                writes.append({path, int(rule.literal)});
+                break;
+            case LoomUtility::LineHeight:
+                writes.append(
+                    {path,
+                     rule.arbitrary ? rule.literal
+                                    : registry->textSize(rule.key).lineHeight});
                 break;
             case LoomUtility::Italic:
             case LoomUtility::Underline:
@@ -590,7 +1260,9 @@ void LoomStyleAttached::applyNow()
                 if (rule.specificity >= tracking.specificity) {
                     tracking.key = rule.key;
                     tracking.path = path;
+                    tracking.literal = rule.literal;
                     tracking.specificity = rule.specificity;
+                    tracking.arbitrary = rule.arbitrary;
                     tracking.set = true;
                 }
                 break;
@@ -600,9 +1272,17 @@ void LoomStyleAttached::applyNow()
             case LoomUtility::PaddingLeft:
             case LoomUtility::Gap:
             case LoomUtility::Width:
-            case LoomUtility::Height:
-                writes.append({path, registry->space(rule.key)});
+            case LoomUtility::Height: {
+                qreal value = rule.arbitrary ? rule.literal : registry->space(rule.key);
+                if (rule.fraction > 0) {
+                    if (QQuickItem *parent = m_target->parentItem())
+                        value = (rule.utility == LoomUtility::Width ? parent->width()
+                                                                    : parent->height())
+                            * rule.fraction;
+                }
+                writes.append({path, rule.negative ? -value : value});
                 break;
+            }
             case LoomUtility::MarginTop:
             case LoomUtility::MarginRight:
             case LoomUtility::MarginBottom:
@@ -610,7 +1290,12 @@ void LoomStyleAttached::applyNow()
                 // Inside a Layout the Layout.* attached margins are the ones
                 // that do anything; anchor margins otherwise. Resolved per
                 // apply so reparenting between the two worlds re-routes.
-                writes.append({marginPath(rule.utility), registry->space(rule.key)});
+                {
+                    const qreal value =
+                        rule.arbitrary ? rule.literal : registry->space(rule.key);
+                    writes.append(
+                        {marginPath(rule.utility), rule.negative ? -value : value});
+                }
                 break;
             case LoomUtility::WidthFull:
             case LoomUtility::HeightFull: {
@@ -628,13 +1313,24 @@ void LoomStyleAttached::applyNow()
             case LoomUtility::RadiusTopRight:
             case LoomUtility::RadiusBottomRight:
             case LoomUtility::RadiusBottomLeft:
-                writes.append({path, registry->radius(rule.key)});
+                writes.append(
+                    {path, rule.arbitrary ? rule.literal : registry->radius(rule.key)});
                 break;
             case LoomUtility::BorderWidth:
                 writes.append({path, rule.literal});
                 break;
             case LoomUtility::Opacity:
-                writes.append({path, registry->opacityValue(rule.key)});
+                writes.append(
+                    {path,
+                     rule.arbitrary ? rule.literal : registry->opacityValue(rule.key)});
+                break;
+            case LoomUtility::Clip:
+                writes.append({path, rule.flag});
+                break;
+            case LoomUtility::ZOrder:
+            case LoomUtility::Rotation:
+            case LoomUtility::Scale:
+                writes.append({path, rule.negative ? -rule.literal : rule.literal});
                 break;
             case LoomUtility::AnchorFill:
             case LoomUtility::AnchorFillX:
@@ -701,12 +1397,27 @@ void LoomStyleAttached::applyNow()
                         if (rule.literal > 0)
                             writes.append({target, m_target->width() / rule.literal});
                     } else {
-                        writes.append({target, registry->space(rule.key)});
+                        writes.append(
+                            {target,
+                             rule.arbitrary ? rule.literal : registry->space(rule.key)});
                     }
                 }
                 break;
             }
             case LoomUtility::Shadow:
+            case LoomUtility::CursorShape:
+            case LoomUtility::TranslateX:
+            case LoomUtility::TranslateY:
+            case LoomUtility::RingWidth:
+            case LoomUtility::RingColor:
+            case LoomUtility::GradientDirection:
+            case LoomUtility::GradientFrom:
+            case LoomUtility::GradientVia:
+            case LoomUtility::GradientTo:
+            case LoomUtility::FilterBlur:
+            case LoomUtility::FilterBrightness:
+            case LoomUtility::FilterContrast:
+            case LoomUtility::FilterSaturation:
             case LoomUtility::TransitionMode:
             case LoomUtility::TransitionDuration:
             case LoomUtility::TransitionEase:
@@ -715,9 +1426,9 @@ void LoomStyleAttached::applyNow()
             }
 
             for (const ResolvedWrite &write : writes) {
-                // Specificity: states outrank breakpoints, and either outranks
-                // an unqualified rule; at equal rank the later rule wins
-                // (iteration order). See loomSpecificity().
+                // Specificity: states outrank responsive constraints, and
+                // either outranks an unqualified rule; at equal rank the later
+                // rule wins (iteration order). See loomSpecificity().
                 const auto existing = desired.constFind(write.path);
                 if (existing != desired.constEnd()
                     && existing->specificity > rule.specificity)
@@ -737,8 +1448,13 @@ void LoomStyleAttached::applyNow()
                 pixelSize = sized->value.toReal();
             desired.insert(
                 tracking.path,
-                {registry->tracking(tracking.key) * pixelSize, tracking.specificity});
+                {(tracking.arbitrary ? tracking.literal
+                                     : registry->tracking(tracking.key))
+                     * pixelSize,
+                 tracking.specificity});
         }
+        if (registry->reduceMotion())
+            transition.mode = LoomTransitionMode::None;
     }
 
     QQmlContext *context = qmlContext(m_target);
@@ -792,7 +1508,20 @@ void LoomStyleAttached::applyNow()
         m_lastWritten.insert(it.key(), it->value);
     }
 
+    syncCursor(cursorShape, cursorSet);
+    syncTranslate(translateX, translateY, translateXSet || translateYSet);
     syncShadow(shadowKey);
+    syncRing(
+        ringWidth,
+        ringColor.isValid()
+            ? ringColor
+            : LoomTokenRegistry::instance()->color(QStringLiteral("accent")),
+        ringWidthSet && ringWidth > 0);
+    syncGradient(
+        gradientDirection, gradientFrom, gradientVia, gradientTo,
+        gradientDirectionSet && gradientFrom.isValid());
+    syncFilters(
+        filterBlur, filterBrightness, filterContrast, filterSaturation, filterSet);
 }
 
 bool LoomStyleAttached::transitionCovers(
@@ -866,6 +1595,323 @@ void LoomStyleAttached::syncShadow(const QString &shadowKey)
     m_shadowItem->setProperty("spread", shadow.spread);
     m_shadowItem->setProperty(
         "offset", QVector2D(float(shadow.offsetX), float(shadow.offsetY)));
+}
+
+void LoomStyleAttached::syncCursor(int shape, bool enabled)
+{
+#if QT_CONFIG(cursor)
+    if (!enabled) {
+        if (m_cursorManaged) {
+            m_target->setCursor(m_originalCursor);
+            m_cursorManaged = false;
+        }
+        return;
+    }
+    if (!m_cursorManaged) {
+        m_originalCursor = m_target->cursor();
+        m_cursorManaged = true;
+    }
+    m_target->setCursor(QCursor(Qt::CursorShape(shape)));
+#else
+    Q_UNUSED(shape)
+    Q_UNUSED(enabled)
+#endif
+}
+
+void LoomStyleAttached::syncTranslate(qreal x, qreal y, bool enabled)
+{
+    if (!enabled) {
+        if (m_translate)
+            m_translate->deleteLater();
+        m_translate.clear();
+        return;
+    }
+    if (!m_translate) {
+        QQmlEngine *engine = qmlEngine(m_target);
+        if (!engine) {
+            qCWarning(lcLoomApply)
+                << "Lo.style: translate-* needs an item created by a QML engine";
+            return;
+        }
+        QQmlComponent component(engine);
+        component.setData("import QtQuick\nTranslate {}", QUrl());
+        QObject *translate = component.create();
+        if (!translate) {
+            qCWarning(lcLoomApply)
+                << "Lo.style: could not create Translate:" << component.errorString();
+            return;
+        }
+        QQmlListReference transforms(m_target, "transform");
+        if (!transforms.isValid() || !transforms.append(translate)) {
+            qCWarning(lcLoomApply)
+                << "Lo.style: could not append Translate to Item.transform";
+            translate->deleteLater();
+            return;
+        }
+        translate->setParent(this);
+        m_translate = translate;
+    }
+    m_translate->setProperty("x", x);
+    m_translate->setProperty("y", y);
+}
+
+void LoomStyleAttached::syncRing(qreal width, const QColor &color, bool enabled)
+{
+    if (!enabled) {
+        if (m_ringItem) {
+            m_ringItem->setParentItem(nullptr);
+            m_ringItem->deleteLater();
+        }
+        m_ringItem.clear();
+        return;
+    }
+    if (!m_ringItem && !m_ringFailed) {
+        m_ringItem = loomCreateRingItem(m_target, this);
+        m_ringFailed = m_ringItem.isNull();
+    }
+    if (!m_ringItem)
+        return;
+    QQmlProperty(m_ringItem, QStringLiteral("border.width")).write(width);
+    QQmlProperty(m_ringItem, QStringLiteral("border.color")).write(color);
+}
+
+void LoomStyleAttached::syncGradient(
+    int direction, const QColor &from, const QColor &via, const QColor &to, bool enabled)
+{
+    const auto release = [this] {
+        if (!m_gradient)
+            return;
+        QQmlProperty property(m_target, m_gradientPath, qmlContext(m_target));
+        if (property.isValid()) {
+            if (m_originalGradient.isNull())
+                property.reset();
+            else if (!property.write(m_originalGradient))
+                property.reset();
+        }
+        m_gradient->deleteLater();
+        m_gradient.clear();
+        m_gradientPath.clear();
+        m_originalGradient.clear();
+    };
+    if (!enabled) {
+        release();
+        return;
+    }
+
+    const LoomTargetProfile *profile = LoomTargetProfile::forType(m_target->metaObject());
+    QString colorPath = profile->propertyPath(LoomUtility::BgColor);
+    if (colorPath.isEmpty())
+        colorPath = backgroundPath(LoomUtility::BgColor);
+    const QString path = colorPath == QLatin1String("color") ? QStringLiteral("gradient")
+        : colorPath == QLatin1String("background.color")
+        ? QStringLiteral("background.gradient")
+        : QString();
+    if (path.isEmpty()) {
+        warnUnsupportedOnce(
+            m_target->metaObject(), LoomUtility::GradientDirection, QString());
+        release();
+        return;
+    }
+
+    if (m_gradient && m_gradientPath != path)
+        release();
+    if (!m_gradient && !m_gradientFailed) {
+        QQmlEngine *engine = qmlEngine(m_target);
+        if (!engine) {
+            qCWarning(lcLoomApply) << "Lo.style: gradient utilities need a QML engine";
+            m_gradientFailed = true;
+            return;
+        }
+        QQmlComponent component(engine);
+        component.setData(
+            R"(import QtQuick
+Gradient {
+    id: root
+    property color loomFrom
+    property color loomVia
+    property color loomTo
+    property bool loomHorizontal
+    property bool loomReverse
+    orientation: loomHorizontal ? Gradient.Horizontal : Gradient.Vertical
+    GradientStop { position: 0; color: root.loomReverse ? root.loomTo : root.loomFrom }
+    GradientStop { position: 0.5; color: root.loomVia }
+    GradientStop { position: 1; color: root.loomReverse ? root.loomFrom : root.loomTo }
+})",
+            QUrl());
+        QObject *gradient = component.create();
+        if (!gradient) {
+            qCWarning(lcLoomApply)
+                << "Lo.style: could not create Gradient:" << component.errorString();
+            m_gradientFailed = true;
+            return;
+        }
+        gradient->setParent(this);
+        QQmlProperty property(m_target, path, qmlContext(m_target));
+        m_originalGradient = property.read();
+        if (!property.write(QVariant::fromValue(gradient))) {
+            qCWarning(lcLoomApply) << "Lo.style: could not assign" << path;
+            gradient->deleteLater();
+            m_gradientFailed = true;
+            return;
+        }
+        m_gradient = gradient;
+        m_gradientPath = path;
+    }
+    if (!m_gradient)
+        return;
+
+    const QColor actualTo =
+        to.isValid() ? to : QColor(from.red(), from.green(), from.blue(), 0);
+    QColor actualVia = via;
+    if (!actualVia.isValid()) {
+        actualVia = QColor::fromRgbF(
+            (from.redF() + actualTo.redF()) / 2, (from.greenF() + actualTo.greenF()) / 2,
+            (from.blueF() + actualTo.blueF()) / 2,
+            (from.alphaF() + actualTo.alphaF()) / 2);
+    }
+    // Rectangle gradients are axis-aligned. Diagonal directions select their
+    // dominant horizontal axis, preserving stop order and deterministic output.
+    const bool horizontal = direction == 1 || direction == 2 || direction == 3
+        || direction == 5 || direction == 6 || direction == 7;
+    const bool reverse = direction == 0 || direction == 6 || direction == 7;
+    m_gradient->setProperty("loomFrom", from);
+    m_gradient->setProperty("loomVia", actualVia);
+    m_gradient->setProperty("loomTo", actualTo);
+    m_gradient->setProperty("loomHorizontal", horizontal);
+    m_gradient->setProperty("loomReverse", reverse);
+}
+
+void LoomStyleAttached::syncFilters(
+    qreal blurPixels, qreal brightnessPercent, qreal contrastPercent,
+    qreal saturationPercent, bool enabled)
+{
+    const auto release = [this] {
+        if (!m_filterManaged)
+            return;
+        QQmlProperty effect(
+            m_target, QStringLiteral("layer.effect"), qmlContext(m_target));
+        QQmlProperty layerEnabled(
+            m_target, QStringLiteral("layer.enabled"), qmlContext(m_target));
+        if (effect.isValid()) {
+            if (m_originalLayerEffect.isNull())
+                effect.reset();
+            else if (!effect.write(m_originalLayerEffect))
+                effect.reset();
+        }
+        if (layerEnabled.isValid())
+            layerEnabled.write(m_originalLayerEnabled);
+        if (m_filterComponent)
+            m_filterComponent->deleteLater();
+        m_filterComponent.clear();
+        m_filterManaged = false;
+        m_filterSignature.clear();
+        m_originalLayerEffect.clear();
+        m_originalLayerEnabled.clear();
+    };
+    if (!enabled || !m_effects) {
+        if (enabled && !m_effects) {
+            static QSet<const QMetaObject *> warned;
+            if (!warned.contains(m_target->metaObject())) {
+                warned.insert(m_target->metaObject());
+                qCWarning(lcLoomApply)
+                    << "Lo.style: blur/brightness/contrast/saturate require "
+                       "Lo.effects: true because they own Item.layer.effect";
+            }
+        }
+        release();
+        return;
+    }
+
+    QQmlEngine *engine = qmlEngine(m_target);
+    if (!engine || m_filterFailed)
+        return;
+    const qreal blur = std::clamp(blurPixels / 64.0, 0.0, 1.0);
+    const qreal brightness = std::clamp((brightnessPercent - 100.0) / 100.0, -1.0, 1.0);
+    const qreal contrast = std::clamp((contrastPercent - 100.0) / 100.0, -1.0, 1.0);
+    const qreal saturation = std::clamp((saturationPercent - 100.0) / 100.0, -1.0, 1.0);
+    const QString signature = QStringLiteral("%1;%2;%3;%4")
+                                  .arg(blur, 0, 'g', 12)
+                                  .arg(brightness, 0, 'g', 12)
+                                  .arg(contrast, 0, 'g', 12)
+                                  .arg(saturation, 0, 'g', 12);
+    if (m_filterManaged && signature == m_filterSignature)
+        return;
+    QQmlProperty effect(m_target, QStringLiteral("layer.effect"), qmlContext(m_target));
+    QQmlProperty layerEnabled(
+        m_target, QStringLiteral("layer.enabled"), qmlContext(m_target));
+    if (!effect.isValid() || !layerEnabled.isValid()) {
+        qCWarning(lcLoomApply) << "Lo.style: Item.layer is unavailable on" << m_target;
+        m_filterFailed = true;
+        return;
+    }
+    if (!m_filterManaged) {
+        // Item.layer.effect stores a Component, not an already-created effect.
+        // A QQmlComponent assembled directly with setData() has no creation
+        // context, and QQuickItemLayer dereferences that null context when it
+        // enables the layer. Create a small host object in the target's QML
+        // context instead; its nested Component then carries the lexical
+        // context that QQuickItemLayer requires.
+        static const QByteArray source = QByteArrayLiteral(
+            "import QtQuick\n"
+            "import QtQuick.Effects\n"
+            "QtObject {\n"
+            "    id: host\n"
+            "    property real loomBlur: 0\n"
+            "    property real loomBrightness: 0\n"
+            "    property real loomContrast: 0\n"
+            "    property real loomSaturation: 0\n"
+            "    property Component loomEffect: Component {\n"
+            "        MultiEffect {\n"
+            "            blurEnabled: host.loomBlur > 0\n"
+            "            blurMax: 64\n"
+            "            blur: host.loomBlur\n"
+            "            brightness: host.loomBrightness\n"
+            "            contrast: host.loomContrast\n"
+            "            saturation: host.loomSaturation\n"
+            "        }\n"
+            "    }\n"
+            "}\n");
+        QQmlComponent definition(engine);
+        definition.setData(source, QUrl());
+        if (definition.isError()) {
+            qCWarning(lcLoomApply)
+                << "Lo.style: could not define MultiEffect:" << definition.errorString();
+            m_filterFailed = true;
+            return;
+        }
+        QObject *host = definition.create(qmlContext(m_target));
+        if (!host) {
+            qCWarning(lcLoomApply) << "Lo.style: could not create MultiEffect host:"
+                                   << definition.errorString();
+            m_filterFailed = true;
+            return;
+        }
+        host->setParent(this);
+        auto *effectComponent = host->property("loomEffect").value<QQmlComponent *>();
+        if (!effectComponent) {
+            qCWarning(lcLoomApply) << "Lo.style: MultiEffect host has no component";
+            host->deleteLater();
+            m_filterFailed = true;
+            return;
+        }
+        m_originalLayerEffect = effect.read();
+        m_originalLayerEnabled = layerEnabled.read();
+        m_filterComponent = host;
+        m_filterManaged = true;
+        if (!effect.write(QVariant::fromValue(effectComponent))
+            || !layerEnabled.write(true)) {
+            qCWarning(lcLoomApply)
+                << "Lo.style: could not take ownership of Item.layer.effect";
+            release();
+            m_filterFailed = true;
+            return;
+        }
+    }
+    m_filterComponent->setProperty("loomBlur", blur);
+    m_filterComponent->setProperty("loomBrightness", brightness);
+    m_filterComponent->setProperty("loomContrast", contrast);
+    m_filterComponent->setProperty("loomSaturation", saturation);
+    m_filterSignature = signature;
 }
 
 LoomStyleAttached *Lo::qmlAttachedProperties(QObject *object)

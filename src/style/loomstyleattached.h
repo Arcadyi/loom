@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QColor>
+#include <QCursor>
 #include <QEasingCurve>
 #include <QHash>
 #include <QPointer>
@@ -25,18 +27,41 @@ class LoomStyleAttached : public QObject {
     Q_OBJECT
     QML_ANONYMOUS
     Q_PROPERTY(QString style READ style WRITE setStyle NOTIFY styleChanged)
+    Q_PROPERTY(bool container READ container WRITE setContainer NOTIFY contextChanged)
+    Q_PROPERTY(
+        QString containerName READ containerName WRITE setContainerName NOTIFY
+            contextChanged)
+    Q_PROPERTY(QString group READ group WRITE setGroup NOTIFY contextChanged)
+    // MultiEffect replaces Item.layer.effect. Requiring an explicit opt-in
+    // prevents utility classes from silently taking over an effect component
+    // the application owns itself.
+    Q_PROPERTY(bool effects READ effects WRITE setEffects NOTIFY effectsChanged)
 
 public:
     explicit LoomStyleAttached(QObject *parent = nullptr);
 
     QString style() const;
     void setStyle(const QString &style);
+    bool container() const;
+    void setContainer(bool container);
+    QString containerName() const;
+    void setContainerName(const QString &name);
+    QString group() const;
+    void setGroup(const QString &name);
+    bool effects() const;
+    void setEffects(bool enabled);
+    bool matchesGroup(const QString &name, quint32 required, quint32 forbidden) const;
+    void subscribeExternalStates(quint32 states);
+    QVariantMap debugInfo() const;
 
 signals:
     void styleChanged();
+    void contextChanged();
+    void effectsChanged();
 
 private slots:
     void scheduleApply();
+    void refreshContextSubscriptions();
     // Compiles m_style again, for when a config load changed which token names
     // exist rather than only what they resolve to.
     void recompile();
@@ -50,10 +75,19 @@ private:
         const QQmlProperty &property, const QString &path, const QVariant &target,
         int durationMs, const QEasingCurve &curve);
     void syncShadow(const QString &shadowKey);
+    void syncCursor(int shape, bool enabled);
+    void syncTranslate(qreal x, qreal y, bool enabled);
+    void syncRing(qreal width, const QColor &color, bool enabled);
+    void syncGradient(
+        int direction, const QColor &from, const QColor &via, const QColor &to,
+        bool enabled);
+    void syncFilters(
+        qreal blurPixels, qreal brightnessPercent, qreal contrastPercent,
+        qreal saturationPercent, bool enabled);
     void updateSubscriptions();
     void trackWindow();
     void trackParent();
-    quint8 activeStates() const;
+    quint32 activeStates() const;
     QString marginPath(LoomUtility utility) const;
     QString backgroundPath(LoomUtility utility) const;
     // Where a layout utility lands on *this* item right now: the Layout.*
@@ -74,7 +108,8 @@ private:
     // The parent's anchor line for `edge`, relayed as an opaque QVariant so the
     // private QQuickAnchorLine type is never named here.
     QVariant parentAnchorLine(const QString &edge) const;
-    int breakpointTier() const;
+    QQuickItem *containerItem(const QString &name) const;
+    LoomStyleAttached *groupContext(const QString &name) const;
     bool connectPropertyNotify(QObject *sender, const char *propertyName);
 
     QQuickItem *m_target = nullptr;
@@ -83,9 +118,19 @@ private:
 
     QPointer<QQuickItem> m_watcher;    // hover/pressed handler host
     QPointer<QQuickItem> m_shadowItem; // managed RectangularShadow sibling
-    bool m_shadowFailed = false;       // creation failed once; do not retry
-    bool m_nativePressed = false;      // target has its own `pressed` property
+    QPointer<QQuickItem> m_ringItem;
+    QPointer<QObject> m_translate;
+    QPointer<QObject> m_gradient;
+    QPointer<QObject> m_filterComponent;
+    bool m_shadowFailed = false; // creation failed once; do not retry
+    bool m_ringFailed = false;
+    bool m_gradientFailed = false;
+    bool m_filterFailed = false;
+    bool m_nativePressed = false; // target has its own `pressed` property
     QMetaObject::Connection m_windowWidthConn;
+    QMetaObject::Connection m_windowHeightConn;
+    QMetaObject::Connection m_windowActiveConn;
+    QMetaObject::Connection m_windowFocusConn;
     QMetaObject::Connection m_parentSizeConnW;
     QMetaObject::Connection m_parentSizeConnH;
 
@@ -93,6 +138,19 @@ private:
     QHash<QString, QVariant> m_lastWritten;
     QHash<QString, QPointer<QVariantAnimation>> m_animations;
     bool m_applyQueued = false;
+    bool m_container = false;
+    QString m_containerName;
+    QString m_group;
+    bool m_effects = false;
+    bool m_cursorManaged = false;
+    QCursor m_originalCursor;
+    QString m_gradientPath;
+    QVariant m_originalGradient;
+    QVariant m_originalLayerEnabled;
+    QVariant m_originalLayerEffect;
+    bool m_filterManaged = false;
+    QString m_filterSignature;
+    quint32 m_externalStates = 0;
 };
 
 // The attaching type: `Lo.style: "p-4 bg-surface"` on any Item.

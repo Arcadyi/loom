@@ -39,6 +39,8 @@ QString effectName(LoomUtility utility)
         return QStringLiteral("text size");
     case LoomUtility::FontWeight:
         return QStringLiteral("font weight");
+    case LoomUtility::FontFamily:
+        return QStringLiteral("font family");
     case LoomUtility::Italic:
         return QStringLiteral("italic");
     case LoomUtility::Underline:
@@ -47,6 +49,18 @@ QString effectName(LoomUtility utility)
         return QStringLiteral("line through");
     case LoomUtility::Tracking:
         return QStringLiteral("letter spacing");
+    case LoomUtility::TextAlignment:
+        return QStringLiteral("text alignment");
+    case LoomUtility::TextElide:
+        return QStringLiteral("text overflow");
+    case LoomUtility::TextMaximumLines:
+        return QStringLiteral("maximum lines");
+    case LoomUtility::TextCapitalization:
+        return QStringLiteral("capitalization");
+    case LoomUtility::TextWrapMode:
+        return QStringLiteral("text wrapping");
+    case LoomUtility::LineHeight:
+        return QStringLiteral("line height");
     case LoomUtility::PaddingTop:
         return QStringLiteral("top padding");
     case LoomUtility::PaddingRight:
@@ -91,6 +105,22 @@ QString effectName(LoomUtility utility)
         return QStringLiteral("opacity");
     case LoomUtility::Visible:
         return QStringLiteral("visible");
+    case LoomUtility::Clip:
+        return QStringLiteral("clip");
+    case LoomUtility::ZOrder:
+        return QStringLiteral("z order");
+    case LoomUtility::Rotation:
+        return QStringLiteral("rotation");
+    case LoomUtility::Scale:
+        return QStringLiteral("scale");
+    case LoomUtility::TransformOrigin:
+        return QStringLiteral("transform origin");
+    case LoomUtility::CursorShape:
+        return QStringLiteral("cursor shape");
+    case LoomUtility::TranslateX:
+        return QStringLiteral("horizontal translation");
+    case LoomUtility::TranslateY:
+        return QStringLiteral("vertical translation");
     case LoomUtility::AnchorFill:
         return QStringLiteral("fill parent");
     case LoomUtility::AnchorFillX:
@@ -129,6 +159,26 @@ QString effectName(LoomUtility utility)
         return QStringLiteral("aspect ratio");
     case LoomUtility::Shadow:
         return QStringLiteral("shadow");
+    case LoomUtility::RingWidth:
+        return QStringLiteral("ring width");
+    case LoomUtility::RingColor:
+        return QStringLiteral("ring color");
+    case LoomUtility::GradientDirection:
+        return QStringLiteral("gradient direction");
+    case LoomUtility::GradientFrom:
+        return QStringLiteral("gradient start color");
+    case LoomUtility::GradientVia:
+        return QStringLiteral("gradient middle color");
+    case LoomUtility::GradientTo:
+        return QStringLiteral("gradient end color");
+    case LoomUtility::FilterBlur:
+        return QStringLiteral("blur");
+    case LoomUtility::FilterBrightness:
+        return QStringLiteral("brightness");
+    case LoomUtility::FilterContrast:
+        return QStringLiteral("contrast");
+    case LoomUtility::FilterSaturation:
+        return QStringLiteral("saturation");
     case LoomUtility::TransitionMode:
         return QStringLiteral("transition properties");
     case LoomUtility::TransitionDuration:
@@ -145,22 +195,38 @@ QString ruleValue(const LoomStyleRule &rule, QColor *preview)
     switch (rule.utility) {
     case LoomUtility::BgColor:
     case LoomUtility::TextColor:
-    case LoomUtility::BorderColor: {
-        QColor color = registry->color(rule.key);
+    case LoomUtility::BorderColor:
+    case LoomUtility::RingColor:
+    case LoomUtility::GradientFrom:
+    case LoomUtility::GradientVia:
+    case LoomUtility::GradientTo: {
+        QColor color =
+            rule.arbitrary ? QColor::fromString(rule.key) : registry->color(rule.key);
         color.setAlphaF(color.alphaF() * qreal(rule.alphaPercent) / 100.0);
         if (preview && !preview->isValid())
             *preview = color;
         return colorName(color);
     }
     case LoomUtility::TextSize: {
-        const auto style = registry->textSize(rule.key);
+        const auto style = rule.arbitrary
+            ? LoomTextStyle{rule.literal, rule.literal * 1.5}
+            : registry->textSize(rule.key);
         return QStringLiteral("%1px, line height %2px")
             .arg(number(style.size), number(style.lineHeight));
     }
     case LoomUtility::FontWeight:
         return QString::number(registry->fontWeight(rule.key));
+    case LoomUtility::FontFamily:
+        return rule.arbitrary ? rule.key
+                              : registry->fontFamily(rule.key).join(QStringLiteral(", "));
     case LoomUtility::Tracking:
-        return number(registry->tracking(rule.key)) + QStringLiteral("em");
+        return number(rule.arbitrary ? rule.literal : registry->tracking(rule.key))
+            + QStringLiteral("em");
+    case LoomUtility::LineHeight:
+        return number(
+                   rule.arbitrary ? rule.literal
+                                  : registry->textSize(rule.key).lineHeight)
+            + QStringLiteral("px");
     case LoomUtility::PaddingTop:
     case LoomUtility::PaddingRight:
     case LoomUtility::PaddingBottom:
@@ -172,21 +238,27 @@ QString ruleValue(const LoomStyleRule &rule, QColor *preview)
     case LoomUtility::Gap:
     case LoomUtility::Width:
     case LoomUtility::Height:
+    case LoomUtility::TranslateX:
+    case LoomUtility::TranslateY:
     case LoomUtility::LayoutMinWidth:
     case LoomUtility::LayoutMaxWidth:
     case LoomUtility::LayoutMinHeight:
     case LoomUtility::LayoutMaxHeight:
-        return number(registry->space(rule.key)) + QStringLiteral("px");
+        if (rule.fraction > 0)
+            return number(rule.fraction * 100) + QStringLiteral("% of parent");
+        return number(rule.arbitrary ? rule.literal : registry->space(rule.key))
+            + QStringLiteral("px");
     case LoomUtility::Radius:
     case LoomUtility::RadiusTopLeft:
     case LoomUtility::RadiusTopRight:
     case LoomUtility::RadiusBottomRight:
     case LoomUtility::RadiusBottomLeft:
-        return number(registry->radius(rule.key)) + QStringLiteral("px");
+        return number(rule.arbitrary ? rule.literal : registry->radius(rule.key))
+            + QStringLiteral("px");
     case LoomUtility::BorderWidth:
         return number(rule.literal) + QStringLiteral("px");
     case LoomUtility::Opacity:
-        return number(registry->opacityValue(rule.key));
+        return number(rule.arbitrary ? rule.literal : registry->opacityValue(rule.key));
     case LoomUtility::WidthFull:
     case LoomUtility::HeightFull:
         return QStringLiteral("100% of parent");
@@ -194,7 +266,20 @@ QString ruleValue(const LoomStyleRule &rule, QColor *preview)
     case LoomUtility::Italic:
     case LoomUtility::Underline:
     case LoomUtility::LineThrough:
+    case LoomUtility::Clip:
         return rule.flag ? QStringLiteral("true") : QStringLiteral("false");
+    case LoomUtility::TextAlignment:
+    case LoomUtility::TextElide:
+    case LoomUtility::TextMaximumLines:
+    case LoomUtility::TextCapitalization:
+    case LoomUtility::TextWrapMode:
+    case LoomUtility::ZOrder:
+    case LoomUtility::Rotation:
+    case LoomUtility::Scale:
+    case LoomUtility::TransformOrigin:
+    case LoomUtility::CursorShape:
+    case LoomUtility::GradientDirection:
+        return number(rule.literal);
     case LoomUtility::LayoutColumnSpan:
     case LoomUtility::LayoutRowSpan:
         return QString::number(int(rule.literal));
@@ -207,6 +292,13 @@ QString ruleValue(const LoomStyleRule &rule, QColor *preview)
                 number(shadow.offsetX), number(shadow.offsetY), number(shadow.blur),
                 number(shadow.spread), colorName(shadow.color));
     }
+    case LoomUtility::RingWidth:
+    case LoomUtility::FilterBlur:
+        return number(rule.literal) + QStringLiteral("px");
+    case LoomUtility::FilterBrightness:
+    case LoomUtility::FilterContrast:
+    case LoomUtility::FilterSaturation:
+        return number(rule.literal) + QLatin1Char('%');
     case LoomUtility::TransitionDuration:
         return QString::number(registry->duration(rule.key)) + QStringLiteral("ms");
     case LoomUtility::TransitionEase:
@@ -344,7 +436,9 @@ void StyleWorkspace::activate(ProjectState &state, const QString &key)
         if (loaded) {
             const QString configuredTheme = QJsonDocument::fromJson(appliedBytes)
                                                 .object()
-                                                .value(QStringLiteral("defaultTheme"))
+                                                .value(QStringLiteral("theme"))
+                                                .toObject()
+                                                .value(QStringLiteral("default"))
                                                 .toString();
             if (!configuredTheme.isEmpty()
                 && registry->themeNames().contains(configuredTheme)) {
@@ -377,6 +471,11 @@ bool StyleWorkspace::activateForFile(const QString &filePath)
 loom::StyleCatalogue StyleWorkspace::catalogue() const
 {
     return loom::styleCatalogue();
+}
+
+QString StyleWorkspace::arbitraryValuePolicy() const
+{
+    return LoomTokenRegistry::instance()->arbitraryValuePolicy();
 }
 
 ClassMetadata StyleWorkspace::metadata(const QString &klass) const

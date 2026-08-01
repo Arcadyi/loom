@@ -263,8 +263,9 @@ void IconTests::relativeSourceSurvivesUnsetIconRoot()
 
 void IconTests::configFileSetsIconRoot()
 {
-    const QString config =
-        writeAsset(m_dir, QStringLiteral("loom.json"), "{ \"iconRoot\": \".\" }");
+    const QString config = writeAsset(
+        m_dir, QStringLiteral("loom.json"),
+        "{ \"schemaVersion\": 2, \"iconRoot\": \".\" }");
     QVERIFY(!config.isEmpty());
 
     QVERIFY(loomLoadConfigFile(config));
@@ -305,5 +306,5 @@ void IconTests::singletonRegistersProviderOnItsEngine()
     QVERIFY(engine.imageProvider(QStringLiteral("loom")));
 }
 
-QTEST_MAIN(IconTests)
+QTEST_GUILESS_MAIN(IconTests)
 #include "tst_icon.moc"

@@ -156,7 +156,8 @@ if(TARGET loom_cli)
         COMMAND "${CMAKE_COMMAND}"
             "-DLOOM_EXE=$<TARGET_FILE:loom_cli>"
             "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/schema-project"
-            "-DSCHEMA=${CMAKE_SOURCE_DIR}/schemas/project-v1.schema.json"
+            "-DSCHEMA=${CMAKE_SOURCE_DIR}/schemas/project-v2.schema.json"
+            "-DDESIGN_SCHEMA=${CMAKE_SOURCE_DIR}/schemas/design-v2.schema.json"
             "-DSTRICT=${LOOM_STRICT_SCHEMA_TEST}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/schema_test.cmake"
     )
@@ -176,6 +177,13 @@ if(TARGET loom_cli)
             "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/style-check"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_style_test.cmake"
     )
+    add_test(
+        NAME loom_cli_migrate
+        COMMAND "${CMAKE_COMMAND}"
+            "-DLOOM_EXE=$<TARGET_FILE:loom_cli>"
+            "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/migration"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_migrate_test.cmake"
+    )
     # The documentation names exact utility classes on nearly every page. This
     # runs the real checker over every QML block in it, so a class the docs
     # promise cannot quietly stop existing.
@@ -194,6 +202,7 @@ if(TARGET loom_cli)
         COMMAND "${CMAKE_COMMAND}"
             "-DLOOM_EXE=$<TARGET_FILE:loom_cli>"
             "-DTARGET_DIR=${CMAKE_SOURCE_DIR}/examples/gallery/qml"
+            "-DDESIGN=${CMAKE_SOURCE_DIR}/examples/gallery/design/tokens.json"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/paths_style_test.cmake"
     )
 endif()

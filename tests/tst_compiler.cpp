@@ -1,6 +1,7 @@
 #include <QtTest>
 
 #include "style/loomstylecompiler.h"
+#include "tokens/loomtokenregistry.h"
 
 using LoomStyleCompiler::compile;
 
@@ -23,10 +24,15 @@ private slots:
     void alphaModifier();
     void alphaModifierRejections();
     void borderWidthRejections();
-    void hiddenIsSynonymForInvisible();
+    void visibilityUtilitiesKeepTheirDistinctSemantics();
     void layoutClasses();
     void layoutRejections();
     void aspectRatioTakesASlash();
+    void expandedTypography();
+    void arbitraryValuesFractionsAndNegatives();
+    void transformsRingsGradientsAndFilters();
+    void expandedVariants();
+    void styleRecipes();
 };
 
 void CompilerTests::init()
@@ -123,20 +129,20 @@ void CompilerTests::variants()
     QCOMPARE(compiled->rules.size(), 3);
 
     QCOMPARE(compiled->rules.at(0).minBreakpoint, quint8(0));
-    QCOMPARE(compiled->rules.at(0).stateMask, quint8(0));
-    QCOMPARE(compiled->rules.at(0).specificity, quint8(0));
+    QCOMPARE(compiled->rules.at(0).stateMask, quint32(0));
+    QCOMPARE(compiled->rules.at(0).specificity, quint64(0));
 
     QCOMPARE(compiled->rules.at(1).minBreakpoint, quint8(2));
     QCOMPARE(compiled->rules.at(1).specificity, loomSpecificity(2, 0));
 
-    QCOMPARE(compiled->rules.at(2).stateMask, quint8(LoomHoverState | LoomDarkState));
+    QCOMPARE(compiled->rules.at(2).stateMask, quint32(LoomHoverState | LoomDarkState));
     QCOMPARE(
         compiled->rules.at(2).specificity,
         loomSpecificity(0, LoomHoverState | LoomDarkState));
 
     // Prefix order does not matter.
     const auto swapped = compile(QStringLiteral("dark:hover:bg-blue-500"));
-    QCOMPARE(swapped->rules.first().stateMask, quint8(LoomHoverState | LoomDarkState));
+    QCOMPARE(swapped->rules.first().stateMask, quint32(LoomHoverState | LoomDarkState));
 }
 
 void CompilerTests::specificityAxes()
@@ -160,6 +166,22 @@ void CompilerTests::specificityAxes()
         compile(QStringLiteral("bg-white hover:bg-black md:bg-blue-500"));
     QCOMPARE(compiled->rules.size(), 3);
     QVERIFY(compiled->rules.at(1).specificity > compiled->rules.at(2).specificity);
+
+    // Responsive specificity is derived from exact constraints, not from the
+    // old four-tier enum. Container and arbitrary variants must both beat the
+    // base rule, and a narrower min-width condition wins when both match.
+    const auto responsive = compile(QStringLiteral(
+        "bg-white @md:bg-black min-[900px]:bg-blue-500 "
+        "min-[1200px]:bg-red-500"));
+    QCOMPARE(responsive->rules.size(), 4);
+    QVERIFY(responsive->rules.at(1).specificity > responsive->rules.at(0).specificity);
+    QVERIFY(responsive->rules.at(2).specificity > responsive->rules.at(0).specificity);
+    QVERIFY(responsive->rules.at(3).specificity > responsive->rules.at(2).specificity);
+
+    const auto grouped =
+        compile(QStringLiteral("hover:bg-black hover:group-hover:bg-blue-500"));
+    QCOMPARE(grouped->rules.size(), 2);
+    QVERIFY(grouped->rules.at(1).specificity > grouped->rules.at(0).specificity);
 }
 
 void CompilerTests::textDisambiguation()
@@ -194,14 +216,18 @@ void CompilerTests::borderWidthRejections()
     }
 }
 
-void CompilerTests::hiddenIsSynonymForInvisible()
+void CompilerTests::visibilityUtilitiesKeepTheirDistinctSemantics()
 {
-    // Tailwind spells "remove from layout" `hidden`; it used to be an unknown
-    // class here, so a Tailwind reflex silently styled nothing.
-    const auto compiled = compile(QStringLiteral("hidden"));
-    QCOMPARE(compiled->rules.size(), 1);
-    QCOMPARE(compiled->rules.first().utility, LoomUtility::Visible);
-    QCOMPARE(compiled->rules.first().flag, false);
+    const auto hidden = compile(QStringLiteral("hidden"));
+    QCOMPARE(hidden->rules.size(), 1);
+    QCOMPARE(hidden->rules.first().utility, LoomUtility::Visible);
+    QCOMPARE(hidden->rules.first().flag, false);
+
+    const auto invisible = compile(QStringLiteral("invisible"));
+    QCOMPARE(invisible->rules.size(), 1);
+    QCOMPARE(invisible->rules.first().utility, LoomUtility::Opacity);
+    QCOMPARE(invisible->rules.first().literal, 0.0);
+    QVERIFY(invisible->rules.first().arbitrary);
 }
 
 void CompilerTests::layoutClasses()
@@ -267,8 +293,7 @@ void CompilerTests::aspectRatioTakesASlash()
     QVERIFY(LoomStyleCompiler::unknownClasses(QStringLiteral("bg-surface/70")).isEmpty());
     for (const QString &klass :
          {QStringLiteral("w-full/70"), QStringLiteral("p-4/70"),
-          QStringLiteral("bg-surface/101"), QStringLiteral("bg-surface/half"),
-          QStringLiteral("w-1/2")}) {
+          QStringLiteral("bg-surface/101"), QStringLiteral("bg-surface/half")}) {
         QCOMPARE(LoomStyleCompiler::unknownClasses(klass), QStringList{klass});
     }
 }
@@ -282,7 +307,7 @@ void CompilerTests::unknownClassesWarnAndSkip()
 
     QTest::ignoreMessage(
         QtWarningMsg, QRegularExpression(QStringLiteral("unknown utility class")));
-    const auto badVariant = compile(QStringLiteral("landscape:bg-blue-500"));
+    const auto badVariant = compile(QStringLiteral("sideways:bg-blue-500"));
     QCOMPARE(badVariant->rules.size(), 0);
 
     QTest::ignoreMessage(
@@ -303,6 +328,9 @@ void CompilerTests::cacheSharesInstances()
     LoomStyleCompiler::clearCache();
     const auto recompiled = compile(QStringLiteral("p-4 bg-blue-500"));
     QVERIFY(first.get() != recompiled.get());
+
+    const auto whitespace = compile(QStringLiteral("p-4\tbg-blue-500\nrounded-lg"));
+    QCOMPARE(whitespace->rules.size(), 6);
 }
 
 void CompilerTests::transitions()
@@ -336,12 +364,12 @@ void CompilerTests::transitions()
 void CompilerTests::flagsAreAggregated()
 {
     const auto plain = compile(QStringLiteral("bg-white p-4"));
-    QCOMPARE(plain->usedStates, quint8(0));
+    QCOMPARE(plain->usedStates, quint32(0));
     QVERIFY(!plain->usesBreakpoints);
     QVERIFY(!plain->usesParentSize);
 
     const auto rich = compile(QStringLiteral("hover:bg-white md:p-4 w-full"));
-    QCOMPARE(rich->usedStates, quint8(LoomHoverState));
+    QCOMPARE(rich->usedStates, quint32(LoomHoverState));
     QVERIFY(rich->usesBreakpoints);
     QVERIFY(rich->usesParentSize);
 }
@@ -390,5 +418,178 @@ void CompilerTests::alphaModifierRejections()
     }
 }
 
-QTEST_MAIN(CompilerTests)
+void CompilerTests::expandedTypography()
+{
+    const auto family = compile(QStringLiteral("font-sans"));
+    QCOMPARE(family->rules.first().utility, LoomUtility::FontFamily);
+
+    const auto arbitraryFamily = compile(QStringLiteral("font-[IBM_Plex_Sans]"));
+    QCOMPARE(arbitraryFamily->rules.first().utility, LoomUtility::FontFamily);
+    QCOMPARE(arbitraryFamily->rules.first().key, QStringLiteral("IBM Plex Sans"));
+    QVERIFY(arbitraryFamily->rules.first().arbitrary);
+
+    QCOMPARE(
+        compile(QStringLiteral("text-center"))->rules.first().utility,
+        LoomUtility::TextAlignment);
+    const auto truncate = compile(QStringLiteral("truncate"));
+    QCOMPARE(truncate->rules.size(), 2);
+    QCOMPARE(truncate->rules.at(0).utility, LoomUtility::TextElide);
+    QCOMPARE(truncate->rules.at(1).utility, LoomUtility::TextWrapMode);
+
+    const auto clamp = compile(QStringLiteral("line-clamp-3"));
+    QCOMPARE(clamp->rules.first().utility, LoomUtility::TextMaximumLines);
+    QCOMPARE(clamp->rules.first().literal, 3.0);
+    QCOMPARE(
+        compile(QStringLiteral("uppercase"))->rules.first().utility,
+        LoomUtility::TextCapitalization);
+    QCOMPARE(
+        compile(QStringLiteral("whitespace-nowrap"))->rules.first().utility,
+        LoomUtility::TextWrapMode);
+
+    const auto leading = compile(QStringLiteral("leading-[27px]"));
+    QCOMPARE(leading->rules.first().utility, LoomUtility::LineHeight);
+    QCOMPARE(leading->rules.first().literal, 27.0);
+    QVERIFY(leading->rules.first().arbitrary);
+
+    const auto textSize = compile(QStringLiteral("text-[17px]"));
+    QCOMPARE(textSize->rules.first().utility, LoomUtility::TextSize);
+    QCOMPARE(textSize->rules.first().literal, 17.0);
+    QVERIFY(textSize->rules.first().arbitrary);
+}
+
+void CompilerTests::arbitraryValuesFractionsAndNegatives()
+{
+    const auto padding = compile(QStringLiteral("p-[13px]"));
+    QCOMPARE(padding->rules.size(), 4);
+    for (const auto &rule : padding->rules) {
+        QCOMPARE(rule.literal, 13.0);
+        QVERIFY(rule.arbitrary);
+    }
+
+    for (const QString &klass :
+         {QStringLiteral("bg-[#7c5cff]"), QStringLiteral("text-[#010203]"),
+          QStringLiteral("border-[#abcdef]")}) {
+        const auto color = compile(klass);
+        QCOMPARE(color->rules.size(), 1);
+        QVERIFY2(color->rules.first().arbitrary, qPrintable(klass));
+        QVERIFY(QColor::fromString(color->rules.first().key).isValid());
+    }
+
+    const auto border = compile(QStringLiteral("border-[1.5px]"));
+    QCOMPARE(border->rules.first().utility, LoomUtility::BorderWidth);
+    QCOMPARE(border->rules.first().literal, 1.5);
+    QVERIFY(border->rules.first().arbitrary);
+
+    const auto radius = compile(QStringLiteral("rounded-t-[7px]"));
+    QCOMPARE(radius->rules.size(), 2);
+    QVERIFY(radius->rules.at(0).arbitrary);
+    QCOMPARE(radius->rules.at(0).literal, 7.0);
+
+    const auto gap = compile(QStringLiteral("gap-[11px]"));
+    QCOMPARE(gap->rules.first().utility, LoomUtility::Gap);
+    QCOMPARE(gap->rules.first().literal, 11.0);
+
+    const auto size = compile(QStringLiteral("size-[29px]"));
+    QCOMPARE(size->rules.size(), 2);
+    QCOMPARE(size->rules.at(0).literal, 29.0);
+    QCOMPARE(size->rules.at(1).literal, 29.0);
+
+    const auto half = compile(QStringLiteral("w-1/2"));
+    QCOMPARE(half->rules.first().utility, LoomUtility::Width);
+    QCOMPARE(half->rules.first().fraction, 0.5);
+    QVERIFY(half->usesParentSize);
+
+    const auto negative = compile(QStringLiteral("-mt-4"));
+    QCOMPARE(negative->rules.first().utility, LoomUtility::MarginTop);
+    QVERIFY(negative->rules.first().negative);
+
+    const auto opacity = compile(QStringLiteral("opacity-[0.42]"));
+    QCOMPARE(opacity->rules.first().literal, 0.42);
+    QVERIFY(opacity->rules.first().arbitrary);
+}
+
+void CompilerTests::transformsRingsGradientsAndFilters()
+{
+    const auto transformed = compile(QStringLiteral(
+        "rotate-45 -translate-x-1/2 scale-110 origin-bottom-right cursor-pointer"));
+    QCOMPARE(transformed->rules.size(), 5);
+    QVERIFY(transformed->usesTranslate);
+    QVERIFY(transformed->usesCursor);
+    QCOMPARE(transformed->rules.at(0).utility, LoomUtility::Rotation);
+    QCOMPARE(transformed->rules.at(1).utility, LoomUtility::TranslateX);
+    QVERIFY(transformed->rules.at(1).negative);
+    QCOMPARE(transformed->rules.at(1).fraction, 0.5);
+    QCOMPARE(transformed->rules.at(2).utility, LoomUtility::Scale);
+    QCOMPARE(transformed->rules.at(2).literal, 1.1);
+
+    const auto visual = compile(QStringLiteral(
+        "ring-4 ring-accent bg-linear-to-tr from-blue-500 via-violet-500 "
+        "to-red-500 blur-md brightness-125 contrast-75 saturate-150"));
+    QCOMPARE(visual->rules.size(), 10);
+    QVERIFY(visual->usesEffects);
+    QCOMPARE(visual->rules.at(0).utility, LoomUtility::RingWidth);
+    QCOMPARE(visual->rules.at(1).utility, LoomUtility::RingColor);
+    QCOMPARE(visual->rules.at(2).utility, LoomUtility::GradientDirection);
+    QCOMPARE(visual->rules.at(6).utility, LoomUtility::FilterBlur);
+    QCOMPARE(visual->rules.at(9).utility, LoomUtility::FilterSaturation);
+}
+
+void CompilerTests::expandedVariants()
+{
+    auto *registry = LoomTokenRegistry::instance();
+    const auto viewport =
+        compile(QStringLiteral("max-md:bg-red-500 min-[900px]:bg-blue-500"));
+    QCOMPARE(viewport->rules.size(), 2);
+    QCOMPARE(
+        viewport->rules.at(0).maxWidth, registry->breakpoint(QStringLiteral("md")) - 1);
+    QCOMPARE(viewport->rules.at(1).minWidth, 900);
+    QVERIFY(viewport->usesBreakpoints);
+
+    const auto container = compile(QStringLiteral("@md/sidebar:bg-blue-500"));
+    QCOMPARE(
+        container->rules.first().containerMinWidth,
+        registry->container(QStringLiteral("md")));
+    QCOMPARE(container->rules.first().containerName, QStringLiteral("sidebar"));
+    QVERIFY(container->usesContainers);
+
+    const auto group = compile(QStringLiteral("group-not-disabled/menu:bg-blue-500"));
+    QCOMPARE(group->rules.first().groupName, QStringLiteral("menu"));
+    QCOMPARE(group->rules.first().groupStateNotMask, quint32(LoomDisabledState));
+    QVERIFY(group->usesGroups);
+
+    const auto states = compile(
+        QStringLiteral("rtl:not-disabled:focus-visible:high-contrast:bg-blue-500"));
+    QCOMPARE(
+        states->rules.first().stateMask,
+        quint32(LoomRtlState | LoomFocusVisibleState | LoomHighContrastState));
+    QCOMPARE(states->rules.first().stateNotMask, quint32(LoomDisabledState));
+
+    const auto themed = compile(QStringLiteral("theme-dark:bg-blue-500"));
+    QCOMPARE(themed->rules.first().themeName, QStringLiteral("dark"));
+}
+
+void CompilerTests::styleRecipes()
+{
+    auto *registry = LoomTokenRegistry::instance();
+    registry->setStyleRecipe(
+        QStringLiteral("chip"), QStringLiteral("px-3 rounded-full bg-accent"));
+    registry->setStyleRecipe(QStringLiteral("button"), QStringLiteral("@chip text-sm"));
+    LoomStyleCompiler::clearCache();
+
+    const auto recipe = compile(QStringLiteral("hover:@button"));
+    QCOMPARE(recipe->rules.size(), 5);
+    for (const auto &rule : recipe->rules)
+        QCOMPARE(rule.stateMask, quint32(LoomHoverState));
+
+    registry->setStyleRecipe(QStringLiteral("a"), QStringLiteral("@b"));
+    registry->setStyleRecipe(QStringLiteral("b"), QStringLiteral("@a"));
+    QCOMPARE(
+        LoomStyleCompiler::unknownClasses(QStringLiteral("@a")),
+        QStringList{QStringLiteral("@a")});
+
+    registry->resetToDefaults();
+    LoomStyleCompiler::clearCache();
+}
+
+QTEST_APPLESS_MAIN(CompilerTests)
 #include "tst_compiler.moc"
