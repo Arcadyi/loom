@@ -105,7 +105,10 @@ const LoomTargetProfile *LoomTargetProfile::forType(const QMetaObject *metaObjec
 
 QString LoomTargetProfile::propertyPath(LoomUtility utility) const
 {
-    return m_paths[int(utility)];
+    const int index = int(utility);
+    if (index >= UtilityCount)
+        return QString();
+    return m_paths[index];
 }
 
 bool LoomTargetProfile::supportsLineHeight() const

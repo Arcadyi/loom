@@ -47,6 +47,11 @@ private:
     void startApplication();
     void stopApplication();
     void handleNativeFilesChanged();
+    // Re-reads loom.json after a rebuild and re-points the server at whatever
+    // it now declares. A manifest that no longer loads, or no longer describes
+    // this session's application, is reported and ignored rather than ending
+    // the session: it is almost always a half-typed edit.
+    void reloadManifest();
     void handleProcessFinished(int exitCode, QProcess::ExitStatus status);
     void handleProcessError(QProcess::ProcessError error);
     void finish(int exitCode);

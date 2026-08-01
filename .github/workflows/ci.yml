@@ -24,11 +24,18 @@ jobs:
       - name: Install build tools
         run: sudo apt-get update && sudo apt-get install -y ninja-build
 
+      # loom_schema validates a generated loom.json against the schema loom
+      # installs, and skips -- reporting a pass -- when this is missing. Without
+      # it the gate has never actually run.
+      - name: Install schema validator
+        run: python3 -m pip install --break-system-packages jsonschema
+
       - name: Configure
         run: >
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
           -DLOOM_WERROR=ON
+          -DLOOM_STRICT_SCHEMA_TEST=ON
 
       - name: Build
         run: cmake --build build

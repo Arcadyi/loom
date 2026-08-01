@@ -35,9 +35,12 @@ void warnUnsupportedOnce(const QMetaObject *type, LoomUtility utility, const QSt
     if (warned.contains(entry))
         return;
     warned.insert(entry);
+    // `key` is empty for every flag utility (italic, underline, hidden, ...),
+    // so naming the family is what makes the warning actionable at all.
     qCWarning(lcLoomApply).noquote()
-        << "Lo.style: utility" << key << "is not supported on" << type->className()
-        << "- see docs/limitations.md";
+        << "Lo.style: utility" << loomUtilityName(utility)
+        << (key.isEmpty() ? QString() : QStringLiteral("(%1)").arg(key))
+        << "is not supported on" << type->className() << "- see docs/limitations.md";
 }
 
 void warnInvalidPathOnce(const QMetaObject *type, const QString &path)
@@ -311,8 +314,12 @@ int LoomStyleAttached::breakpointTier() const
     static const char *const names[] = {"sm", "md", "lg", "xl"};
     int tier = 0;
     for (int i = 0; i < 4; ++i) {
-        if (width >= registry->breakpoint(QLatin1String(names[i])))
-            tier = i + 1;
+        // Stop at the first threshold the width does not reach. Continuing
+        // would let a later, smaller threshold in a non-monotonic config
+        // promote the tier past a breakpoint whose own threshold is unmet.
+        if (width < registry->breakpoint(QLatin1String(names[i])))
+            break;
+        tier = i + 1;
     }
     return tier;
 }
@@ -324,19 +331,29 @@ void LoomStyleAttached::applyNow()
 
     struct Desired {
         QVariant value;
-        quint8 variantCount;
+        quint8 specificity;
     };
     QHash<QString, Desired> desired;
     QString shadowKey;
-    quint8 shadowVariantCount = 0;
+    quint8 shadowSpecificity = 0;
+    // Tracking is em-relative, so it can only be resolved once the winning
+    // text size for this pass is known. Deferred rather than computed in the
+    // rule loop, where it silently used the item's pre-existing pixel size
+    // unless a `text-{size}` class happened to appear earlier in the string.
+    struct {
+        QString key;
+        QString path;
+        quint8 specificity = 0;
+        bool set = false;
+    } tracking;
     // Tailwind defaults: 150ms, cubic-bezier(0.4, 0, 0.2, 1).
     struct {
         LoomTransitionMode mode = LoomTransitionMode::None;
         QString durationKey = QStringLiteral("150");
         QString easeKey = QStringLiteral("in-out");
-        quint8 modeVariantCount = 0;
-        quint8 durationVariantCount = 0;
-        quint8 easeVariantCount = 0;
+        quint8 modeSpecificity = 0;
+        quint8 durationSpecificity = 0;
+        quint8 easeSpecificity = 0;
     } transition;
 
     if (m_compiled) {
@@ -355,30 +372,30 @@ void LoomStyleAttached::applyNow()
             if (rule.utility == LoomUtility::Shadow) {
                 // Not a property write: applied through the managed effect
                 // item after the write pass. Same specificity ranking.
-                if (rule.variantCount >= shadowVariantCount) {
+                if (rule.specificity >= shadowSpecificity) {
                     shadowKey = rule.key;
-                    shadowVariantCount = rule.variantCount;
+                    shadowSpecificity = rule.specificity;
                 }
                 continue;
             }
             if (rule.utility == LoomUtility::TransitionMode) {
-                if (rule.variantCount >= transition.modeVariantCount) {
+                if (rule.specificity >= transition.modeSpecificity) {
                     transition.mode = LoomTransitionMode(quint8(rule.literal));
-                    transition.modeVariantCount = rule.variantCount;
+                    transition.modeSpecificity = rule.specificity;
                 }
                 continue;
             }
             if (rule.utility == LoomUtility::TransitionDuration) {
-                if (rule.variantCount >= transition.durationVariantCount) {
+                if (rule.specificity >= transition.durationSpecificity) {
                     transition.durationKey = rule.key;
-                    transition.durationVariantCount = rule.variantCount;
+                    transition.durationSpecificity = rule.specificity;
                 }
                 continue;
             }
             if (rule.utility == LoomUtility::TransitionEase) {
-                if (rule.variantCount >= transition.easeVariantCount) {
+                if (rule.specificity >= transition.easeSpecificity) {
                     transition.easeKey = rule.key;
-                    transition.easeVariantCount = rule.variantCount;
+                    transition.easeSpecificity = rule.specificity;
                 }
                 continue;
             }
@@ -418,19 +435,16 @@ void LoomStyleAttached::applyNow()
             case LoomUtility::Visible:
                 writes.append({path, rule.flag});
                 break;
-            case LoomUtility::Tracking: {
-                // Em-relative: resolved against the size this same apply pass
-                // is setting, falling back to the item's current size.
-                qreal pixelSize = QQmlProperty(m_target, QStringLiteral("font.pixelSize"))
-                                      .read()
-                                      .toReal();
-                if (const auto sized =
-                        desired.constFind(QStringLiteral("font.pixelSize"));
-                    sized != desired.constEnd())
-                    pixelSize = sized->value.toReal();
-                writes.append({path, registry->tracking(rule.key) * pixelSize});
+            case LoomUtility::Tracking:
+                // Deferred to after the loop, where the winning text size for
+                // this pass is known regardless of class order.
+                if (rule.specificity >= tracking.specificity) {
+                    tracking.key = rule.key;
+                    tracking.path = path;
+                    tracking.specificity = rule.specificity;
+                    tracking.set = true;
+                }
                 break;
-            }
             case LoomUtility::PaddingTop:
             case LoomUtility::PaddingRight:
             case LoomUtility::PaddingBottom:
@@ -482,14 +496,29 @@ void LoomStyleAttached::applyNow()
             }
 
             for (const ResolvedWrite &write : writes) {
-                // Specificity: a more-variant-qualified rule beats a plainer
-                // one; at equal counts the later rule wins (iteration order).
+                // Specificity: states outrank breakpoints, and either outranks
+                // an unqualified rule; at equal rank the later rule wins
+                // (iteration order). See loomSpecificity().
                 const auto existing = desired.constFind(write.path);
                 if (existing != desired.constEnd()
-                    && existing->variantCount > rule.variantCount)
+                    && existing->specificity > rule.specificity)
                     continue;
-                desired.insert(write.path, {write.value, rule.variantCount});
+                desired.insert(write.path, {write.value, rule.specificity});
             }
+        }
+
+        // Em-relative, so it resolves against the size this pass is setting --
+        // whether that class came before or after the tracking one -- and falls
+        // back to the item's current size when the pass sets none.
+        if (tracking.set) {
+            qreal pixelSize =
+                QQmlProperty(m_target, QStringLiteral("font.pixelSize")).read().toReal();
+            if (const auto sized = desired.constFind(QStringLiteral("font.pixelSize"));
+                sized != desired.constEnd())
+                pixelSize = sized->value.toReal();
+            desired.insert(
+                tracking.path,
+                {registry->tracking(tracking.key) * pixelSize, tracking.specificity});
         }
     }
 

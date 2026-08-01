@@ -25,7 +25,17 @@ public:
 private:
     LoomTargetProfile() = default;
 
+    // Only utilities that resolve to a property path need a slot. The three
+    // transition utilities are consumed before the profile is ever consulted,
+    // so they sit past the end of the array on purpose -- propertyPath() range
+    // checks, and this assert fires if a *new* utility is appended after
+    // Shadow, which would otherwise read out of bounds.
     static constexpr int UtilityCount = int(LoomUtility::Shadow) + 1;
+    static_assert(
+        int(LoomUtility::TransitionEase) == UtilityCount + 2,
+        "A utility added after LoomUtility::Shadow must either map to a "
+        "property path (declare it before Shadow) or be handled before "
+        "LoomTargetProfile::propertyPath() is reached.");
     QString m_paths[UtilityCount];
     bool m_lineHeight = false;
 };

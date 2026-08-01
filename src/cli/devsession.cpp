@@ -4,6 +4,7 @@
 #include "commandline.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QProcessEnvironment>
 #include <QSocketNotifier>
 #include <QTextStream>
@@ -141,7 +142,46 @@ void DevSession::handleNativeFilesChanged()
         logProblem(QStringLiteral("rebuild failed; waiting for another source change"));
         return;
     }
+    reloadManifest();
+    // Always, not just when the manifest changed: the bundled qmldir comes from
+    // the build tree, so a CMake edit that adds a singleton changes what the
+    // bundle must contain without touching any watched QML file.
+    m_server.refreshBundle();
     startApplication();
+}
+
+void DevSession::reloadManifest()
+{
+    const auto manifestPath =
+        QDir(m_configuration.projectRoot).filePath(QStringLiteral("loom.json"));
+    ProjectManifest manifest;
+    QString error;
+    if (!ProjectManifest::load(manifestPath, manifest, &error)) {
+        logProblem(QStringLiteral(
+                       "loom.json could not be re-read (%1); keeping the "
+                       "project layout this session started with")
+                       .arg(error));
+        return;
+    }
+
+    ApplicationDefinition application;
+    if (!manifest.selectApplication(
+            m_configuration.application.target, application, &error)) {
+        logProblem(QStringLiteral(
+                       "loom.json no longer describes %1 (%2); keeping the "
+                       "project layout this session started with")
+                       .arg(m_configuration.application.target, error));
+        return;
+    }
+
+    m_configuration.application = application;
+    m_server.setApplication(application);
+
+    const auto designPath = manifest.resolvedDesignPath(manifestPath);
+    if (designPath != m_configuration.designPath) {
+        m_configuration.designPath = designPath;
+        m_server.setDesignPath(designPath);
+    }
 }
 
 void DevSession::handleProcessFinished(

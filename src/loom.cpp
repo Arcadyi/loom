@@ -31,6 +31,11 @@ bool reloadConfig(const QString &filePath)
     return loomReloadConfigFile(filePath);
 }
 
+bool reloadConfigData(const QByteArray &json, const QString &basePath)
+{
+    return loomReloadConfigData(json, basePath);
+}
+
 void setIconRoot(const QUrl &root)
 {
     setLoomIconRoot(root);

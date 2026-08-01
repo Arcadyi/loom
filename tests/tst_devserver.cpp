@@ -297,6 +297,50 @@ private slots:
     // an ordinary component. With the "prefer" line left in, the engine loads
     // the compiled-in copy instead and every reload is silently a no-op
     // (measured: a live edit kept showing the colour compiled at startup).
+    // Regression: the server captured the manifest once, at construction, and
+    // had no way to be told it had changed. Editing loom.json rebuilt and
+    // restarted the application while the server went on watching and bundling
+    // the roots the session started with, so a new qmlRoots entry did nothing
+    // until the user Ctrl-C'd and re-ran `loom dev`.
+    void adoptingAReReadManifestRepointsTheBundle()
+    {
+        QTemporaryDir project;
+        QVERIFY(project.isValid() && writeProjectQml(project));
+        QVERIFY(QDir().mkpath(project.filePath(QStringLiteral("extra"))));
+        QFile added(project.filePath(QStringLiteral("extra/Added.qml")));
+        QVERIFY(added.open(QIODevice::WriteOnly));
+        QVERIFY(added.write("import QtQuick\nItem {}\n") > 0);
+        added.close();
+
+        DevServer server(project.path(), testApplication());
+        QString error;
+        QVERIFY2(server.start(&error), qPrintable(error));
+
+        ClientProbe probe(server.port());
+        QVERIFY(probe.waitForConnected());
+        probe.sendHello(server.token(), loom::ProtocolVersion);
+        QTRY_VERIFY_WITH_TIMEOUT(probe.has(loom::MessageType::Bundle), 3000);
+        probe.frames.clear();
+
+        auto widened = testApplication();
+        widened.qmlRoots.append(QStringLiteral("extra"));
+        server.setApplication(widened);
+
+        QTRY_VERIFY_WITH_TIMEOUT(probe.has(loom::MessageType::Bundle), 3000);
+        loom::Bundle bundle;
+        QVERIFY2(
+            loom::decodeBundle(
+                probe.payloadOf(loom::MessageType::Bundle), bundle, &error),
+            qPrintable(error));
+        const auto has = [&bundle](const QString &suffix) {
+            return std::any_of(
+                bundle.files.cbegin(), bundle.files.cend(),
+                [&suffix](const auto &file) { return file.path.endsWith(suffix); });
+        };
+        QVERIFY2(has(QStringLiteral("/Added.qml")), "the new qmlRoot was not bundled");
+        QVERIFY2(has(QStringLiteral("/Main.qml")), "the original qmlRoot was dropped");
+    }
+
     void bundleCarriesTheModuleQmldirWithoutPrefer()
     {
         QTemporaryDir project;

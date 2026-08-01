@@ -106,6 +106,11 @@ private:
         bool dark = false;
     };
 
+    // As resolveColorRef(ref), but a semantic name already present in `scope`
+    // (its own or inherited from the base it extends) resolves too, so one
+    // theme colour can alias another.
+    QColor resolveColorRef(const QString &ref, const Theme &scope) const;
+
     QHash<QString, QColor> m_colors;
     QHash<QString, Theme> m_themes;
     QString m_activeTheme;

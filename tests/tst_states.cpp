@@ -31,7 +31,42 @@ private slots:
     void focusVariant();
     void disabledVariant();
     void variantComposition();
+    void stateVariantBeatsBreakpoint();
 };
+
+// Regression: breakpoint and state variants used to share one "number of
+// prefixes" specificity counter, so at equal counts the later class won. A
+// `md:` rule written after a `hover:` rule for the same property therefore made
+// hovering do nothing at any width above 768 -- the styling silently vanished
+// on exactly the desktop widths most people develop at.
+void StateTests::stateVariantBeatsBreakpoint()
+{
+    QQuickWindow window;
+    window.resize(1024, 300); // >= md (768)
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createInWindow(
+        component,
+        "import QtQuick\nimport Loom\n"
+        "Rectangle {\n"
+        "    width: 100; height: 100\n"
+        "    Lo.style: \"bg-white hover:bg-black md:bg-red-500\"\n"
+        "}\n",
+        &window));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    // Unhovered the breakpoint rule is the only qualified one.
+    QTRY_COMPARE(item->property("color").value<QColor>(), QColor(0xef, 0x44, 0x44));
+
+    QTest::mouseMove(&window, QPoint(50, 50));
+    QTRY_COMPARE(item->property("color").value<QColor>(), QColor(Qt::black));
+
+    QTest::mouseMove(&window, QPoint(500, 250));
+    QTRY_COMPARE(item->property("color").value<QColor>(), QColor(0xef, 0x44, 0x44));
+}
 
 void StateTests::hoverVariant()
 {

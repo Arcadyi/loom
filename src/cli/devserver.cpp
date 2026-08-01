@@ -526,6 +526,18 @@ void DevServer::reloadDesign()
     }
 }
 
+void DevServer::setApplication(const ApplicationDefinition &application)
+{
+    m_application = application;
+    resetWatchPaths();
+    rebuildBundle();
+}
+
+void DevServer::refreshBundle()
+{
+    rebuildBundle();
+}
+
 void DevServer::sendBundle(QTcpSocket *socket)
 {
     if (m_encodedBundle.isEmpty())
@@ -537,7 +549,12 @@ void DevServer::sendDesign(QTcpSocket *socket)
 {
     if (m_design.isEmpty())
         return;
-    socket->write(loom::encodeFrame(loom::MessageType::Design, m_design));
+    // The path travels with the document: the runtime stages the bytes into its
+    // own cache directory, so it cannot recover where a relative `iconRoot`
+    // should resolve from on its own.
+    const loom::Design design{m_designPath, m_design};
+    socket->write(
+        loom::encodeFrame(loom::MessageType::Design, loom::encodeDesign(design)));
 }
 
 void DevServer::sendHeartbeats()

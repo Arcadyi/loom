@@ -104,8 +104,11 @@ restores when a class stops applying.
 
 ## Conflict rules
 
-- **`Lo.style` wins** for every property it currently manages; it re-asserts
-  on every re-apply (theme switch, state change, resize).
+- **`Lo.style` wins** for every property it currently manages, and re-resolves
+  it on every re-apply (theme switch, state change, resize). It does not police
+  the property in between: an apply skips a write whose value already matches,
+  so an imperative write from elsewhere survives until something changes what
+  Loom wants the value to be. A property is either yours or Loom's.
 - The first write to a property saves the previous value. When a class stops
   applying (dynamic string, cleared style), the saved value is restored.
 - A user *binding* on a managed property is torn down by the first write and

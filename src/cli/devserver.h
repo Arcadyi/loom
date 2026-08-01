@@ -52,6 +52,19 @@ public:
     // not rebuild the bundle and recreate the scene.
     void setDesignPath(const QString &absolutePath);
 
+    // Adopt a re-read manifest. `loom.json` is in the native watch set, so
+    // editing it already rebuilds and restarts the application -- but the
+    // server went on watching and bundling whatever roots the manifest declared
+    // when `loom dev` started, so a changed qmlRoots/assetRoots/entry only took
+    // effect after a Ctrl-C. Re-points the watchers and rebuilds the bundle.
+    void setApplication(const ApplicationDefinition &application);
+
+    // Re-read the QML and asset roots and push the result. Needed after a
+    // native rebuild even when nothing under those roots changed: the bundled
+    // qmldir is generated into the build tree, so adding a SINGLETONS entry to
+    // CMake changes the bundle without touching a watched file.
+    void refreshBundle();
+
     bool start(QString *error = nullptr);
     quint16 port() const;
     QString token() const;

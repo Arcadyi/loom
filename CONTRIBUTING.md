@@ -40,8 +40,10 @@ ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build-asan -LE e2e
 find src include tests examples -name '*.cpp' -o -name '*.h' | xargs clang-format --dry-run --Werror
 ```
 
-The schema test needs `jsonschema`; without it the test skips rather than failing, so CI
-installs it.
+The schema test needs `jsonschema`. Without it the test warns and skips rather than
+failing, so locally it is optional. CI installs it and configures with
+`-DLOOM_STRICT_SCHEMA_TEST=ON`, which turns the skip into a failure — otherwise a gate
+that never runs reports a pass forever.
 
 There is **exactly one leak suppression**, and a second needs the same justification. A
 leaked QML root object allocates through Qt frames, so a broad `leak:libQt6` suppression

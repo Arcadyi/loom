@@ -3,15 +3,25 @@
 # writer and the published schema agree, so they could drift silently.
 #
 # Skips rather than fails when no JSON Schema validator is available, because
-# requiring one would make the whole suite depend on a Python package.
+# requiring one would make the whole suite depend on a Python package. The skip
+# is a WARNING rather than STATUS, and STRICT turns it into a failure: reported
+# as a silent pass, this gate ran nowhere -- including in CI, which did not
+# install jsonschema while CONTRIBUTING.md claimed it did.
 
 if(NOT LOOM_EXE OR NOT TEST_DIR OR NOT SCHEMA)
     message(FATAL_ERROR "LOOM_EXE, TEST_DIR and SCHEMA are required")
 endif()
 
+function(loom_unavailable reason)
+    if(STRICT)
+        message(FATAL_ERROR "${reason}, and LOOM_STRICT_SCHEMA_TEST is on")
+    endif()
+    message(WARNING "${reason}; skipping schema validation")
+endfunction()
+
 find_program(PYTHON_EXE NAMES python3 python)
 if(NOT PYTHON_EXE)
-    message(STATUS "No python3 found; skipping schema validation")
+    loom_unavailable("No python3 found")
     return()
 endif()
 
@@ -21,7 +31,7 @@ execute_process(
     OUTPUT_QUIET ERROR_QUIET
 )
 if(NOT has_jsonschema EQUAL 0)
-    message(STATUS "python jsonschema is not installed; skipping schema validation")
+    loom_unavailable("python jsonschema is not installed")
     return()
 endif()
 

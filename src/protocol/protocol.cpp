@@ -94,6 +94,52 @@ QByteArray encodeBundle(const Bundle &bundle)
     return QCborValue(root).toCbor();
 }
 
+QByteArray encodeDesign(const Design &design)
+{
+    QCborMap root;
+    root.insert(QStringLiteral("version"), ProtocolVersion);
+    root.insert(QStringLiteral("path"), design.path);
+    root.insert(QStringLiteral("tokens"), design.tokens);
+    return QCborValue(root).toCbor();
+}
+
+bool decodeDesign(const QByteArray &payload, Design &design, QString *error)
+{
+    QCborParserError parserError;
+    const auto value = QCborValue::fromCbor(payload, &parserError);
+    if (parserError.error != QCborError::NoError || !value.isMap()) {
+        if (error)
+            *error = QStringLiteral("Malformed design payload");
+        return false;
+    }
+
+    const auto root = value.toMap();
+    if (root.value(QStringLiteral("version")).toInteger() != ProtocolVersion) {
+        if (error)
+            *error = QStringLiteral("Unsupported design protocol version");
+        return false;
+    }
+
+    const auto tokens = root.value(QStringLiteral("tokens"));
+    if (!tokens.isByteArray()) {
+        if (error)
+            *error = QStringLiteral("Design payload is missing its token document");
+        return false;
+    }
+    if (tokens.toByteArray().size() > MaximumDesignSize) {
+        if (error) {
+            *error = QStringLiteral("Design tokens are %1 bytes, over the %2 byte limit")
+                         .arg(tokens.toByteArray().size())
+                         .arg(MaximumDesignSize);
+        }
+        return false;
+    }
+
+    design.path = root.value(QStringLiteral("path")).toString();
+    design.tokens = tokens.toByteArray();
+    return true;
+}
+
 bool decodeBundle(const QByteArray &payload, Bundle &bundle, QString *error)
 {
     QCborParserError parserError;

@@ -134,7 +134,7 @@ alternating between them does not force a rebuild.
 ## The deployed application does not run on another machine
 
 `loom deploy` does not bundle Qt; the target host needs Qt 6.11. See
-[getting-started.md](getting-started.md#deploying) for why, and use `linuxdeploy` or
+[platforms.md](platforms.md#why-qt-is-not-bundled) for why, and use `linuxdeploy` or
 `appimage-builder` over the installed prefix for a self-contained artifact.
 
 ---

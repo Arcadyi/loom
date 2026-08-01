@@ -35,7 +35,10 @@ private slots:
     void layoutMargins();
     void duckTypedPadding();
     void paddingOnPlainItemWarns();
-    void shadowSibling();
+    void trackingIsOrderIndependent();
+    void shadowIsChildOfTarget();
+    void shadowDoesNotDisturbPositioner();
+    void shadowRadiusFollowsBackgroundDelegate();
     void specificityLaterClassWins();
     void backgroundDelegation();
     void backgroundDelegationRestoresOriginal();
@@ -100,6 +103,29 @@ void ApplyTests::textUtilities()
     QVERIFY2(qAbs(spacing - 0.6) < 0.02, qPrintable(QString::number(spacing)));
 }
 
+// Regression: tracking is em-relative and used to resolve against whatever
+// `font.pixelSize` happened to hold when its own rule was reached, so it was
+// only correct when `text-{size}` appeared earlier in the string.
+void ApplyTests::trackingIsOrderIndependent()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\n"
+        "Text {\n"
+        "    text: \"styled\"\n"
+        "    Lo.style: \"tracking-wide text-2xl\"\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QTRY_COMPARE(QQmlProperty(item.data(), "font.pixelSize").read().toReal(), 24.0);
+    // Same 0.025em against 24px as the size-first spelling, not against the
+    // default pixel size the item started at.
+    const qreal spacing = QQmlProperty(item.data(), "font.letterSpacing").read().toReal();
+    QVERIFY2(qAbs(spacing - 0.6) < 0.02, qPrintable(QString::number(spacing)));
+}
+
 void ApplyTests::styleWinsOverInitialAssignment()
 {
     QQmlEngine engine;
@@ -119,8 +145,13 @@ void ApplyTests::unsupportedUtilityWarnsAndSkips()
 {
     QQmlEngine engine;
     QQmlComponent component(&engine);
+    // The warning has to name the utility family and the token. It used to
+    // print the rule's key alone, which is empty for every flag utility, so an
+    // unsupported `italic` read "Lo.style: utility  is not supported on ...".
     QTest::ignoreMessage(
-        QtWarningMsg, QRegularExpression(QStringLiteral("not supported on")));
+        QtWarningMsg,
+        QRegularExpression(QStringLiteral(
+            R"(utility bg-\* \(blue-500\) is not supported on QQuickText)")));
     QScopedPointer<QQuickItem> item(createItem(
         component,
         "import QtQuick\nimport Loom\n"
@@ -278,7 +309,7 @@ void ApplyTests::paddingOnPlainItemWarns()
     QTRY_COMPARE(item->property("color").value<QColor>(), QColor(0x3b, 0x82, 0xf6));
 }
 
-void ApplyTests::shadowSibling()
+void ApplyTests::shadowIsChildOfTarget()
 {
     QQmlEngine engine;
     QQmlComponent component(&engine);
@@ -299,23 +330,87 @@ void ApplyTests::shadowSibling()
     QQuickItem *card = root->findChild<QQuickItem *>(QStringLiteral("card"));
     QVERIFY(card);
 
-    // The managed RectangularShadow appears as a sibling tracking the card.
-    QTRY_COMPARE(root->childItems().size(), 2);
-    QQuickItem *shadow = nullptr;
-    for (QQuickItem *child : root->childItems()) {
-        if (child != card)
-            shadow = child;
-    }
-    QVERIFY(shadow);
+    // The managed RectangularShadow is a child of the card, so it stays out of
+    // whatever layout the card itself participates in.
+    QTRY_COMPARE(card->childItems().size(), 1);
+    QCOMPARE(root->childItems().size(), 1);
+    QQuickItem *shadow = card->childItems().first();
+    QCOMPARE(shadow->parentItem(), card);
     QCOMPARE(shadow->width(), 100.0);
     QCOMPARE(shadow->property("radius").toReal(), 5.0);
     QCOMPARE(shadow->property("blur").toReal(), 6.0);
     QCOMPARE(shadow->property("color").value<QColor>(), QColor(0, 0, 0, 25));
-    QVERIFY(shadow->z() < card->z());
+    // Negative z draws it beneath the card's own background.
+    QVERIFY(shadow->z() < 0);
 
     // shadow-none removes the managed item again.
     card->setProperty("floating", false);
-    QTRY_COMPARE(root->childItems().size(), 1);
+    QTRY_COMPARE(card->childItems().size(), 0);
+}
+
+// Regression: the shadow used to be a sibling parented into `target.parent`.
+// Inside a positioner that made it a laid-out child of its own, so it took a
+// slot and its x/y bindings fought the positioner's writes -- shipped broken in
+// the gallery's own Theming and Tokens pages.
+void ApplyTests::shadowDoesNotDisturbPositioner()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> root(createItem(
+        component,
+        "import QtQuick\nimport Loom\n"
+        "Column {\n"
+        "    spacing: 0\n"
+        "    Rectangle {\n"
+        "        objectName: \"first\"\n"
+        "        width: 100; height: 50\n"
+        "        Lo.style: \"bg-blue-500 shadow-md\"\n"
+        "    }\n"
+        "    Rectangle {\n"
+        "        objectName: \"second\"\n"
+        "        width: 100; height: 50\n"
+        "    }\n"
+        "}\n"));
+    QVERIFY2(root, qPrintable(component.errorString()));
+    QQuickItem *first = root->findChild<QQuickItem *>(QStringLiteral("first"));
+    QQuickItem *second = root->findChild<QQuickItem *>(QStringLiteral("second"));
+    QVERIFY(first);
+    QVERIFY(second);
+
+    // Once the style has landed the shadow exists; the Column must still see
+    // exactly its two rectangles and lay them out as if nothing were added.
+    // (A distinctive colour, so the wait cannot pass on a Rectangle's white
+    // default before the deferred first apply has run at all.)
+    QTRY_COMPARE(first->property("color").value<QColor>(), QColor(0x3b, 0x82, 0xf6));
+    QCOMPARE(root->childItems().size(), 2);
+    QCOMPARE(first->y(), 0.0);
+    QCOMPARE(second->y(), 50.0);
+    QCOMPARE(root->height(), 100.0);
+    QCOMPARE(first->childItems().size(), 1);
+}
+
+// Regression: `rounded-*` lands on a Control's background delegate, but the
+// shadow read `target.radius` -- undefined on a Control, so 0. A rounded button
+// cast a square shadow.
+void ApplyTests::shadowRadiusFollowsBackgroundDelegate()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\n"
+        "Item {\n"
+        "    property Item background: Rectangle { parent: null }\n"
+        "    width: 80; height: 36\n"
+        "    Lo.style: \"bg-blue-500 rounded-xl shadow-lg\"\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QTRY_COMPARE(item->childItems().size(), 1);
+    QQuickItem *shadow = item->childItems().first();
+    // rounded-xl is 12, written through to background.radius.
+    QCOMPARE(QQmlProperty(item.data(), "background.radius").read().toReal(), 12.0);
+    QCOMPARE(shadow->property("radius").toReal(), 12.0);
 }
 
 void ApplyTests::specificityLaterClassWins()

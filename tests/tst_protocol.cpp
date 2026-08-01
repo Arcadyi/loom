@@ -109,6 +109,50 @@ private slots:
         QCOMPARE(decoded.files.first().contents, contents);
     }
 
+    // The path travels with the document because the runtime stages the bytes
+    // elsewhere and cannot otherwise tell what a relative `iconRoot` is
+    // relative to.
+    void designRoundTrip()
+    {
+        const loom::Design source{
+            .path = QStringLiteral("/home/dev/app/design/tokens.json"),
+            .tokens = R"({"iconRoot": "assets/icons"})",
+        };
+        loom::Design decoded;
+        QString error;
+        QVERIFY2(
+            loom::decodeDesign(loom::encodeDesign(source), decoded, &error),
+            qPrintable(error));
+        QCOMPARE(decoded.path, source.path);
+        QCOMPARE(decoded.tokens, source.tokens);
+    }
+
+    void rejectsMalformedDesignPayloads()
+    {
+        loom::Design decoded;
+        QString error;
+        // Not CBOR at all -- e.g. the raw JSON an older server would have sent.
+        QVERIFY(!loom::decodeDesign(R"({"colors": {}})", decoded, &error));
+        QVERIFY(!error.isEmpty());
+
+        // CBOR, but carrying no token document.
+        QCborMap noTokens;
+        noTokens.insert(QStringLiteral("version"), loom::ProtocolVersion);
+        noTokens.insert(QStringLiteral("path"), QStringLiteral("/tmp/tokens.json"));
+        QVERIFY(!loom::decodeDesign(QCborValue(noTokens).toCbor(), decoded, &error));
+
+        // Over the size cap, which keeps a stray large file from being pushed
+        // into the running process as configuration.
+        QVERIFY(!loom::decodeDesign(
+            loom::encodeDesign(
+                loom::Design{
+                    .path = QStringLiteral("/tmp/tokens.json"),
+                    .tokens = QByteArray(loom::MaximumDesignSize + 1, 'x'),
+                }),
+            decoded, &error));
+        QVERIFY(error.contains(QStringLiteral("limit")));
+    }
+
     void rejectsUnsafePaths_data()
     {
         QTest::addColumn<QString>("path");

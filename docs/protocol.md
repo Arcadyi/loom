@@ -40,6 +40,7 @@ connection: the only correct response is to drop it. Both sides do. Discarding b
 | `ReloadResult` | 3 | client → server | JSON |
 | `Error` | 4 | either | JSON |
 | `Ping` | 5 | either | empty |
+| `Design` | 6 | server → client | CBOR |
 
 ### `Hello`
 
@@ -84,13 +85,39 @@ The bundle includes the module's generated `qmldir`, with the `prefer` and `type
 directives removed — `prefer` would redirect the engine to the compiled-in copy and silently
 disable reload.
 
+### `Design`
+
+CBOR:
+
+```
+{
+  "version": 1,
+  "path":    "<the design file's absolute path in the project>",
+  "tokens":  <the raw JSON document, as bytes>
+}
+```
+
+Sent on connect and on every save of the file named by `loom.json`'s `design` key. The
+runtime applies it to the token registry, which lives in C++ that outlives every reload —
+so this repaints the running window **without recreating the scene**. Nothing on screen
+loses its state.
+
+`path` travels with the document because the runtime never writes it to disk at the
+location it belongs to. A relative `iconRoot` resolves against `path`; resolving it against
+wherever the bytes were staged pointed every icon at a directory nothing can open.
+
+A document that is not valid JSON changes nothing and leaves the previous tokens live —
+which matters, because a file is malformed for most of the time someone is typing in it.
+
 ### `ReloadResult`
 
 ```json
-{ "success": true, "bundleId": "...", "message": "Reloaded" }
+{ "success": true, "kind": "bundle", "bundleId": "...", "message": "Reloaded" }
 ```
 
-On failure, `message` carries the QML errors, which `loom dev` prints.
+`kind` is `"bundle"` or `"design"`, so `loom dev` can report a design reload as its own
+thing rather than claiming a bundle it never sent. On failure, `message` carries the QML
+errors, which `loom dev` prints.
 
 ### `Error`
 
@@ -124,6 +151,7 @@ indistinguishable from an idle one at the TCP level. Without it, `loom dev` repo
 | Concurrent clients | 8 | Past this, connections are refused rather than queued, so a connect loop cannot grow the client table. |
 | Bundle files | 50 000 | Bounds per-file bookkeeping; the frame cap already bounds total bytes. |
 | Scene state | 1 MiB | What `loomSaveState()` may return. |
+| Design document | 1 MiB | Design files are hand-written configuration, not assets; anything approaching this is a mistake worth reporting rather than applying. |
 
 ---
 

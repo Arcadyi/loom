@@ -1,3 +1,4 @@
+#include <loom/loom.h>
 #include <loom/protocol.h>
 #include <loom/reloadcontroller.h>
 
@@ -13,6 +14,7 @@
 #include <QStandardPaths>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QTemporaryDir>
 #include <QTimer>
 #include <QtTest>
 
@@ -32,6 +34,13 @@ loom::Bundle bundleAt(const QString &id, const QString &path, const QByteArray &
                 },
             },
     };
+}
+
+// applyDesign takes an encoded loom::Design -- the document plus the path it
+// has in the project, which a relative `iconRoot` resolves against.
+QByteArray encodedDesign(const QByteArray &tokens, const QString &path = QString())
+{
+    return loom::encodeDesign(loom::Design{.path = path, .tokens = tokens});
 }
 
 loom::Bundle bundleWithMain(const QString &id, const QByteArray &contents)
@@ -213,7 +222,8 @@ private slots:
 
         QString error;
         QVERIFY2(
-            controller.applyDesign(R"({"colors": {"brand": "#7c5cff"}})", &error),
+            controller.applyDesign(
+                encodedDesign(R"({"colors": {"brand": "#7c5cff"}})"), &error),
             qPrintable(error));
         QCoreApplication::processEvents();
 
@@ -231,11 +241,13 @@ private slots:
         QVERIFY2(
             controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")),
             qPrintable(controller.lastError()));
-        QVERIFY(controller.applyDesign(R"({"colors": {"brand": "#7c5cff"}})"));
+        QVERIFY(
+            controller.applyDesign(encodedDesign(R"({"colors": {"brand": "#7c5cff"}})")));
         QObject *const sceneBefore = controller.rootObject();
 
         QString error;
-        QVERIFY(!controller.applyDesign(R"({"colors": {"brand": )", &error));
+        QVERIFY(
+            !controller.applyDesign(encodedDesign(R"({"colors": {"brand": )"), &error));
         QVERIFY(!error.isEmpty());
         QCOMPARE(controller.rootObject(), sceneBefore);
         QVERIFY2(
@@ -244,8 +256,42 @@ private slots:
 
         // And the size cap, which exists so a stray large file cannot be pushed
         // into the running process as configuration.
-        QVERIFY(!controller.applyDesign(QByteArray(loom::MaximumDesignSize + 1, 'x')));
+        QVERIFY(!controller.applyDesign(
+            encodedDesign(QByteArray(loom::MaximumDesignSize + 1, 'x'))));
         QCOMPARE(controller.rootObject(), sceneBefore);
+
+        // A payload that is not an encoded Design at all is rejected too.
+        QVERIFY(!controller.applyDesign(R"({"colors": {"brand": "#7c5cff"}})"));
+        QCOMPARE(controller.rootObject(), sceneBefore);
+    }
+
+    // Regression: the controller used to stage the received document into its
+    // own cache directory and reload from there, so a relative `iconRoot`
+    // resolved against the staging path. Every icon in a project using one
+    // broke on the first design save under `loom dev`, while working in a
+    // compiled build.
+    void designIconRootResolvesAgainstTheProjectNotTheCache()
+    {
+        QTemporaryDir project;
+        QVERIFY(project.isValid());
+        const QString designPath =
+            QDir(project.path()).filePath(QStringLiteral("tokens.json"));
+
+        QQmlApplicationEngine engine;
+        loom::ReloadController controller(engine);
+        QVERIFY2(
+            controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")),
+            qPrintable(controller.lastError()));
+
+        QString error;
+        QVERIFY2(
+            controller.applyDesign(
+                encodedDesign(R"({"iconRoot": "assets/icons"})", designPath), &error),
+            qPrintable(error));
+
+        const QUrl expected = QUrl::fromLocalFile(
+            QDir(project.path()).filePath(QStringLiteral("assets/icons")));
+        QCOMPARE(loom::iconRoot().adjusted(QUrl::StripTrailingSlash), expected);
     }
 
     void invalidQmlRollsBackToWorkingScene()

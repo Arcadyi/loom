@@ -1,5 +1,88 @@
 # Changelog
 
+## 0.2.1
+
+A correctness release. Every item below is a bug that was live in 0.2.0, most of
+them in features the documentation already promised worked.
+
+### Styling
+
+- **`hover:` no longer dies at desktop widths.** Breakpoint and state variants
+  shared one "count of variant prefixes" specificity counter, so at equal counts
+  the later-written class won: in `"hover:bg-accent md:bg-red-500"` the `md:`
+  rule beat the `hover:` one at every width above 768, and hovering did nothing.
+  They are now separate axes — a state variant outranks a breakpoint variant,
+  and `md:hover:` outranks both.
+- **Shadows no longer disturb layouts.** The managed `RectangularShadow` was a
+  sibling parented into `target.parent`; inside a `Row`/`Column`/`Grid` or a
+  Layout that made it a laid-out child of its own, taking a slot and fighting
+  the positioner's writes. It is now a child of the target at `z: -1`, outside
+  every layout. Shipped visibly broken in the gallery's own Theming and Tokens
+  pages.
+- **Rounded Controls cast rounded shadows.** `rounded-*` writes through to a
+  Control's `background` delegate, but the shadow read `target.radius` —
+  undefined on a Control, so 0. It now resolves the radius from the same place
+  the box utilities write to.
+- **`tracking-*` is order-independent.** Being em-relative, it resolved against
+  whatever `font.pixelSize` held when its own rule was reached, so it was only
+  correct when `text-{size}` appeared earlier in the string. It is now resolved
+  after the pass that decides the size.
+- `border-{n}` rejects `nan`, `inf` and negatives instead of writing them into
+  the target's border.
+- A theme colour can alias a semantic name it inherits (`"accent-hover":
+  "accent"`); only the palette was consulted before, so such an alias silently
+  produced an invalid colour. An unresolvable one now warns and is skipped.
+- Breakpoint thresholds must be positive, tiers that are not strictly widening
+  warn, and the tier walk stops at the first threshold the window does not meet.
+- `hidden` is accepted as Tailwind spells it. It is a synonym for `invisible`
+  today; Tailwind's `invisible` keeps the layout box, which Loom cannot yet
+  express — see [docs/limitations.md](docs/limitations.md).
+- Warnings name the utility family and token (`utility bg-* (blue-500) is not
+  supported on QQuickText`). They printed the rule's key alone, which is empty
+  for every flag utility, so an unsupported `italic` read `utility  is not
+  supported on ...`.
+
+### Hot reload
+
+- **Relative `iconRoot` survives a design reload.** The runtime staged the
+  received document into its own cache directory and reloaded from there, so a
+  relative `iconRoot` resolved against the staging path — every icon in a
+  project using one broke on the first design save under `loom dev`, while
+  working in a compiled build. The `Design` frame now carries the document's
+  path in the project, and the bytes never reach the filesystem.
+- **`loom.json` edits take effect.** The manifest was captured once at startup
+  with no way to update it, so editing `qmlRoots`, `assetRoots`, `entry` or
+  `design` rebuilt and restarted the application while the server went on
+  bundling the roots the session began with. It is re-read after every rebuild.
+- **A native rebuild refreshes the bundle.** The bundled `qmldir` comes from the
+  build tree, so adding a `SINGLETONS` entry to CMake rebuilt, restarted, and
+  served the *pre-rebuild* qmldir; the singleton was not one until an unrelated
+  QML file was touched.
+- A reload that no longer defines `iconRoot` clears it, matching the
+  replace-don't-merge contract every other setting already followed.
+- `qt.version` in `loom.json` is a minimum rather than an exact match, matching
+  `find_package(Qt6 6.11)` and the documentation. Requiring equality would have
+  invalidated every existing manifest the day 6.12 shipped.
+
+### Build and documentation
+
+- **The JSON-schema gate actually runs.** `loom_schema` skipped — reporting a
+  pass — when `jsonschema` was missing, and CI never installed it while
+  `CONTRIBUTING.md` claimed it did. CI now installs it and configures with the
+  new `LOOM_STRICT_SCHEMA_TEST=ON`, which turns the skip into a failure.
+- `LOOM_BUILD_E2E_TESTS=OFF` no longer compiles a full consumer project:
+  `loom_e2e_consume` was registered outside the guard.
+- `docs/protocol.md` documents `MessageType::Design`, its payload and its size
+  cap — the headline 0.2.0 feature was missing from the wire spec entirely — and
+  the `ReloadResult` example carries the `kind` field the server switches on.
+- Three cross-references pointed at a `getting-started.md#deploying` section
+  that does not exist, for an explanation that lived only in a CMake comment.
+  The measurements now have a home in
+  [docs/platforms.md](docs/platforms.md#why-qt-is-not-bundled).
+- `docs/cmake-api.md` lists all four exported targets, not two.
+- `docs/utilities.md` no longer claims `Lo.style` re-asserts a property whose
+  value has not changed.
+
 ## 0.2.0
 
 **loom absorbed respin.** The two projects — utility-first styling, and the

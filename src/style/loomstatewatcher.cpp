@@ -33,31 +33,46 @@ Item {
 }
 )";
 
-// The shadow follows the target through bindings, so reparenting, moving,
-// resizing, per-corner radii and visibility all track without C++ plumbing.
-// The undefined-checks make the same component work for non-Rectangle targets
-// (no radius) and survive teardown ordering.
+// The shadow follows the target through bindings, so moving, resizing and
+// per-corner radii all track without C++ plumbing. The undefined-checks make
+// the same component work for non-Rectangle targets (no radius) and survive
+// teardown ordering.
+//
+// It is a *child* of the target rather than a sibling stacked behind it.
+// A sibling has to live in the target's parent, and when that parent is a
+// positioner (Row/Column/Grid) or a Layout, the shadow claims a layout slot of
+// its own and its x/y bindings fight the positioner's writes. As a child it is
+// outside every layout, and `z: -1` still draws it beneath the target's own
+// background -- Qt Quick renders negative-z children before the parent's
+// content. Visibility and opacity no longer need bindings either: a child
+// inherits both, and binding opacity would square it.
 constexpr const char shadowQml[] = R"(import QtQuick
 import QtQuick.Effects
 RectangularShadow {
     required property Item target
-    parent: target ? target.parent : null
-    x: target ? target.x : 0
-    y: target ? target.y : 0
-    z: target ? target.z - 1 : 0
+    // A Control is not a Rectangle, so `rounded-*` lands on its background
+    // delegate; the corner radii to match are there rather than on the target.
+    readonly property Item radiusSource:
+        !target ? null
+        : target.radius !== undefined ? target
+        : target.background !== undefined ? target.background
+        : null
+    parent: target
+    x: 0
+    y: 0
+    z: -1
     width: target ? target.width : 0
     height: target ? target.height : 0
-    radius: target && target.radius !== undefined ? target.radius : 0
-    topLeftRadius: target && target.topLeftRadius !== undefined
-        ? target.topLeftRadius : radius
-    topRightRadius: target && target.topRightRadius !== undefined
-        ? target.topRightRadius : radius
-    bottomLeftRadius: target && target.bottomLeftRadius !== undefined
-        ? target.bottomLeftRadius : radius
-    bottomRightRadius: target && target.bottomRightRadius !== undefined
-        ? target.bottomRightRadius : radius
-    visible: target ? target.visible : false
-    opacity: target ? target.opacity : 1
+    radius: radiusSource && radiusSource.radius !== undefined
+        ? radiusSource.radius : 0
+    topLeftRadius: radiusSource && radiusSource.topLeftRadius !== undefined
+        ? radiusSource.topLeftRadius : radius
+    topRightRadius: radiusSource && radiusSource.topRightRadius !== undefined
+        ? radiusSource.topRightRadius : radius
+    bottomLeftRadius: radiusSource && radiusSource.bottomLeftRadius !== undefined
+        ? radiusSource.bottomLeftRadius : radius
+    bottomRightRadius: radiusSource && radiusSource.bottomRightRadius !== undefined
+        ? radiusSource.bottomRightRadius : radius
 }
 )";
 

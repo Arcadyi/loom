@@ -64,8 +64,24 @@ void loadBreakpoints(LoomTokenRegistry *registry, const QJsonObject &breakpoints
     for (auto it = breakpoints.constBegin(); it != breakpoints.constEnd(); ++it) {
         if (!it->isDouble() || !registry->setBreakpoint(it.key(), it->toInt())) {
             qCWarning(lcLoomConfig).noquote()
-                << "config: breakpoints only accepts numeric sm/md/lg/xl, not"
-                << it.key();
+                << "config: breakpoints only accepts numeric sm/md/lg/xl above"
+                << "zero, not" << it.key();
+        }
+    }
+
+    // The tiers are min-width and cumulative, so a threshold below the one
+    // before it can never be the widest match: its classes would be shadowed by
+    // the narrower tier and appear to do nothing. Cheap to detect, and
+    // impossible to diagnose from the styling alone.
+    static const char *const names[] = {"sm", "md", "lg", "xl"};
+    for (int i = 1; i < 4; ++i) {
+        const int previous = registry->breakpoint(QLatin1String(names[i - 1]));
+        const int current = registry->breakpoint(QLatin1String(names[i]));
+        if (current <= previous) {
+            qCWarning(lcLoomConfig).noquote()
+                << "config: breakpoint" << names[i] << "(" << current
+                << "px) is not wider than" << names[i - 1] << "(" << previous
+                << "px); the narrower tier will shadow it";
         }
     }
 }
@@ -114,26 +130,13 @@ void loadThemes(LoomTokenRegistry *registry, const QJsonObject &themes)
 
 namespace {
 
-bool applyConfigFile(const QString &filePath, bool reset)
+// `baseFilePath` is what a relative `iconRoot` resolves against. It is the
+// config's own path for a config read off disk, but not for one that arrived
+// over the dev-server wire: that document is staged into a cache directory,
+// and resolving against the staging location pointed every relative icon at a
+// path nothing can open.
+bool applyConfigDocument(const QJsonObject &root, const QString &baseFilePath, bool reset)
 {
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        qCWarning(lcLoomConfig).noquote()
-            << "config: cannot open" << filePath << ":" << file.errorString();
-        return false;
-    }
-
-    QJsonParseError parseError;
-    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
-    if (document.isNull() || !document.isObject()) {
-        qCWarning(lcLoomConfig).noquote()
-            << "config:" << filePath
-            << "is not a JSON object:" << parseError.errorString() << "at offset"
-            << parseError.offset;
-        return false;
-    }
-
-    const QJsonObject root = document.object();
     static const QStringList knownKeys = {
         QStringLiteral("colors"),       QStringLiteral("space"),
         QStringLiteral("breakpoints"),  QStringLiteral("themes"),
@@ -172,11 +175,16 @@ bool applyConfigFile(const QString &filePath, bool reset)
         // resource system has to yield a qrc: base -- QUrl::fromLocalFile
         // spells ":/x" as the malformed "file::/x", which resolves to a path
         // nothing can open.
-        const QString directory = QFileInfo(filePath).absolutePath();
+        const QString directory = QFileInfo(baseFilePath).absolutePath();
         const QUrl base = directory.startsWith(QLatin1Char(':'))
             ? QUrl(QLatin1String("qrc") + directory + QLatin1Char('/'))
             : QUrl::fromLocalFile(directory + QLatin1Char('/'));
         setLoomIconRoot(base.resolved(QUrl(iconRoot)));
+    } else if (reset) {
+        // A reload replaces rather than merges, so a key deleted from the file
+        // has to stop taking effect. Leaving the previous root live made
+        // iconRoot the one setting a reload could not clear.
+        setLoomIconRoot(QUrl());
     }
 
     const QString defaultTheme = root.value(QLatin1String("defaultTheme")).toString();
@@ -192,6 +200,36 @@ bool applyConfigFile(const QString &filePath, bool reset)
     return true;
 }
 
+// Parse guard shared by both entry points. A document that does not parse must
+// change nothing at all, so the reset only happens past this point.
+bool parseConfig(const QByteArray &json, const QString &label, QJsonObject *root)
+{
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(json, &parseError);
+    if (document.isNull() || !document.isObject()) {
+        qCWarning(lcLoomConfig).noquote()
+            << "config:" << label << "is not a JSON object:" << parseError.errorString()
+            << "at offset" << parseError.offset;
+        return false;
+    }
+    *root = document.object();
+    return true;
+}
+
+bool applyConfigFile(const QString &filePath, bool reset)
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        qCWarning(lcLoomConfig).noquote()
+            << "config: cannot open" << filePath << ":" << file.errorString();
+        return false;
+    }
+    QJsonObject root;
+    if (!parseConfig(file.readAll(), filePath, &root))
+        return false;
+    return applyConfigDocument(root, filePath, reset);
+}
+
 } // namespace
 
 bool loomLoadConfigFile(const QString &filePath)
@@ -202,4 +240,12 @@ bool loomLoadConfigFile(const QString &filePath)
 bool loomReloadConfigFile(const QString &filePath)
 {
     return applyConfigFile(filePath, /*reset=*/true);
+}
+
+bool loomReloadConfigData(const QByteArray &json, const QString &basePath)
+{
+    QJsonObject root;
+    if (!parseConfig(json, basePath, &root))
+        return false;
+    return applyConfigDocument(root, basePath, /*reset=*/true);
 }

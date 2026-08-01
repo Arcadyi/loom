@@ -144,6 +144,7 @@ if(TARGET loom_cli)
             "-DLOOM_EXE=$<TARGET_FILE:loom_cli>"
             "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/schema-project"
             "-DSCHEMA=${CMAKE_SOURCE_DIR}/schemas/project-v1.schema.json"
+            "-DSTRICT=${LOOM_STRICT_SCHEMA_TEST}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/schema_test.cmake"
     )
     add_test(
@@ -209,19 +210,23 @@ if(LOOM_BUILD_E2E_TESTS AND TARGET loom_cli)
 endif()
 
 # Scaffold-configure-build-run of a real consumer against the build tree: the
-# only test that runs find_package(loom) the way applications do.
-add_test(NAME loom_e2e_consume
-    COMMAND "${CMAKE_COMMAND}"
-        "-DLOOM_BUILD_DIR=${CMAKE_BINARY_DIR}"
-        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/e2e/consume"
-        "-DCMAKE_GENERATOR=${CMAKE_GENERATOR}"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/e2e_consume_test.cmake"
-)
-set_tests_properties(loom_e2e_consume PROPERTIES
-    LABELS e2e
-    TIMEOUT 900
-    RUN_SERIAL TRUE
-)
+# only test that runs find_package(loom) the way applications do. Inside the
+# same guard as the rest of the compiling tier -- it was registered outside it,
+# so LOOM_BUILD_E2E_TESTS=OFF still compiled a whole consumer project.
+if(LOOM_BUILD_E2E_TESTS)
+    add_test(NAME loom_e2e_consume
+        COMMAND "${CMAKE_COMMAND}"
+            "-DLOOM_BUILD_DIR=${CMAKE_BINARY_DIR}"
+            "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/e2e/consume"
+            "-DCMAKE_GENERATOR=${CMAKE_GENERATOR}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/e2e_consume_test.cmake"
+    )
+    set_tests_properties(loom_e2e_consume PROPERTIES
+        LABELS e2e
+        TIMEOUT 900
+        RUN_SERIAL TRUE
+    )
+endif()
 
 # The generated qmllint target checks the gallery's QML against loom's
 # generated qmltypes: the regression test that consumers stay lint-clean.

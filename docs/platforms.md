@@ -14,9 +14,27 @@ them as unsupported until CI covers them.
 ### Deployment
 
 `loom deploy` performs an ordinary `cmake --install` into a prefix and can
-produce a CPack archive. It does **not** bundle Qt; see the README for the
-measurements behind that decision. Producing a self-contained artifact is left
-to a dedicated packaging tool.
+produce a CPack archive. It does **not** bundle Qt, and there is currently no
+option to. Producing a self-contained artifact is left to a dedicated packaging
+tool such as `linuxdeploy` or `appimage-builder`, run over the installed prefix.
+
+#### Why Qt is not bundled
+
+Both routes Qt offers were measured on Linux with Qt 6.11, against a
+distribution Qt rooted at `/usr`:
+
+- `qt_generate_deploy_qml_app_script` produces a 247 MB tree that includes
+  `ld-linux-x86-64.so.2` itself, and the resulting binary core-dumps.
+- `qt_deploy_runtime_dependencies`, with the system directories excluded and the
+  Qt libraries named back in — the approach that successfully ships loom's own
+  CLI — fails inside `file(GET_RUNTIME_DEPENDENCIES)` with "file unknown error",
+  with and without `ADDITIONAL_MODULES` for the QML plugins.
+
+The difference appears to be console application versus GUI application with
+plugins, rather than anything about the distribution Qt: loom's own `bin/loom`
+does bundle Qt this second way and resolves it from its own `lib/`. Until that
+is understood, `loom_install_application` produces a correct, ordinary install
+that runs against the Qt the host already has.
 
 ## Android
 

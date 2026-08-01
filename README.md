@@ -59,7 +59,7 @@ loom: 1 unknown class(es) in 1 file(s)
 
 ## Status
 
-Version 0.2.0, early development. Linux-validated; Qt 6.11, C++20, CMake ≥ 3.22.
+Version 0.2.1, early development. Linux-validated; Qt 6.11, C++20, CMake ≥ 3.22.
 
 The styling half and the tooling half were separate projects (`loom` and
 `respin`) through 0.1.0 and merged for 0.2.0.

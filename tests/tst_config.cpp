@@ -27,6 +27,10 @@ private slots:
     void reloadKeepsTheActiveTheme();
     void failedReloadKeepsThePreviousTokens();
     void reloadRecompilesLiveStyles();
+    void themeColourCanAliasAnInheritedSemanticName();
+    void unresolvableThemeColourWarnsRatherThanGoingInvalid();
+    void reloadClearsAnIconRootTheFileNoLongerDefines();
+    void nonMonotonicBreakpointsWarn();
 
 private:
     QString writeConfig(const char *json);
@@ -47,6 +51,74 @@ QString ConfigTests::writeConfig(const char *json)
 void ConfigTests::cleanup()
 {
     loom::setTheme(QStringLiteral("light"));
+}
+
+// Only the palette was consulted when resolving a theme entry, so naming a
+// semantic colour the theme already had produced an invalid QColor in silence.
+void ConfigTests::themeColourCanAliasAnInheritedSemanticName()
+{
+    const QString path = writeConfig(R"({
+        "themes": {
+            "brandish": { "extends": "light", "accent-hover": "accent" }
+        }
+    })");
+    QVERIFY(loom::loadConfig(path));
+
+    auto *registry = LoomTokenRegistry::instance();
+    loom::setTheme(QStringLiteral("brandish"));
+    const QColor aliased = registry->color(QStringLiteral("accent-hover"));
+    QVERIFY2(
+        aliased.isValid(), "aliasing an inherited semantic colour produced no colour");
+    QCOMPARE(aliased, registry->color(QStringLiteral("accent")));
+}
+
+void ConfigTests::unresolvableThemeColourWarnsRatherThanGoingInvalid()
+{
+    const QString path = writeConfig(R"({
+        "themes": { "broken": { "extends": "light", "surface": "not-a-colour" } }
+    })");
+    QTest::ignoreMessage(
+        QtWarningMsg, QRegularExpression(QStringLiteral("neither a palette colour")));
+    QVERIFY(loom::loadConfig(path));
+
+    // The bad entry is skipped, so the inherited value survives rather than
+    // being replaced by an invalid colour.
+    loom::setTheme(QStringLiteral("broken"));
+    QVERIFY(LoomTokenRegistry::instance()->color(QStringLiteral("surface")).isValid());
+}
+
+// A reload replaces rather than merges. iconRoot was the one setting that did
+// not: deleting the key left the previous root live for the rest of the run.
+void ConfigTests::reloadClearsAnIconRootTheFileNoLongerDefines()
+{
+    const QString withRoot = writeConfig(R"({ "iconRoot": "icons" })");
+    QVERIFY(loom::reloadConfig(withRoot));
+    QVERIFY(!loom::iconRoot().isEmpty());
+
+    const QString withoutRoot = writeConfig(R"({ "colors": { "brand": "#7c5cff" } })");
+    QVERIFY(loom::reloadConfig(withoutRoot));
+    QVERIFY2(
+        loom::iconRoot().isEmpty(),
+        "a design file that dropped iconRoot left the old root resolving");
+}
+
+// The tiers are cumulative min-widths, so a threshold narrower than the one
+// before it can never be the widest match and its classes silently do nothing.
+void ConfigTests::nonMonotonicBreakpointsWarn()
+{
+    const QString path = writeConfig(R"({ "breakpoints": { "md": 100 } })");
+    QTest::ignoreMessage(
+        QtWarningMsg, QRegularExpression(QStringLiteral("is not wider than")));
+    QVERIFY(loom::loadConfig(path));
+
+    // And a non-positive threshold is refused outright.
+    const QString zero = writeConfig(R"({ "breakpoints": { "lg": 0 } })");
+    QTest::ignoreMessage(
+        QtWarningMsg, QRegularExpression(QStringLiteral("breakpoints only accepts")));
+    QTest::ignoreMessage(
+        QtWarningMsg, QRegularExpression(QStringLiteral("is not wider than")));
+    QVERIFY(loom::loadConfig(zero));
+    QCOMPARE(LoomTokenRegistry::instance()->breakpoint(QStringLiteral("lg")), 1024);
 }
 
 void ConfigTests::customTokensAndThemes()

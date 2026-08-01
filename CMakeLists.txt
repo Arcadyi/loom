@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(loom VERSION 0.2.0 LANGUAGES CXX)
+project(loom VERSION 0.2.1 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -11,6 +11,10 @@ option(LOOM_BUILD_CLI "Build the loom command-line tool" ON)
 option(LOOM_BUILD_EXAMPLES "Build the loom gallery example" ON)
 option(LOOM_WERROR "Treat compiler warnings as errors" OFF)
 option(LOOM_SANITIZE "Build with the address and undefined-behavior sanitizers" OFF)
+# The schema test needs a Python JSON Schema validator and skips without one.
+# Turn this on where the validator is expected to be present -- CI -- so a
+# missing one is a failure rather than a pass nobody notices.
+option(LOOM_STRICT_SCHEMA_TEST "Fail rather than skip when jsonschema is missing" OFF)
 
 # Network carries the development server and reload transport; QmlPrivate is for
 # src/runtime/statecapture.cpp alone -- see the comment on the loom_runtime link

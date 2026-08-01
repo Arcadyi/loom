@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QString>
 #include <QUrl>
 
@@ -29,6 +30,13 @@ bool loadConfig(const QString &filePath);
 // file, which is what lets an edit repaint the running window without the scene
 // being recreated. A file that fails to parse changes nothing.
 bool reloadConfig(const QString &filePath);
+
+// As reloadConfig(), for a config that is not on disk where it belongs: `loom
+// dev` receives the design document over the wire. A relative `iconRoot`
+// resolves against `basePath` -- the design file's path inside the project --
+// instead of against wherever the bytes happen to live, which is what keeps
+// icons working across a hot design reload.
+bool reloadConfigData(const QByteArray &json, const QString &basePath);
 
 // Directory that a relative `Loom.icon()` source resolves against. Set it
 // before the engine loads the scene: icon() bindings track colors, not this,

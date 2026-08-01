@@ -59,8 +59,11 @@ public:
     /// and nothing on screen loses its state. Malformed JSON, or more than
     /// MaximumDesignSize bytes, changes nothing and leaves the previous tokens
     /// live.
+    /// \param payload an encoded loom::Design -- the token document plus the
+    /// path it has in the project, which a relative `iconRoot` resolves
+    /// against. The bytes never reach the filesystem.
     /// \return false on failure, with the reason in \a error.
-    bool applyDesign(const QByteArray &json, QString *error = nullptr);
+    bool applyDesign(const QByteArray &payload, QString *error = nullptr);
 
     /// The live root scene, or null if none could be constructed.
     QObject *rootObject() const;

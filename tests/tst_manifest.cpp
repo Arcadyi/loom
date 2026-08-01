@@ -10,6 +10,47 @@ class ManifestTests final : public QObject {
     Q_OBJECT
 
 private slots:
+    // qt.version is a minimum, matching find_package(Qt6 6.11) and the docs.
+    // It used to be an exact-match check, which would have rejected every
+    // existing loom.json the day 6.12 shipped -- loom refusing a toolchain its
+    // own build system accepts, with no upgrade path.
+    void qtVersionIsAMinimumNotAnExactMatch()
+    {
+        const auto manifestWith = [](const char *version) {
+            auto manifest = ProjectManifest::createDefault(
+                QStringLiteral("Sample"), QStringLiteral("com.acme"));
+            QJsonObject json = manifest.toJson();
+            QJsonObject qt = json.value(QStringLiteral("qt")).toObject();
+            qt.insert(QStringLiteral("version"), QLatin1String(version));
+            json.insert(QStringLiteral("qt"), qt);
+            return json;
+        };
+
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        int index = 0;
+        const auto validates = [&](const char *version, QString *error) {
+            const auto path =
+                temporary.filePath(QStringLiteral("loom%1.json").arg(index++));
+            QFile output(path);
+            if (!output.open(QIODevice::WriteOnly))
+                return false;
+            output.write(QJsonDocument(manifestWith(version)).toJson());
+            output.close();
+            ProjectManifest loaded;
+            return ProjectManifest::load(path, loaded, error);
+        };
+
+        QString error;
+        QVERIFY2(validates("6.11", &error), qPrintable(error));
+        QVERIFY2(validates("6.12", &error), qPrintable(error));
+        QVERIFY2(validates("7.0", &error), qPrintable(error));
+
+        QVERIFY(!validates("6.10", &error));
+        QVERIFY(error.contains(QStringLiteral("6.11 or newer")));
+        QVERIFY(!validates("banana", &error));
+    }
+
     void defaultManifestRoundTrips()
     {
         QTemporaryDir temporary;

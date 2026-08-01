@@ -14,6 +14,7 @@ private slots:
     void sideExpansion();
     void cornerExpansion();
     void variants();
+    void specificityAxes();
     void textDisambiguation();
     void unknownClassesWarnAndSkip();
     void cacheSharesInstances();
@@ -21,6 +22,8 @@ private slots:
     void flagsAreAggregated();
     void alphaModifier();
     void alphaModifierRejections();
+    void borderWidthRejections();
+    void hiddenIsSynonymForInvisible();
 };
 
 void CompilerTests::init()
@@ -118,17 +121,42 @@ void CompilerTests::variants()
 
     QCOMPARE(compiled->rules.at(0).minBreakpoint, quint8(0));
     QCOMPARE(compiled->rules.at(0).stateMask, quint8(0));
-    QCOMPARE(compiled->rules.at(0).variantCount, quint8(0));
+    QCOMPARE(compiled->rules.at(0).specificity, quint8(0));
 
     QCOMPARE(compiled->rules.at(1).minBreakpoint, quint8(2));
-    QCOMPARE(compiled->rules.at(1).variantCount, quint8(1));
+    QCOMPARE(compiled->rules.at(1).specificity, loomSpecificity(2, 0));
 
     QCOMPARE(compiled->rules.at(2).stateMask, quint8(LoomHoverState | LoomDarkState));
-    QCOMPARE(compiled->rules.at(2).variantCount, quint8(2));
+    QCOMPARE(
+        compiled->rules.at(2).specificity,
+        loomSpecificity(0, LoomHoverState | LoomDarkState));
 
     // Prefix order does not matter.
     const auto swapped = compile(QStringLiteral("dark:hover:bg-blue-500"));
     QCOMPARE(swapped->rules.first().stateMask, quint8(LoomHoverState | LoomDarkState));
+}
+
+void CompilerTests::specificityAxes()
+{
+    // The regression this ranking exists for: a state variant and a breakpoint
+    // variant both used to count as "one prefix", so whichever was written last
+    // won. With `md:` last, no `hover:` rule could ever apply above 768px.
+    QVERIFY(loomSpecificity(0, LoomHoverState) > loomSpecificity(4, 0));
+
+    // A state plus a breakpoint still beats the state alone.
+    QVERIFY(loomSpecificity(2, LoomHoverState) > loomSpecificity(0, LoomHoverState));
+
+    // Two states beat one, and any variant beats none.
+    QVERIFY(
+        loomSpecificity(0, LoomHoverState | LoomDarkState)
+        > loomSpecificity(0, LoomHoverState));
+    QVERIFY(loomSpecificity(1, 0) > loomSpecificity(0, 0));
+
+    // Rules carry the rank the ordering above is computed from.
+    const auto compiled =
+        compile(QStringLiteral("bg-white hover:bg-black md:bg-blue-500"));
+    QCOMPARE(compiled->rules.size(), 3);
+    QVERIFY(compiled->rules.at(1).specificity > compiled->rules.at(2).specificity);
 }
 
 void CompilerTests::textDisambiguation()
@@ -142,6 +170,35 @@ void CompilerTests::textDisambiguation()
     QCOMPARE(
         compile(QStringLiteral("text-foreground"))->rules.first().utility,
         LoomUtility::TextColor);
+}
+
+// `border-{n}` went straight to QString::toDouble, which also accepts "nan",
+// "inf" and negatives -- each of which would have been written into the
+// target's border width verbatim.
+void CompilerTests::borderWidthRejections()
+{
+    for (const QString &klass :
+         {QStringLiteral("border--3"), QStringLiteral("border-nan"),
+          QStringLiteral("border-inf")}) {
+        QCOMPARE(LoomStyleCompiler::unknownClasses(klass), QStringList{klass});
+    }
+
+    // Valid widths still compile, including a zero and a fractional one.
+    for (const QString &klass :
+         {QStringLiteral("border-0"), QStringLiteral("border-2"),
+          QStringLiteral("border-1.5")}) {
+        QVERIFY2(LoomStyleCompiler::unknownClasses(klass).isEmpty(), qPrintable(klass));
+    }
+}
+
+void CompilerTests::hiddenIsSynonymForInvisible()
+{
+    // Tailwind spells "remove from layout" `hidden`; it used to be an unknown
+    // class here, so a Tailwind reflex silently styled nothing.
+    const auto compiled = compile(QStringLiteral("hidden"));
+    QCOMPARE(compiled->rules.size(), 1);
+    QCOMPARE(compiled->rules.first().utility, LoomUtility::Visible);
+    QCOMPARE(compiled->rules.first().flag, false);
 }
 
 void CompilerTests::unknownClassesWarnAndSkip()

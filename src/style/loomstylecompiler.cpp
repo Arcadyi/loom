@@ -4,6 +4,7 @@
 #include <QLoggingCategory>
 #include <QMutex>
 #include <QStringList>
+#include <cmath>
 
 #include "loomtokenregistry.h"
 
@@ -181,6 +182,11 @@ const QHash<QString, std::pair<LoomUtility, bool>> &exactUtilities()
 {
     static const QHash<QString, std::pair<LoomUtility, bool>> table = {
         {QStringLiteral("visible"), {LoomUtility::Visible, true}},
+        // Tailwind's spelling for "remove from layout". `invisible` is its
+        // synonym here for now; in Tailwind proper it keeps the layout box
+        // (`opacity: 0`), which Loom cannot express until opacity and the
+        // visible flag stop sharing one utility. Documented in limitations.md.
+        {QStringLiteral("hidden"), {LoomUtility::Visible, false}},
         {QStringLiteral("invisible"), {LoomUtility::Visible, false}},
         {QStringLiteral("italic"), {LoomUtility::Italic, true}},
         {QStringLiteral("not-italic"), {LoomUtility::Italic, false}},
@@ -262,9 +268,12 @@ Parsed parseUtilityBase(QStringView name)
         const QString rest = name.mid(qsizetype(qstrlen("border-"))).toString();
         bool isNumber = false;
         const double width = rest.toDouble(&isNumber);
-        if (isNumber)
+        // toDouble also accepts "nan", "inf" and negatives, none of which are a
+        // border width. Reject them as unknown classes rather than writing
+        // nonsense into the target's border.
+        if (isNumber && std::isfinite(width) && width >= 0)
             addRule(&out, LoomUtility::BorderWidth, QString(), width);
-        else if (registry->hasColor(rest))
+        else if (!isNumber && registry->hasColor(rest))
             addRule(&out, LoomUtility::BorderColor, rest);
         return out;
     }
@@ -360,6 +369,71 @@ Parsed parseUtilityBase(QStringView name)
 
 } // namespace
 
+const char *loomUtilityName(LoomUtility utility)
+{
+    switch (utility) {
+    case LoomUtility::BgColor:
+        return "bg-*";
+    case LoomUtility::TextColor:
+        return "text-{color}";
+    case LoomUtility::TextSize:
+        return "text-{size}";
+    case LoomUtility::FontWeight:
+        return "font-*";
+    case LoomUtility::Italic:
+        return "italic";
+    case LoomUtility::Underline:
+        return "underline";
+    case LoomUtility::LineThrough:
+        return "line-through";
+    case LoomUtility::Tracking:
+        return "tracking-*";
+    case LoomUtility::PaddingTop:
+    case LoomUtility::PaddingRight:
+    case LoomUtility::PaddingBottom:
+    case LoomUtility::PaddingLeft:
+        return "p-*";
+    case LoomUtility::MarginTop:
+    case LoomUtility::MarginRight:
+    case LoomUtility::MarginBottom:
+    case LoomUtility::MarginLeft:
+        return "m-*";
+    case LoomUtility::Gap:
+        return "gap-*";
+    case LoomUtility::Width:
+        return "w-*";
+    case LoomUtility::Height:
+        return "h-*";
+    case LoomUtility::WidthFull:
+        return "w-full";
+    case LoomUtility::HeightFull:
+        return "h-full";
+    case LoomUtility::Radius:
+    case LoomUtility::RadiusTopLeft:
+    case LoomUtility::RadiusTopRight:
+    case LoomUtility::RadiusBottomRight:
+    case LoomUtility::RadiusBottomLeft:
+        return "rounded-*";
+    case LoomUtility::BorderWidth:
+        return "border-{width}";
+    case LoomUtility::BorderColor:
+        return "border-{color}";
+    case LoomUtility::Opacity:
+        return "opacity-*";
+    case LoomUtility::Visible:
+        return "visible/hidden";
+    case LoomUtility::Shadow:
+        return "shadow-*";
+    case LoomUtility::TransitionMode:
+        return "transition-*";
+    case LoomUtility::TransitionDuration:
+        return "duration-*";
+    case LoomUtility::TransitionEase:
+        return "ease-*";
+    }
+    return "?";
+}
+
 namespace LoomStyleCompiler {
 
 namespace {
@@ -370,7 +444,6 @@ QHash<QString, std::shared_ptr<const LoomCompiledStyle>> g_cache;
 struct ClassParse {
     VariantSpec variant;
     Parsed parsed;
-    quint8 variantCount = 0;
     bool ok = false;
 };
 
@@ -425,7 +498,6 @@ ClassParse parseClass(const QString &klass)
 {
     ClassParse out;
     const QStringList segments = klass.split(QLatin1Char(':'));
-    out.variantCount = quint8(segments.size() - 1);
     for (qsizetype i = 0; i < segments.size() - 1; ++i) {
         if (!parseVariant(segments.at(i), &out.variant))
             return out;
@@ -457,7 +529,8 @@ std::shared_ptr<const LoomCompiledStyle> compile(const QString &style)
         for (LoomStyleRule rule : parse.parsed.rules) {
             rule.minBreakpoint = parse.variant.minBreakpoint;
             rule.stateMask = parse.variant.stateMask;
-            rule.variantCount = parse.variantCount;
+            rule.specificity =
+                loomSpecificity(parse.variant.minBreakpoint, parse.variant.stateMask);
             compiled->usedStates |= rule.stateMask;
             if (rule.minBreakpoint > 0)
                 compiled->usesBreakpoints = true;

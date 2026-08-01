@@ -125,6 +125,19 @@ QColor LoomTokenRegistry::resolveColorRef(const QString &ref) const
     return QColor::fromString(ref);
 }
 
+QColor LoomTokenRegistry::resolveColorRef(const QString &ref, const Theme &scope) const
+{
+    // A semantic name the theme already carries -- its own, or inherited from
+    // the base it extends -- can be aliased: {"accent-hover": "accent"}. Only
+    // the palette was consulted before, so such an alias silently produced an
+    // invalid QColor. Names defined in the same object are deliberately not
+    // visible to each other: the resolution order would depend on hash order.
+    const auto semanticEntry = scope.semantic.constFind(ref);
+    if (semanticEntry != scope.semantic.constEnd())
+        return *semanticEntry;
+    return resolveColorRef(ref);
+}
+
 QColor LoomTokenRegistry::color(const QString &key) const
 {
     const auto theme = m_themes.constFind(m_activeTheme);
@@ -272,8 +285,10 @@ void LoomTokenRegistry::addSpace(const QString &key, qreal px)
 bool LoomTokenRegistry::setBreakpoint(const QString &key, int px)
 {
     // The four tiers are structural (they map to the sm:..xl: prefixes);
-    // configs may move the thresholds but not invent new tiers.
-    if (!m_breakpoints.contains(key))
+    // configs may move the thresholds but not invent new tiers. A threshold at
+    // or below zero is met by every window, which makes the tier meaningless
+    // rather than merely unusual, so it is rejected outright.
+    if (!m_breakpoints.contains(key) || px <= 0)
         return false;
     m_breakpoints.insert(key, px);
     return true;
@@ -294,8 +309,18 @@ bool LoomTokenRegistry::defineTheme(
         }
         existing = m_themes.insert(name, fresh);
     }
-    for (auto it = semanticRefs.constBegin(); it != semanticRefs.constEnd(); ++it)
-        existing->semantic.insert(it.key(), resolveColorRef(it.value()));
+    for (auto it = semanticRefs.constBegin(); it != semanticRefs.constEnd(); ++it) {
+        const QColor resolved = resolveColorRef(it.value(), *existing);
+        if (!resolved.isValid()) {
+            qCWarning(lcLoomTokens).noquote()
+                << "config: theme" << name << "gives" << it.key() << "the value"
+                << it.value()
+                << "which is neither a palette colour, a semantic name it "
+                   "already has, nor a colour literal; ignored";
+            continue;
+        }
+        existing->semantic.insert(it.key(), resolved);
+    }
     if (dark.has_value())
         existing->dark = *dark;
     return true;

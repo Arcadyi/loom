@@ -35,10 +35,10 @@ enum class MessageType : quint8 {
     ReloadResult = 3,
     Error = 4,
     Ping = 5,
-    // Raw design token JSON, applied in place without rebuilding the scene.
-    // Additive, so ProtocolVersion stays 1: a runtime built before this existed
-    // rejects the type as unknown and keeps running, which is the right outcome
-    // for a message it cannot act on.
+    // Design token JSON plus the path it came from, applied in place without
+    // rebuilding the scene. Additive, so ProtocolVersion stays 1: a runtime
+    // built before this existed rejects the type as unknown and keeps running,
+    // which is the right outcome for a message it cannot act on.
     Design = 6,
 };
 
@@ -74,8 +74,21 @@ bool takeFrame(
     QByteArray &buffer, Frame &frame, QString *error = nullptr,
     qsizetype maximumFrameSize = MaximumFrameSize);
 
+struct Design {
+    // Where the document lives in the project. The runtime resolves a relative
+    // `iconRoot` against this rather than against the bytes' own location,
+    // which is a staging directory -- without it, hot-reloading a design file
+    // re-roots every relative icon to a path nothing can open. Sent alongside
+    // the document because `loom.json` can retarget it mid-session.
+    QString path;
+    QByteArray tokens;
+};
+
 QByteArray encodeBundle(const Bundle &bundle);
 bool decodeBundle(const QByteArray &payload, Bundle &bundle, QString *error = nullptr);
+
+QByteArray encodeDesign(const Design &design);
+bool decodeDesign(const QByteArray &payload, Design &design, QString *error = nullptr);
 
 bool isSafeBundlePath(const QString &path);
 

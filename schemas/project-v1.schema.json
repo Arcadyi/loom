@@ -48,7 +48,9 @@
       ],
       "properties": {
         "version": {
-          "const": "6.11"
+          "type": "string",
+          "pattern": "^6\\.[0-9]+$",
+          "description": "Minimum Qt version, 6.11 or newer. The exact minimum is enforced by loom itself; the schema only fixes the shape."
         }
       }
     },

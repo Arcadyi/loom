@@ -8,6 +8,7 @@
 #include <QJsonParseError>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QVersionNumber>
 
 QString identifierFromName(QString name)
 {
@@ -188,9 +189,17 @@ bool ProjectManifest::validate(QString *error) const
             *error = QStringLiteral("project.name must not be empty");
         return false;
     }
-    if (m_qtVersion != QStringLiteral("6.11")) {
-        if (error)
-            *error = QStringLiteral("loom v1 requires qt.version \"6.11\"");
+    // A minimum, not an exact match: CMake asks for Qt 6.11 *or newer* and the
+    // documentation promises the same. Requiring equality here would have made
+    // every existing loom.json invalid the day 6.12 shipped, with no upgrade
+    // path -- the project's own tool rejecting a toolchain its build accepts.
+    const auto declared = QVersionNumber::fromString(m_qtVersion);
+    static const QVersionNumber minimumQt(6, 11);
+    if (declared.isNull() || declared < minimumQt) {
+        if (error) {
+            *error = QStringLiteral("loom requires qt.version 6.11 or newer, not \"%1\"")
+                         .arg(m_qtVersion);
+        }
         return false;
     }
     if (m_applications.isEmpty()) {

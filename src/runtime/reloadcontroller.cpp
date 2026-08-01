@@ -635,23 +635,18 @@ void ReloadController::handleSocketData()
     }
 }
 
-bool ReloadController::applyDesign(const QByteArray &json, QString *error)
+bool ReloadController::applyDesign(const QByteArray &payload, QString *error)
 {
-    if (json.size() > MaximumDesignSize) {
-        if (error) {
-            *error = QStringLiteral("Design tokens are %1 bytes, over the %2 byte limit")
-                         .arg(json.size())
-                         .arg(MaximumDesignSize);
-        }
+    Design design;
+    if (!decodeDesign(payload, design, error))
         return false;
-    }
 
     // Parsed here rather than handed straight to the loader so a malformed file
     // is rejected before anything is touched. The scene is never involved:
     // tokens live in process-wide C++ that outlives every reload, so this
     // repaints the running window instead of rebuilding it.
     QJsonParseError parseError;
-    const auto document = QJsonDocument::fromJson(json, &parseError);
+    const auto document = QJsonDocument::fromJson(design.tokens, &parseError);
     if (document.isNull() || !document.isObject()) {
         if (error) {
             *error =
@@ -662,29 +657,11 @@ bool ReloadController::applyDesign(const QByteArray &json, QString *error)
         return false;
     }
 
-    if (!ensureCacheDirectory(error))
-        return false;
-    // loom::reloadConfig takes a path because a config's iconRoot resolves
-    // relative to the file it came from. Writing it into this controller's own
-    // cache directory keeps that behaviour without touching the project.
-    const auto path =
-        QDir(m_cacheDirectory->path()).filePath(QStringLiteral("design.json"));
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        if (error)
-            *error =
-                QStringLiteral("Cannot stage design tokens: %1").arg(file.errorString());
-        return false;
-    }
-    if (file.write(json) != json.size() || !file.flush()) {
-        if (error)
-            *error =
-                QStringLiteral("Cannot write design tokens: %1").arg(file.errorString());
-        return false;
-    }
-    file.close();
-
-    if (!loom::reloadConfig(path)) {
+    // Applied from memory against the project path the server reported. Staging
+    // the bytes to a file and reloading from there resolved a relative
+    // `iconRoot` against the staging directory, which pointed every icon at a
+    // path nothing can open -- working in a compiled build, broken under dev.
+    if (!loom::reloadConfigData(design.tokens, design.path)) {
         if (error)
             *error = QStringLiteral("Design tokens could not be applied");
         return false;

@@ -85,7 +85,7 @@ path.
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `LOOM_BUILD_TESTS` | ON | unit + e2e tests (`ctest -LE e2e` / `-L e2e`) |
-| `LOOM_BUILD_E2E_TESTS` | ON | the scaffold-then-compile tier specifically |
+| `LOOM_BUILD_E2E_TESTS` | ON | the tests that run a compiler over generated output. OFF still leaves `loom_qmllint` and `loom_qmltypes_completeness` under `-L e2e`; neither scaffolds a project |
 | `LOOM_BUILD_CLI` | ON | the `loom` command. OFF builds a styling-only package |
 | `LOOM_BUILD_EXAMPLES` | ON | the gallery app (`build/examples/gallery/loomgallery`) |
 | `LOOM_WERROR` | OFF | warnings as errors |

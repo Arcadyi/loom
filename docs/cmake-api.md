@@ -1,7 +1,7 @@
 # CMake API
 
 loom installs a CMake package. `find_package(loom CONFIG REQUIRED)` brings in three
-functions and two imported targets.
+functions and four imported targets.
 
 Generated projects call `loom_add_application` and `loom_install_application`.
 Existing projects that already have their own `qt_add_qml_module` call
@@ -11,6 +11,8 @@ Imported targets:
 
 | Target | Contents |
 | --- | --- |
+| `loom::loom` | The styling library: the token registry and the `Lo.style` attached type. Static. |
+| `loom::loomplugin` | The `Loom` QML module's static plugin. Link it alongside `loom::loom` and `import Loom` resolves with no import-path setup. |
 | `loom::Runtime` | The QML engine bootstrap and the development reload controller. Static. |
 | `loom::Protocol` | The framed transport and bundle validation. Static; a dependency of `loom::Runtime`. |
 
@@ -179,9 +181,9 @@ Application QML is compiled into the executable by `qt_add_qml_module`, so the r
 single self-contained binary apart from Qt itself.
 
 **Qt is not bundled**, and there is no option to bundle it. See
-[deploying](getting-started.md#deploying) for the measurements behind that, and use
-`linuxdeploy` or `appimage-builder` over the installed prefix if you need a self-contained
-artifact.
+[platforms.md](platforms.md#why-qt-is-not-bundled) for the measurements behind that, and
+use `linuxdeploy` or `appimage-builder` over the installed prefix if you need a
+self-contained artifact.
 
 ---
 

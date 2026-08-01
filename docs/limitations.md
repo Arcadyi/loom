@@ -64,9 +64,15 @@ flicker-critical properties.
   token access but no `hover:`/`pressed:`.
 - `hover:` never fires on touchscreens (there is no cursor); design
   touch-first with `pressed:`.
-- The state watcher and shadow are real child/sibling items — code walking
-  `children` or `childItems()` will see them.
-- One breakpoint prefix per class; the last one wins.
+- The state watcher and shadow are real child items stacked at `z: -1` — code
+  walking `children` or `childItems()` will see them. They are children rather
+  than siblings so that a positioner or Layout never lays them out as content
+  of their own; the cost is that a target with `clip: true` clips its own
+  shadow.
+- One breakpoint prefix per class; the last one wins. Across classes,
+  breakpoints and states rank on separate axes: a state variant outranks a
+  breakpoint variant, so `hover:bg-accent` still applies at `md:` widths, and
+  `md:hover:` outranks both.
 - `Loom.*.value()` runtime lookups are snapshots — they do not re-evaluate on
   theme switches (typed properties and utility strings do).
 - Control icons ignore `icon.color` when the source is a file. Qt tints an

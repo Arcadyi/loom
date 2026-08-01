@@ -105,7 +105,7 @@ The vocabulary as JSON, for editor integrations:
 
 ```json
 {
-  "version": "0.2.0",
+  "version": "0.2.1",
   "theme": "light",
   "variants": ["dark", "disabled", "focus", "hover", "lg", "md", "pressed", "sm", "xl"],
   "classes": ["bg-accent", "bg-amber-100", "...", "w-full"],

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QString>
 
 // Loads a Loom JSON config (the tailwind.config equivalent) into the token
@@ -17,3 +18,9 @@ bool loomLoadConfigFile(const QString &filePath);
 // fails to parse leaves the previous tokens in place rather than resetting to
 // the built-ins: keeping the last good set beats dropping the project's own.
 bool loomReloadConfigFile(const QString &filePath);
+
+// Same as loomReloadConfigFile, but for a document that is not on disk at the
+// location it belongs to: `loom dev` receives the design tokens over the wire.
+// A relative `iconRoot` resolves against `basePath` -- the design file's path
+// in the *project* -- rather than against wherever the bytes were staged.
+bool loomReloadConfigData(const QByteArray &json, const QString &basePath);

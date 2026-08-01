@@ -2,6 +2,7 @@
 
 #include <QString>
 #include <QVector>
+#include <bit>
 #include <memory>
 
 // Compiled form of a `Lo.style` utility string. Rules store token *identities*
@@ -63,11 +64,23 @@ enum LoomState : quint8 {
     LoomDarkState = 16,
 };
 
+// Which rule wins when two of them set the same property. Breakpoints and
+// states are separate axes, and states are the stronger one: a state variant is
+// a transient condition that should override the static appearance at any
+// width, so `hover:` beats `md:` while `md:hover:` beats both. Ranking the two
+// on a single count of variant prefixes made the later-written class win every
+// tie, which silently killed every `hover:` rule as soon as a `md:` rule
+// existed for the same property.
+constexpr quint8 loomSpecificity(quint8 minBreakpoint, quint8 stateMask)
+{
+    return quint8((std::popcount(stateMask) << 3) | minBreakpoint);
+}
+
 struct LoomStyleRule {
     LoomUtility utility;
     quint8 minBreakpoint = 0;  // 0 = base, 1..4 = sm..xl
     quint8 stateMask = 0;      // LoomState bits that must all be active
-    quint8 variantCount = 0;   // specificity: number of variant prefixes
+    quint8 specificity = 0;    // loomSpecificity(minBreakpoint, stateMask)
     QString key;               // registry key for token-valued utilities
     double literal = 0;        // numeric literal (border width)
     quint8 alphaPercent = 100; // `bg-surface/70` colour-opacity modifier
@@ -82,6 +95,12 @@ public:
     bool usesParentSize = false; // w-full / h-full
     bool usesMargins = false;    // m-* re-routes between anchors and Layout
 };
+
+// The utility family a rule came from, spelled the way a user writes it, for
+// diagnostics. A switch rather than Q_ENUM: -Wswitch then makes a missing case
+// a build error, where Q_ENUM would quietly report an empty name -- which is
+// the failure this exists to fix.
+const char *loomUtilityName(LoomUtility utility);
 
 namespace LoomStyleCompiler {
 
