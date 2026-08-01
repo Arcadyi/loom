@@ -86,7 +86,7 @@ Then `import Loom` in QML. No import-path setup is needed: the module registers
 itself through the static plugin.
 
 For hot reload as well, use `loom_add_application` — see
-[docs/cmake.md](docs/tooling/cmake.md), or just start from `loom new`.
+[docs/tooling/cmake.md](docs/tooling/cmake.md), or just start from `loom new`.
 
 ## Documentation
 

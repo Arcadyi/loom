@@ -79,7 +79,49 @@ flicker-critical properties.
   icon item only while it is a mask, which a `.svg`/`.png` source never is, so
   the color is accepted and silently dropped — as is `palette.buttonText`,
   which feeds the same path. Use
-  [`Loom.icon()`](../styling/tokens.md#icons--loomicon) to recolour the pixels instead.
+  [`Loom.icon()`](tokens.md#icons--loomicon) to recolour the pixels instead.
 - Qt's SVG renderer does not implement `currentColor`: it resolves to black
   rather than to an inherited color, so icon sets that stroke with it (Lucide,
   Feather, Bootstrap Icons) render black until something recolours them.
+
+## Vocabulary Tailwind has and loom does not
+
+Worth knowing before you reach for a class that is not there. None of these are
+in the 1550, and a string naming one is reported as unknown.
+
+| Missing | What to do instead |
+| --- | --- |
+| **Layout and position** — `flex`, `grid`, `absolute`, `inset-*`, `items-*`, `justify-*`, `self-*`, `z-*` | layout is QML's job: anchors, positioners, `QtQuick.Layouts`. Loom styles what is laid out |
+| **Sizing constraints** — `min-w-*`, `max-w-*`, fractional `w-1/2`, `aspect-*` | `Layout.minimumWidth`/`maximumWidth`, or bind `width` |
+| **Arbitrary values** — `p-[13]`, `bg-[#7c5cff]` | add the value to the [design token file](configuration.md), or use `Loom.space.*` in a binding |
+| **Negative values** — `-mt-4` | write the anchor margin directly |
+| **Text layout** — `text-center`, `truncate`, `line-clamp-*`, `uppercase`, `leading-*` alone | the underlying Text properties: `horizontalAlignment`, `elide`, `maximumLineCount`, `font.capitalization`, `lineHeight` |
+| **Font family** — `font-sans`, `font-mono` | `font.family`. There is no font token in loom at all |
+| **Transforms** — `rotate-*`, `scale-*`, `translate-*`, `origin-*` | `rotation`, `scale`, `transform` |
+| **Overflow and cursor** — `overflow-hidden`, `cursor-pointer` | `clip: true`; a `HoverHandler` with `cursorShape` |
+| **Rings, gradients, filters** — `ring-*`, `bg-gradient-*`, `blur-*` | a sibling Rectangle; `Gradient`; `QtQuick.Effects.MultiEffect` |
+| **More variants** — `group-hover:`, `first:`, `last:`, `checked:`, `max-md:`, `not-*`, `rtl:` | bind the style string to the condition, as in [the cookbook](cookbook.md#styling-quick-controls) |
+| **`@apply` / named class sets** | no component layer exists; factor the QML into a component instead |
+
+The general shape: loom covers **appearance**, not **layout**, and offers no
+escape hatch for values outside the token scales. Where a utility is missing,
+the typed `Loom.*` API and ordinary QML properties are the intended answer, not
+a workaround.
+
+## Tooling limitations
+
+- **Only `desktop` builds.** `--target android|ios|embedded` is accepted and
+  then rejected: only `loom doctor` inspects those toolchains today. See
+  [../tooling/platforms.md](../tooling/platforms.md).
+- **Linux is the validated platform.** Windows and macOS paths exist in the
+  code and are not covered by CI.
+- **`loom deploy` does not bundle Qt**, and has no option to. See
+  [why](../tooling/platforms.md#why-qt-is-not-bundled).
+- **The class checker reads string literals**, so it cannot see a class assembled
+  at run time, and it reports any string literal inside a `Lo.style` binding —
+  including one that is not a class at all. See
+  [../tooling/cli.md](../tooling/cli.md).
+- **No editor completion inside `Lo.style`** in any editor today, though
+  `loom style --catalogue` emits the data an integration would need.
+- **One application per build directory** for `loom dev`; a multi-application
+  project selects with `--app`.

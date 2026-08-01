@@ -2,8 +2,18 @@
 
 ## 0.2.1
 
-A correctness release. Every item below is a bug that was live in 0.2.0, most of
-them in features the documentation already promised worked.
+A correctness release, plus a documentation rewrite. Every fix below is a bug
+that was live in 0.2.0, most of them in features the documentation already
+promised worked.
+
+**`ProtocolVersion` is now 2, so rebuild your application.** An application
+built against 0.2.0 fails the handshake against a 0.2.1 `loom dev`, by name,
+rather than reloading QML fine and then failing confusingly on the first design
+save. See [docs/reference/upgrading.md](docs/reference/upgrading.md).
+
+**Two behaviour changes worth checking**: specificity now ranks states above
+breakpoints, and the managed shadow became a child of its target rather than a
+sibling. Both are described under Styling below and in the upgrade guide.
 
 ### Styling
 
@@ -49,7 +59,10 @@ them in features the documentation already promised worked.
   relative `iconRoot` resolved against the staging path — every icon in a
   project using one broke on the first design save under `loom dev`, while
   working in a compiled build. The `Design` frame now carries the document's
-  path in the project, and the bytes never reach the filesystem.
+  path in the project, and the bytes never reach the filesystem. Reshaping that
+  frame is what took **`ProtocolVersion` to 2**: a mismatched pair is now told
+  so at the handshake instead of failing later with a parse error on one message
+  type.
 - **`loom.json` edits take effect.** The manifest was captured once at startup
   with no way to update it, so editing `qmlRoots`, `assetRoots`, `entry` or
   `design` rebuilt and restarted the application while the server went on
@@ -64,7 +77,7 @@ them in features the documentation already promised worked.
   `find_package(Qt6 6.11)` and the documentation. Requiring equality would have
   invalidated every existing manifest the day 6.12 shipped.
 
-### Build and documentation
+### Build
 
 - **The JSON-schema gate actually runs.** `loom_schema` skipped — reporting a
   pass — when `jsonschema` was missing, and CI never installed it while
@@ -72,16 +85,42 @@ them in features the documentation already promised worked.
   new `LOOM_STRICT_SCHEMA_TEST=ON`, which turns the skip into a failure.
 - `LOOM_BUILD_E2E_TESTS=OFF` no longer compiles a full consumer project:
   `loom_e2e_consume` was registered outside the guard.
-- `docs/reference/protocol.md` documents `MessageType::Design`, its payload and its size
-  cap — the headline 0.2.0 feature was missing from the wire spec entirely — and
-  the `ReloadResult` example carries the `kind` field the server switches on.
+- **Two new tests close the gap the documentation sat in.** `loom_docs_style`
+  runs the real class checker over every QML block in the documentation, so a
+  class the docs promise cannot quietly stop existing; `loom_gallery_style`
+  points it at the gallery's own 61 `Lo.style` literals, which nothing checked
+  before.
+
+### Documentation
+
+Reorganised into `docs/styling/`, `docs/tooling/` and `docs/reference/`, with an
+index at [docs/README.md](docs/README.md). Substantially rewritten rather than
+moved:
+
+- **[styling/utilities.md](docs/styling/utilities.md)** is now the complete
+  reference: every family with the property it writes, and every scale with its
+  values, so the numbers are no longer only in the source.
+- **New:** [styling/cookbook.md](docs/styling/cookbook.md) (complete components
+  and a migration path), [styling/performance.md](docs/styling/performance.md)
+  (what a styled item costs and the three patterns that make it expensive),
+  [reference/cpp-api.md](docs/reference/cpp-api.md) (the five public headers),
+  and [reference/upgrading.md](docs/reference/upgrading.md).
+- **[reference/architecture.md](docs/reference/architecture.md)** gained the
+  styling pipeline it never described — the registry, compilation, target
+  profiles, the apply pass, and why specificity has two axes.
+- **[tooling/platforms.md](docs/tooling/platforms.md)** now leads with a status
+  table. Android, iOS and embedded were written in a tense that read as though
+  they worked; only `loom doctor` supports them.
+- `MessageType::Design` is documented in the wire spec, with its payload and
+  size cap — the headline 0.2.0 feature was missing from it entirely — and the
+  `ReloadResult` example carries the `kind` field the server switches on.
 - Three cross-references pointed at a `getting-started.md#deploying` section
   that does not exist, for an explanation that lived only in a CMake comment.
   The measurements now have a home in
-  [docs/tooling/platforms.md](docs/tooling/platforms.md#why-qt-is-not-bundled).
-- `docs/tooling/cmake-api.md` lists all four exported targets, not two.
-- `docs/styling/utilities.md` no longer claims `Lo.style` re-asserts a property whose
-  value has not changed.
+  [tooling/platforms.md](docs/tooling/platforms.md#why-qt-is-not-bundled).
+- `cmake-api.md` lists all four exported targets, not two; `utilities.md` no
+  longer claims `Lo.style` re-asserts a property whose value has not changed;
+  `cli.md` documents that `--verbose` is accepted and ignored.
 
 ## 0.2.0
 

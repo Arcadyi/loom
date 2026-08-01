@@ -119,23 +119,49 @@ qml/Main.qml:44: unknown utility class 'bg-brnad-500'
 loom: 1 unknown class(es) in 1 file(s)
 ```
 
+## Adding states
+
+The reason to reach for a utility string rather than typed tokens is variants.
+Everything an interaction does to this card is one line:
+
+```qml
+import QtQuick
+import Loom
+
+Rectangle {
+    width: 200
+    height: 120
+    Lo.style: "bg-surface border border-outline rounded-lg"
+             + " hover:bg-surface-alt hover:border-accent"
+             + " transition-colors duration-150"
+}
+```
+
+No `MouseArea`, no `states` block, no `Behavior`. Loom attaches a hover source,
+and `transition-colors` animates the writes it makes.
+
+The same string carries responsive and theme variants — `md:rounded-xl`,
+`dark:border-slate-700` — and they compose in any order.
+
 ## Where to next
 
-**Styling**
+The full index is [README.md](README.md). The three that follow on directly
+from here:
 
-- [tokens.md](styling/tokens.md) — every typed scale
-- [utilities.md](styling/utilities.md) — the full `Lo.style` grammar
-- [theming.md](styling/theming.md) — semantic tokens and dark mode
-- [responsive.md](styling/responsive.md) — breakpoint variants
-- [states.md](styling/states.md) — hover, pressed, focus, disabled
-- [configuration.md](styling/configuration.md) — the design token file
-- [limitations.md](styling/limitations.md) — what utilities do on which types
+- **[styling/cookbook.md](styling/cookbook.md)** — complete components: buttons,
+  cards, forms, responsive pages, Quick Controls, and migrating a hand-styled
+  file.
+- **[styling/utilities.md](styling/utilities.md)** — every class, the property
+  it writes, and the scales behind every key.
+- **[tooling/cli.md](tooling/cli.md)** — every `loom` subcommand and flag.
 
-**Building and running**
+Then, as you need them:
 
-- [tooling.md](tooling/cli.md) — the `loom` command reference
-- [manifest.md](tooling/manifest.md) — `loom.json`
-- [cmake.md](tooling/cmake.md) — CMake integration and `loom_add_application`
-- [runtime-api.md](reference/runtime-api.md) — `loom::Application` and embedding
-- [architecture.md](reference/architecture.md) — how the dev server and reload work
-- [troubleshooting.md](tooling/troubleshooting.md) — when something does not reload
+| Question | Document |
+| --- | --- |
+| How do I theme this? | [styling/theming.md](styling/theming.md) |
+| What are my own colours called? | [styling/configuration.md](styling/configuration.md) |
+| Why did this utility do nothing? | [styling/limitations.md](styling/limitations.md) |
+| Why does nothing reload? | [tooling/troubleshooting.md](tooling/troubleshooting.md) |
+| How do I embed loom in my own engine? | [reference/runtime-api.md](reference/runtime-api.md) |
+| What does a styled item cost? | [styling/performance.md](styling/performance.md) |

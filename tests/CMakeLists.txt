@@ -163,6 +163,26 @@ if(TARGET loom_cli)
             "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/style-check"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_style_test.cmake"
     )
+    # The documentation names exact utility classes on nearly every page. This
+    # runs the real checker over every QML block in it, so a class the docs
+    # promise cannot quietly stop existing.
+    add_test(
+        NAME loom_docs_style
+        COMMAND "${CMAKE_COMMAND}"
+            "-DLOOM_EXE=$<TARGET_FILE:loom_cli>"
+            "-DDOCS_DIR=${CMAKE_SOURCE_DIR}/docs"
+            "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/docs-style"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/docs_style_test.cmake"
+    )
+    # The gallery is the framework's own showcase; it ships 61 Lo.style
+    # literals that nothing checked until now.
+    add_test(
+        NAME loom_gallery_style
+        COMMAND "${CMAKE_COMMAND}"
+            "-DLOOM_EXE=$<TARGET_FILE:loom_cli>"
+            "-DTARGET_DIR=${CMAKE_SOURCE_DIR}/examples/gallery/qml"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/paths_style_test.cmake"
+    )
 endif()
 
 # The end-to-end tests install loom to a throwaway prefix and drive the real

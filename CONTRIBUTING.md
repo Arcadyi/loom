@@ -45,6 +45,13 @@ failing, so locally it is optional. CI installs it and configures with
 `-DLOOM_STRICT_SCHEMA_TEST=ON`, which turns the skip into a failure — otherwise a gate
 that never runs reports a pass forever.
 
+**Documentation is tested.** `loom_docs_style` runs the real class checker over every
+` ```qml ` block in `docs/styling/`, `docs/reference/`, `docs/getting-started.md` and
+`docs/README.md`, so an example naming a class that does not exist fails the build.
+`docs/tooling/` is excluded because `cli.md` documents the checker itself and its
+examples are deliberately invalid. If you add a doc example that is *meant* to be
+rejected, put it under `docs/tooling/` or leave the fence untagged.
+
 There is **exactly one leak suppression**, and a second needs the same justification. A
 leaked QML root object allocates through Qt frames, so a broad `leak:libQt6` suppression
 hides the exact bug the sanitizer job exists to catch — measured: it turned a reproduced
@@ -132,7 +139,7 @@ and hot-reload tooling (the `loom` command).
 | `templates/app/` | What `loom new` generates, embedded as a Qt resource |
 | `examples/gallery/` | The `loomgallery` demo, and the fixture the qmllint test runs against |
 | `tests/` | Unit tests plus `.cmake` driver scripts for the CLI and end-to-end tests |
-| `docs/` | Reference documentation |
+| `docs/` | Documentation, in three sections: `styling/`, `tooling/`, `reference/`. Index at `docs/README.md` |
 
 The two halves meet in three places worth knowing about:
 

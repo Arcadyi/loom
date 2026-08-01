@@ -181,7 +181,7 @@ Application QML is compiled into the executable by `qt_add_qml_module`, so the r
 single self-contained binary apart from Qt itself.
 
 **Qt is not bundled**, and there is no option to bundle it. See
-[platforms.md](../tooling/platforms.md#why-qt-is-not-bundled) for the measurements behind that, and
+[platforms.md](platforms.md#why-qt-is-not-bundled) for the measurements behind that, and
 use `linuxdeploy` or `appimage-builder` over the installed prefix if you need a
 self-contained artifact.
 
