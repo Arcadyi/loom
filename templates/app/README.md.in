@@ -12,9 +12,36 @@ Edit `qml/Main.qml` while the application is running. QML, JavaScript, and asset
 changes reload in the existing process. C++ and build-system changes trigger an
 incremental rebuild and restart.
 
+## Project map
+
+```text
+qml/Main.qml                  application window and reload state
+qml/pages/HomePage.qml        first screen and responsive layout
+qml/components/FeatureCard.qml reusable starter component
+design/tokens.json            palette, themes, recipes, and lint policy
+src/main.cpp                  native application entry point
+tests/tst_smoke.cpp           fast CTest smoke target
+```
+
+The generated screen is deliberately made from ordinary project components,
+not a framework-owned demo. Replace `HomePage`, copy `FeatureCard`, or strip it
+back as the product takes shape.
+
+## CLion
+
+Open the project directory and let the initial CMake reload finish. The scaffold
+enables CLion's QML language server and language-server completion for the
+generated CMake profiles, and selects the Loom `qmlls` proxy from the
+installation that created this project. Normal Qt/QML completion and Loom
+completion inside `Lo.style` strings therefore use the same server.
+
+The generated `.idea` directory is machine-local and ignored by Git. If Loom or
+Qt moves, use **Settings | Languages & Frameworks | QML** to update the Qt tools
+directory, or regenerate the project-local settings with a current `loom new`.
+
 ## Styling with loom
 
-`qml/Main.qml` uses both of loom's layers:
+The starter QML uses both of loom's layers:
 
 ```qml
 import Loom

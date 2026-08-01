@@ -1,0 +1,183 @@
+pragma ComponentBehavior: Bound
+import "../components"
+import Loom
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+
+Item {
+    id: page
+
+    property int count: 0
+    signal incrementRequested
+
+    Flickable {
+        id: viewport
+
+        anchors.fill: parent
+        boundsBehavior: Flickable.StopAtBounds
+        clip: true
+        contentHeight: content.implicitHeight + 2 * Loom.space.s6
+        contentWidth: width
+
+        ScrollBar.vertical: ScrollBar {}
+
+        ColumnLayout {
+            id: content
+
+            readonly property real edge: viewport.width < Loom.breakpoint.md
+                ? Loom.space.s4 : Loom.space.s6
+
+            x: Math.max(edge, (viewport.width - width) / 2)
+            y: Loom.space.s6
+            width: Math.min(1080, viewport.width - 2 * edge)
+            spacing: Loom.space.s5
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Loom.space.s3
+
+                Rectangle {
+                    Lo.style: "bg-accent rounded-lg"
+                    implicitWidth: 40
+                    implicitHeight: 40
+
+                    Text {
+                        Lo.style: "text-on-accent text-lg font-semibold center"
+                        text: qsTr("L")
+                    }
+                }
+
+                ColumnLayout {
+                    spacing: 0
+
+                    Text {
+                        Lo.style: "text-foreground text-lg font-semibold"
+                        text: qsTr("@LOOM_PROJECT_NAME@")
+                    }
+
+                    Text {
+                        Lo.style: "text-muted text-xs"
+                        text: qsTr("Built with Qt and Loom")
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    text: Loom.dark ? qsTr("Light mode") : qsTr("Dark mode")
+                    onClicked: Loom.theme = Loom.dark ? "light" : "dark"
+                }
+            }
+
+            Rectangle {
+                id: hero
+
+                Lo.style: "@card"
+                Layout.fillWidth: true
+                implicitHeight: heroContent.implicitHeight + 2 * Loom.space.s6
+
+                ColumnLayout {
+                    id: heroContent
+
+                    anchors.fill: parent
+                    anchors.margins: Loom.space.s6
+                    spacing: Loom.space.s3
+
+                    Text {
+                        Lo.style: "text-accent text-sm font-semibold"
+                        text: qsTr("YOUR STARTING POINT")
+                    }
+
+                    Text {
+                        Lo.style: "text-foreground text-3xl font-semibold"
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: qsTr("Build the product, not the setup")
+                    }
+
+                    Text {
+                        Lo.style: "text-muted text-lg"
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: qsTr("This starter already has responsive structure, "
+                            + "design tokens, hot reload, tests, and editor tooling.")
+                    }
+
+                    Button {
+                        Layout.topMargin: Loom.space.s2
+                        text: qsTr("Count: %1").arg(page.count)
+                        onClicked: page.incrementRequested()
+                    }
+                }
+            }
+
+            Text {
+                Lo.style: "text-foreground text-xl font-semibold"
+                Layout.topMargin: Loom.space.s2
+                text: qsTr("What is ready")
+            }
+
+            GridLayout {
+                Layout.fillWidth: true
+                columns: width >= Loom.breakpoint.md ? 3 : 1
+                columnSpacing: Loom.space.s4
+                rowSpacing: Loom.space.s4
+
+                FeatureCard {
+                    Layout.fillWidth: true
+                    description: qsTr("Edit any QML file and keep application state "
+                        + "while the scene reloads.")
+                    eyebrow: qsTr("Fast loop")
+                    heading: qsTr("Hot reload")
+                }
+
+                FeatureCard {
+                    Layout.fillWidth: true
+                    accent: Loom.color.warning
+                    description: qsTr("Use typed Loom tokens or utility classes backed "
+                        + "by design/tokens.json.")
+                    eyebrow: qsTr("One system")
+                    heading: qsTr("Design tokens")
+                }
+
+                FeatureCard {
+                    Layout.fillWidth: true
+                    accent: Loom.color.success
+                    description: qsTr("CMake presets, qmllint, smoke tests, formatting, "
+                        + "and CLion completion are pre-wired.")
+                    eyebrow: qsTr("Tooling")
+                    heading: qsTr("Ready to ship")
+                }
+            }
+
+            Rectangle {
+                Lo.style: "bg-surface-alt border border-outline rounded-lg"
+                Layout.fillWidth: true
+                implicitHeight: nextSteps.implicitHeight + 2 * Loom.space.s5
+
+                ColumnLayout {
+                    id: nextSteps
+
+                    anchors.fill: parent
+                    anchors.margins: Loom.space.s5
+                    spacing: Loom.space.s2
+
+                    Text {
+                        Lo.style: "text-foreground text-sm font-semibold"
+                        text: qsTr("Make it yours")
+                    }
+
+                    Text {
+                        Lo.style: "text-muted text-sm"
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: qsTr("Start in qml/pages/HomePage.qml, extract reusable "
+                            + "pieces under qml/components, and tune your palette in "
+                            + "design/tokens.json.")
+                    }
+                }
+            }
+        }
+    }
+}

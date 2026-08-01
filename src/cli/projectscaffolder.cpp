@@ -50,6 +50,32 @@ QString ownCmakePackageDirectory()
     return {};
 }
 
+// CLion only accepts a QML language-server executable named `qmlls`; it cannot
+// express `loom lsp` plus arguments. Locate the sibling compatibility shim so
+// a generated project can select it before its first editor session. Like the
+// CMake hint above, the setting is useful only while this installation exists.
+QString ownQmllsShimDirectory()
+{
+    const QDir binaryDirectory(QCoreApplication::applicationDirPath());
+    const QStringList candidates{
+        // Build-tree CLI: build/loom and build/qmlls.
+        binaryDirectory.absolutePath(),
+        // Installed CLI: <prefix>/bin/loom and
+        // <prefix>/<libexec>/loom/qmlls.
+        QDir::cleanPath(binaryDirectory.filePath(
+            QStringLiteral("../") + QStringLiteral(LOOM_RELATIVE_QMLLS_SHIM_DIR))),
+    };
+    auto executable = QStringLiteral("qmlls");
+#ifdef Q_OS_WIN
+    executable += QStringLiteral(".exe");
+#endif
+    for (const auto &candidate : candidates) {
+        if (QFileInfo(QDir(candidate).filePath(executable)).isExecutable())
+            return QDir::fromNativeSeparators(candidate);
+    }
+    return {};
+}
+
 // The value is substituted into a CMake double-quoted argument. Paths normally
 // contain none of these characters, but escaping them makes a custom install
 // prefix data rather than generated CMake syntax.
@@ -60,6 +86,17 @@ QString cmakeStringLiteral(QString value)
     value.replace(QLatin1Char('"'), QLatin1String("\\\""));
     value.replace(QLatin1Char('$'), QLatin1String("\\$"));
     value.replace(QLatin1Char(';'), QLatin1String("\\;"));
+    return value;
+}
+
+QString xmlAttributeLiteral(QString value)
+{
+    value = QDir::fromNativeSeparators(value);
+    value.replace(QLatin1Char('&'), QLatin1String("&amp;"));
+    value.replace(QLatin1Char('<'), QLatin1String("&lt;"));
+    value.replace(QLatin1Char('>'), QLatin1String("&gt;"));
+    value.replace(QLatin1Char('"'), QLatin1String("&quot;"));
+    value.replace(QLatin1Char('\''), QLatin1String("&apos;"));
     return value;
 }
 
@@ -218,6 +255,9 @@ bool ProjectScaffolder::create(
         Replacement{
             QStringLiteral("@LOOM_CMAKE_PACKAGE_DIR@"),
             cmakePathExpression(ownCmakePackageDirectory())},
+        Replacement{
+            QStringLiteral("@LOOM_QMLLS_SHIM_DIR@"),
+            xmlAttributeLiteral(ownQmllsShimDirectory())},
     };
 
     QStringList skipped;

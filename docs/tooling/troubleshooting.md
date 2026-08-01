@@ -50,6 +50,28 @@ configures successfully, the QML warning should disappear as well.
 
 ---
 
+## CLion has no QML or `Lo.style` completion
+
+Projects created by a current `loom new` include ignored local settings for
+CLion's Debug, Release, and generated preset profiles. They enable the QML
+language server, enable language-server completion, and select the `qmlls`
+proxy from the Loom installation that created the project. Let the first CMake
+reload finish: CLion passes that build directory to the proxy, and Qt's server
+needs its generated module metadata before it can complete project types.
+
+For an older project, open **Settings | Languages & Frameworks | QML**, enable
+both QML language-server options, and set the Qt tools directory to the folder
+containing Loom's installed compatibility proxy. `cmake --install` prints it as
+`CLion qmlls proxy: ...`; its usual Linux location is
+`<prefix>/libexec/loom/qmlls`.
+
+If Qt moved after the project was generated, update that tools directory or
+delete the ignored `.idea` directory and reopen the project before configuring
+it again. Set `LOOM_QMLLS_PATH` in the CLion toolchain environment only when the
+proxy must launch a different Qt installation's real `qmlls`.
+
+---
+
 ## The application builds and runs but never hot-reloads
 
 Check the configuration. `Release`, `RelWithDebInfo` and `MinSizeRel` all define `NDEBUG`,

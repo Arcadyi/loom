@@ -1,0 +1,45 @@
+pragma ComponentBehavior: Bound
+import Loom
+import QtQuick
+
+Rectangle {
+    id: card
+
+    required property string description
+    required property string eyebrow
+    required property string heading
+    property color accent: Loom.color.accent
+
+    Lo.style: "@card hover:bg-surface-alt transition-colors"
+    implicitHeight: 176
+
+    Column {
+        anchors.fill: parent
+        anchors.margins: Loom.space.s5
+        spacing: Loom.space.s3
+
+        Rectangle {
+            color: card.accent
+            implicitWidth: 36
+            implicitHeight: 5
+            radius: height / 2
+        }
+
+        Text {
+            Lo.style: "text-accent text-xs font-semibold"
+            text: card.eyebrow.toUpperCase()
+        }
+
+        Text {
+            Lo.style: "text-foreground text-lg font-semibold"
+            text: card.heading
+        }
+
+        Text {
+            Lo.style: "text-muted text-sm"
+            width: parent.width
+            wrapMode: Text.WordWrap
+            text: card.description
+        }
+    }
+}

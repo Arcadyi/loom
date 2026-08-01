@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CLion looks for qmlls inside its per-profile Qt tools directory. Loom records
+  the compatibility proxy that belongs to the generator; CLion still discovers
+  the actual Qt/QML roots from the successful CMake configure.
+-->
+<project version="4">
+  <component name="QtSettings">
+    <option name="myCurrentProfile" value="Debug" />
+    <option name="mySettingsPerProfile">
+      <map>
+        <entry key="Debug">
+          <value>
+            <PerProfileState>
+              <option name="myCustomQtBinPath" value="@LOOM_QMLLS_SHIM_DIR@" />
+            </PerProfileState>
+          </value>
+        </entry>
+        <entry key="debug">
+          <value>
+            <PerProfileState>
+              <option name="myCustomQtBinPath" value="@LOOM_QMLLS_SHIM_DIR@" />
+            </PerProfileState>
+          </value>
+        </entry>
+        <entry key="Release">
+          <value>
+            <PerProfileState>
+              <option name="myCustomQtBinPath" value="@LOOM_QMLLS_SHIM_DIR@" />
+            </PerProfileState>
+          </value>
+        </entry>
+        <entry key="release">
+          <value>
+            <PerProfileState>
+              <option name="myCustomQtBinPath" value="@LOOM_QMLLS_SHIM_DIR@" />
+            </PerProfileState>
+          </value>
+        </entry>
+        <entry key="relwithdebinfo">
+          <value>
+            <PerProfileState>
+              <option name="myCustomQtBinPath" value="@LOOM_QMLLS_SHIM_DIR@" />
+            </PerProfileState>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+</project>

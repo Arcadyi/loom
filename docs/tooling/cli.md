@@ -57,7 +57,14 @@ loom new <name> [--org dev.example] [--directory path] [--ci github|none]
 
 Scaffolds a complete, buildable, loom-styled application: `CMakeLists.txt`,
 `CMakePresets.json`, `loom.json`, a design token file, `src/main.cpp`,
-`qml/Main.qml`, a smoke test, `.gitignore` and `.clang-format`.
+`qml/Main.qml`, a responsive starter page, a reusable component, a smoke test,
+`.gitignore` and `.clang-format`.
+
+It also seeds ignored, machine-local CLion settings that enable the QML
+language server and language-server completion for the generated CMake
+profiles. When the generator's `qmlls` compatibility proxy is available, the
+settings select it so ordinary QML and Loom `Lo.style` completions work through
+the same server after the first CMake reload.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -279,10 +286,16 @@ Loom installation also provides a thin compatibility executable at:
 
 On a normal Linux `/usr/local` installation that is
 `/usr/local/libexec/loom/qmlls`. The install command prints the exact path as
-`CLion qmlls proxy: ...`. Point CLion's QML language-server/tool path at that
-executable (or its containing directory, depending on the CLion version), then
-enable both **Enable QML language server** and **Use completion from QML
-language server** under **Settings | Languages & Frameworks | QML**.
+`CLion qmlls proxy: ...`.
+
+`loom new` writes ignored, local `.idea` settings that select this directory
+and enable both **Enable QML language server** and **Use completion from QML
+language server** for its generated profiles. Open the directory and let CMake
+reload; no global CLion setting is needed for that new project.
+
+For a project created by an older Loom release, point CLion's QML tools path at
+the compatibility executable's containing directory, then enable those two
+options under **Settings | Languages & Frameworks | QML**.
 
 The compatibility executable accepts every argument CLion normally gives
 `qmlls` and forwards it unchanged. It then locates Qt's real server using the

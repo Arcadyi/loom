@@ -110,6 +110,14 @@ loom_e2e_run("loom build"
     WORKING_DIRECTORY "${project_dir}"
 )
 
+# The richer scaffold has multiple QML files and relative directory imports.
+# Compile and style-check exactly what a user opens in the editor so a pretty
+# starter cannot silently ship with broken qmlls/qmllint metadata.
+loom_e2e_run("loom lint"
+    COMMAND "${loom_exe}" lint
+    WORKING_DIRECTORY "${project_dir}"
+)
+
 # The bin/ layout is a contract, not an implementation detail: `loom dev`
 # resolves the executable from exactly this path.
 set(executable "${project_dir}/.loom/build/desktop-debug/bin/${APP_NAME}")

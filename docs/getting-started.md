@@ -43,12 +43,19 @@ manifest, a design token file, and CI-ready CMake:
 
 ```
 hello/
-├── loom.json            manifest: applications, and the design file below
-├── design/tokens.json   your palette, spacing, breakpoints and themes
-├── qml/Main.qml         import Loom, styled with Lo.style
-├── src/main.cpp         loom::Application, ~10 lines
-└── tests/tst_smoke.cpp
+├── loom.json                       applications and design manifest
+├── design/tokens.json              palette, breakpoints and themes
+├── qml/Main.qml                    window and hot-reload state
+├── qml/pages/HomePage.qml          responsive starter screen
+├── qml/components/FeatureCard.qml  first reusable component
+├── src/main.cpp                    native application entry point
+└── tests/tst_smoke.cpp             CTest smoke target
 ```
+
+CLion users can open the directory directly. The scaffold's ignored local IDE
+settings enable QML language-server completion and select Loom's `qmlls` proxy;
+let the initial CMake reload finish so the server has the generated module
+metadata and build directory.
 
 `loom dev` builds it, runs it, and watches. Two things reload, differently:
 

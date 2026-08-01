@@ -197,6 +197,30 @@ set_target_properties(loom_runtime PROPERTIES
 loom_set_target_defaults(loom_runtime)
 
 if(LOOM_BUILD_CLI)
+    # Shared by the installed shim and by `loom new`, which records the exact
+    # proxy directory in local CLion settings. Define it before loom_cli_core's
+    # compile definitions rather than duplicating the install layout in C++.
+    set(LOOM_QMLLS_SHIM_INSTALL_DIR "${CMAKE_INSTALL_LIBEXECDIR}/loom")
+
+    # QLibraryInfo::BinariesPath is not enough on distributions that install
+    # public Qt commands to /usr/bin but host tools such as qmlls below
+    # /usr/lib/qt6/bin. Preserve the exact host tool as a last-resort runtime
+    # hint; discovery still prefers explicit and current-machine settings.
+    set(loom_qt_host_prefix "${QT_HOST_PATH}")
+    if(loom_qt_host_prefix STREQUAL "")
+        set(loom_qt_host_prefix "${QT6_INSTALL_PREFIX}")
+    endif()
+    find_program(LOOM_QMLLS_FALLBACK_EXECUTABLE
+        NAMES qmlls qmlls.exe
+        HINTS
+            "${loom_qt_host_prefix}/${QT6_HOST_INFO_BINDIR}"
+            "${loom_qt_host_prefix}/bin"
+        NO_CACHE
+    )
+    if(NOT LOOM_QMLLS_FALLBACK_EXECUTABLE)
+        set(LOOM_QMLLS_FALLBACK_EXECUTABLE "")
+    endif()
+
     # Everything the CLI does lives here rather than in the executable, so tests
     # can link it. Compiling these sources a second time into each test binary
     # was why commands/buildrunner/scaffolder/doctor had no unit tests at all.
@@ -244,6 +268,8 @@ if(LOOM_BUILD_CLI)
         # Baked in because CMAKE_INSTALL_LIBDIR may be lib, lib64 or a
         # multiarch triplet.
         LOOM_RELATIVE_CMAKE_DIR="${CMAKE_INSTALL_LIBDIR}/cmake/loom"
+        LOOM_RELATIVE_QMLLS_SHIM_DIR="${LOOM_QMLLS_SHIM_INSTALL_DIR}"
+        LOOM_QMLLS_FALLBACK_PATH="${LOOM_QMLLS_FALLBACK_EXECUTABLE}"
     )
     set_target_properties(loom_cli_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
     loom_set_target_defaults(loom_cli_core)
@@ -262,10 +288,14 @@ if(LOOM_BUILD_CLI)
             templates/app/.clang-format.in
             templates/app/.github/workflows/ci.yml.in
             templates/app/.gitignore.in
+            templates/app/.idea/QtSettings.xml.in
+            templates/app/.idea/qmlSettings.xml.in
             templates/app/CMakeLists.txt.in
             templates/app/CMakePresets.json.in
             templates/app/design/tokens.json.in
+            templates/app/qml/components/FeatureCard.qml.in
             templates/app/qml/Main.qml.in
+            templates/app/qml/pages/HomePage.qml.in
             templates/app/README.md.in
             templates/app/src/main.cpp.in
             templates/app/tests/tst_smoke.cpp.in
@@ -287,7 +317,6 @@ if(LOOM_BUILD_CLI)
     target_link_libraries(loom_qmlls_shim PRIVATE loom_cli_core)
     loom_set_target_defaults(loom_qmlls_shim)
 
-    set(LOOM_QMLLS_SHIM_INSTALL_DIR "${CMAKE_INSTALL_LIBEXECDIR}/loom")
     if(UNIX)
         # qt_deploy_runtime_dependencies installs the CLI's Qt libraries under
         # <prefix>/<libdir>. The shim lives two levels deeper, so give it an

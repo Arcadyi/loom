@@ -21,8 +21,12 @@ foreach(required
     CMakePresets.json
     src/main.cpp
     qml/Main.qml
+    qml/components/FeatureCard.qml
+    qml/pages/HomePage.qml
     tests/tst_smoke.cpp
     assets
+    .idea/QtSettings.xml
+    .idea/qmlSettings.xml
 )
     if(NOT EXISTS "${TEST_DIR}/${required}")
         message(FATAL_ERROR "Generated project is missing ${required}")
@@ -82,8 +86,42 @@ if(NOT generated_cmake MATCHES "DESIGN")
 endif()
 
 file(READ "${TEST_DIR}/qml/Main.qml" generated_main)
-if(NOT generated_main MATCHES "import Loom" OR NOT generated_main MATCHES "Lo\\.style")
-    message(FATAL_ERROR "loom new did not generate a loom-styled Main.qml")
+file(READ "${TEST_DIR}/qml/pages/HomePage.qml" generated_home)
+file(READ "${TEST_DIR}/qml/components/FeatureCard.qml" generated_card)
+if(NOT generated_main MATCHES "import Loom"
+    OR NOT generated_home MATCHES "Lo\\.style"
+    OR NOT generated_home MATCHES "FeatureCard"
+    OR NOT generated_home MATCHES "Loom[.]breakpoint[.]md"
+    OR NOT generated_card MATCHES "required property string")
+    message(FATAL_ERROR
+        "loom new did not generate the responsive multi-file starter")
+endif()
+
+# CLion persists these switches per CMake profile. Without this local bootstrap
+# the QML language server and its completion provider are both disabled on the
+# first open, even though the generated CMake already exposes all import paths.
+file(READ "${TEST_DIR}/.idea/qmlSettings.xml" generated_qml_settings)
+if(NOT generated_qml_settings MATCHES "myLSPEnabled[^\n]+true"
+    OR NOT generated_qml_settings MATCHES "myLSPCompletionEnabled[^\n]+true"
+    OR NOT generated_qml_settings MATCHES "entry key=\"Debug\""
+    OR NOT generated_qml_settings MATCHES "entry key=\"debug\"")
+    message(FATAL_ERROR
+        "loom new did not enable CLion QML language-server completion")
+endif()
+
+file(READ "${TEST_DIR}/.idea/QtSettings.xml" generated_qt_settings)
+get_filename_component(loom_exe_dir "${LOOM_EXE}" DIRECTORY)
+set(expected_qmlls "${loom_exe_dir}/qmlls${CMAKE_EXECUTABLE_SUFFIX}")
+if(EXISTS "${expected_qmlls}")
+    file(TO_CMAKE_PATH "${loom_exe_dir}" expected_qmlls_dir)
+    string(FIND "${generated_qt_settings}"
+        "myCustomQtBinPath\" value=\"${expected_qmlls_dir}\""
+        qmlls_proxy_position)
+    if(qmlls_proxy_position EQUAL -1)
+        message(FATAL_ERROR
+            "loom new did not point CLion at its build-tree qmlls proxy:\n"
+            "${generated_qt_settings}")
+    endif()
 endif()
 
 # The design file the manifest and CMake both point at has to actually exist,
@@ -96,7 +134,11 @@ endif()
 # be checked above.
 foreach(generated_file
     CMakeLists.txt
+    .idea/QtSettings.xml
+    .idea/qmlSettings.xml
     qml/Main.qml
+    qml/components/FeatureCard.qml
+    qml/pages/HomePage.qml
     src/main.cpp
     README.md
     design/tokens.json
@@ -106,6 +148,13 @@ foreach(generated_file
         message(FATAL_ERROR "loom new left placeholders in ${generated_file}")
     endif()
 endforeach()
+
+file(READ "${TEST_DIR}/.gitignore" generated_gitignore)
+if(NOT generated_gitignore MATCHES "[.]idea/"
+    OR NOT generated_gitignore MATCHES "[.]qmlls[.]ini")
+    message(FATAL_ERROR
+        "loom new did not keep machine-local editor metadata out of Git")
+endif()
 
 set(CI_DIR "${TEST_DIR}-ci")
 file(REMOVE_RECURSE "${CI_DIR}")

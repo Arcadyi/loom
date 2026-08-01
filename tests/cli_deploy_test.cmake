@@ -49,6 +49,24 @@ if(NOT EXISTS "${qmlls_shim}")
         "prefix contains:\n${installed_files}")
 endif()
 
+# CLion launches the installed shim without LOOM_QMLLS_PATH. Starting it with
+# an empty protocol stream is a deterministic discovery smoke: the proxy must
+# locate Qt's real qmlls, start it, observe editor EOF, and exit successfully.
+file(WRITE "${WORK_DIR}/empty-lsp-input" "")
+execute_process(
+    COMMAND "${qmlls_shim}" -v -b "${WORK_DIR}"
+    INPUT_FILE "${WORK_DIR}/empty-lsp-input"
+    RESULT_VARIABLE qmlls_result
+    OUTPUT_VARIABLE qmlls_output
+    ERROR_VARIABLE qmlls_error
+    TIMEOUT 10
+)
+if(NOT qmlls_result EQUAL 0)
+    message(FATAL_ERROR
+        "installed CLion qmlls proxy could not discover/start Qt qmlls "
+        "(${qmlls_result}):\n${qmlls_output}\n${qmlls_error}")
+endif()
+
 deploy_run("loom new"
     COMMAND "${loom_exe}" new Deployable --org com.example --directory "${project_dir}"
 )

@@ -3,3 +3,8 @@ build/
 CMakeUserPresets.json
 compile_commands.json
 *.user
+**/.qmlls.ini
+
+# `loom new` seeds CLion's QML completion locally. Qt/tool paths are specific
+# to the machine that generated the project, so keep all IDE state untracked.
+.idea/

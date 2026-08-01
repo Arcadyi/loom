@@ -647,6 +647,8 @@ int Commands::createProject(const QStringList &arguments)
     QTextStream output(stdout);
     output << "Created " << name << " in " << destination << "\n\n  cd "
            << QDir::toNativeSeparators(destination) << "\n  loom doctor\n  loom dev\n";
+    output << "\nCLion: open the project directory and let CMake reload; QML "
+              "language-server completion is preconfigured locally.\n";
     if (options.githubWorkflow) {
         output << "\nThe generated .github/workflows/ci.yml has one step marked TODO: "
                   "loom has no published release to pin, so you must supply the "

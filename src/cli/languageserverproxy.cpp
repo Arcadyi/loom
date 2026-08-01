@@ -77,6 +77,24 @@ QString externalExecutable(const QString &path)
     return isCurrentExecutable(path) ? QString() : path;
 }
 
+QString executableReportedBy(const QStringList &toolNames, const QStringList &arguments)
+{
+    for (const auto &toolName : toolNames) {
+        const QString tool = QStandardPaths::findExecutable(toolName);
+        if (tool.isEmpty())
+            continue;
+        QProcess query;
+        query.start(tool, arguments);
+        if (!query.waitForFinished(3000) || query.exitCode() != 0)
+            continue;
+        const QString found =
+            executableAt(QString::fromLocal8Bit(query.readAllStandardOutput()).trimmed());
+        if (!externalExecutable(found).isEmpty())
+            return found;
+    }
+    return {};
+}
+
 QJsonArray completionItems(const QJsonValue &value)
 {
     if (value.isArray())
@@ -138,20 +156,27 @@ QString LanguageServerProxy::discoverQmlls(const QString &requested)
         return bundled;
     }
 
-    for (const auto &qtpathsName :
-         {QStringLiteral("qtpaths6"), QStringLiteral("qtpaths")}) {
-        const QString qtpaths = QStandardPaths::findExecutable(qtpathsName);
-        if (qtpaths.isEmpty())
-            continue;
-        QProcess query;
-        query.start(
-            qtpaths, {QStringLiteral("--query"), QStringLiteral("QT_INSTALL_BINS")});
-        if (!query.waitForFinished(3000) || query.exitCode() != 0)
-            continue;
-        const QString found =
-            executableAt(QString::fromLocal8Bit(query.readAllStandardOutput()).trimmed());
-        if (!externalExecutable(found).isEmpty())
-            return found;
+    if (const QString fromQtPaths = executableReportedBy(
+            {QStringLiteral("qtpaths6"), QStringLiteral("qtpaths")},
+            {QStringLiteral("--query"), QStringLiteral("QT_INSTALL_BINS")});
+        !fromQtPaths.isEmpty()) {
+        return fromQtPaths;
+    }
+    // qmake6 is commonly exposed in /usr/bin even when qtpaths6 is not.
+    if (const QString fromQmake = executableReportedBy(
+            {QStringLiteral("qmake6"), QStringLiteral("qmake")},
+            {QStringLiteral("-query"), QStringLiteral("QT_INSTALL_BINS")});
+        !fromQmake.isEmpty()) {
+        return fromQmake;
+    }
+    // Last resort before plain PATH: distributions can expose only Qt 5's
+    // qtpaths while keeping Qt 6 host tools in a private bindir. The path came
+    // from the Qt host package used to build Loom and is ignored once it no
+    // longer names an executable.
+    if (const QString configured =
+            externalExecutable(QStringLiteral(LOOM_QMLLS_FALLBACK_PATH));
+        QFileInfo(configured).isExecutable()) {
+        return configured;
     }
     return externalExecutable(QStandardPaths::findExecutable(QStringLiteral("qmlls")));
 }
