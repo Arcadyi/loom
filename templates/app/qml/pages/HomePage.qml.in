@@ -93,7 +93,7 @@ Item {
                         Lo.style: "text-foreground text-3xl font-semibold"
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
-                        text: qsTr("Build the product, not the setup")
+                        text: qsTr("Your loom app is ready")
                     }
 
                     Text {
