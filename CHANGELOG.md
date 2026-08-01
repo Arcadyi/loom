@@ -36,7 +36,7 @@ them in features the documentation already promised worked.
   warn, and the tier walk stops at the first threshold the window does not meet.
 - `hidden` is accepted as Tailwind spells it. It is a synonym for `invisible`
   today; Tailwind's `invisible` keeps the layout box, which Loom cannot yet
-  express — see [docs/limitations.md](docs/limitations.md).
+  express — see [docs/styling/limitations.md](docs/styling/limitations.md).
 - Warnings name the utility family and token (`utility bg-* (blue-500) is not
   supported on QQuickText`). They printed the rule's key alone, which is empty
   for every flag utility, so an unsupported `italic` read `utility  is not
@@ -72,15 +72,15 @@ them in features the documentation already promised worked.
   new `LOOM_STRICT_SCHEMA_TEST=ON`, which turns the skip into a failure.
 - `LOOM_BUILD_E2E_TESTS=OFF` no longer compiles a full consumer project:
   `loom_e2e_consume` was registered outside the guard.
-- `docs/protocol.md` documents `MessageType::Design`, its payload and its size
+- `docs/reference/protocol.md` documents `MessageType::Design`, its payload and its size
   cap — the headline 0.2.0 feature was missing from the wire spec entirely — and
   the `ReloadResult` example carries the `kind` field the server switches on.
 - Three cross-references pointed at a `getting-started.md#deploying` section
   that does not exist, for an explanation that lived only in a CMake comment.
   The measurements now have a home in
-  [docs/platforms.md](docs/platforms.md#why-qt-is-not-bundled).
-- `docs/cmake-api.md` lists all four exported targets, not two.
-- `docs/utilities.md` no longer claims `Lo.style` re-asserts a property whose
+  [docs/tooling/platforms.md](docs/tooling/platforms.md#why-qt-is-not-bundled).
+- `docs/tooling/cmake-api.md` lists all four exported targets, not two.
+- `docs/styling/utilities.md` no longer claims `Lo.style` re-asserts a property whose
   value has not changed.
 
 ## 0.2.0
@@ -166,7 +166,7 @@ Everything below shipped while loom was a styling library only.
   into CTest or CI), and `--dump-catalogue` emits the whole utility vocabulary
   as JSON for editor completion. Both link the library, so they speak exactly
   what the application does; `--config` widens them with project-defined
-  tokens. See [docs/tooling.md](docs/tooling.md).
+  tokens. See [docs/tooling.md](docs/tooling/cli.md).
 - **Catalogue API**: `<loom/loomcatalogue.h>` exposes `styleCatalogue()`,
   `styleCatalogueJson()` and `unknownStyleClasses()`. The token registry gained
   sorted key enumeration (`colorKeys()`, `spaceKeys()`, …) to back it. The

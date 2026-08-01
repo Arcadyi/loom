@@ -36,7 +36,7 @@ target_link_libraries(YourApp PRIVATE loom::loom loom::loomplugin)
 ```
 
 This is what `loom new` generates. See the function reference in
-[cmake-api.md](cmake-api.md); the three that matter are
+[cmake-api.md](../tooling/cmake-api.md); the three that matter are
 `loom_add_application`, `loom_enable_hot_reload` and
 `loom_install_application`.
 

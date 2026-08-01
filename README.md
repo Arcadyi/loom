@@ -86,36 +86,18 @@ Then `import Loom` in QML. No import-path setup is needed: the module registers
 itself through the static plugin.
 
 For hot reload as well, use `loom_add_application` — see
-[docs/cmake.md](docs/cmake.md), or just start from `loom new`.
+[docs/cmake.md](docs/tooling/cmake.md), or just start from `loom new`.
 
 ## Documentation
 
-**Styling**
+Start at [docs/getting-started.md](docs/getting-started.md); the full index is
+[docs/README.md](docs/README.md).
 
-| Document | Contents |
+| Section | Contents |
 | --- | --- |
-| [docs/getting-started.md](docs/getting-started.md) | Install, first project, first styled component |
-| [docs/tokens.md](docs/tokens.md) | The typed token scales |
-| [docs/utilities.md](docs/utilities.md) | The `Lo.style` utility-string reference |
-| [docs/theming.md](docs/theming.md) | Semantic tokens, dark mode, custom themes |
-| [docs/responsive.md](docs/responsive.md) | Breakpoint variants |
-| [docs/states.md](docs/states.md) | Interaction-state variants |
-| [docs/configuration.md](docs/configuration.md) | The design token file |
-| [docs/limitations.md](docs/limitations.md) | What utilities do on which types, honestly |
-
-**Building and running**
-
-| Document | Contents |
-| --- | --- |
-| [docs/tooling.md](docs/tooling.md) | The `loom` command reference |
-| [docs/manifest.md](docs/manifest.md) | `loom.json` |
-| [docs/cmake.md](docs/cmake.md) | CMake integration |
-| [docs/cmake-api.md](docs/cmake-api.md) | `loom_add_application` and friends |
-| [docs/runtime-api.md](docs/runtime-api.md) | `loom::Application`, embedding, state hooks |
-| [docs/architecture.md](docs/architecture.md) | How the dev server and reload work |
-| [docs/protocol.md](docs/protocol.md) | The reload wire format |
-| [docs/platforms.md](docs/platforms.md) | Platform support, honestly |
-| [docs/troubleshooting.md](docs/troubleshooting.md) | When something does not reload |
+| [docs/styling/](docs/styling/) | Tokens, the `Lo.style` reference, theming, responsive and state variants, the design token file, the cookbook, and what utilities do on which types |
+| [docs/tooling/](docs/tooling/) | The `loom` command, `loom.json`, CMake integration, platform support, troubleshooting |
+| [docs/reference/](docs/reference/) | Architecture, the C++ API, the reload wire format, upgrading |
 
 ## License
 

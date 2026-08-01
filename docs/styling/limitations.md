@@ -79,7 +79,7 @@ flicker-critical properties.
   icon item only while it is a mask, which a `.svg`/`.png` source never is, so
   the color is accepted and silently dropped — as is `palette.buttonText`,
   which feeds the same path. Use
-  [`Loom.icon()`](tokens.md#icons--loomicon) to recolour the pixels instead.
+  [`Loom.icon()`](../styling/tokens.md#icons--loomicon) to recolour the pixels instead.
 - Qt's SVG renderer does not implement `currentColor`: it resolves to black
   rather than to an inherited color, so icon sets that stroke with it (Lucide,
   Feather, Bootstrap Icons) render black until something recolours them.

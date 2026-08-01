@@ -119,7 +119,7 @@ loom clean --all    # every configuration
 ## `loom build` refuses with "this project defines N applications"
 
 A multi-application project with no default. Pass `--app <target>`, or set
-`project.defaultApplication` in `loom.json`. See [manifest.md](manifest.md).
+`project.defaultApplication` in `loom.json`. See [manifest.md](../tooling/manifest.md).
 
 ---
 
@@ -134,7 +134,7 @@ alternating between them does not force a rebuild.
 ## The deployed application does not run on another machine
 
 `loom deploy` does not bundle Qt; the target host needs Qt 6.11. See
-[platforms.md](platforms.md#why-qt-is-not-bundled) for why, and use `linuxdeploy` or
+[platforms.md](../tooling/platforms.md#why-qt-is-not-bundled) for why, and use `linuxdeploy` or
 `appimage-builder` over the installed prefix for a self-contained artifact.
 
 ---

@@ -60,7 +60,7 @@ application that silently starts with default tokens.
 
 Point it at the same file the manifest's `design` key names. Under `loom dev`
 the on-disk file supersedes the compiled copy on every save, applied without
-recreating the scene — see [architecture.md](architecture.md#design-token-reload).
+recreating the scene — see [architecture.md](../reference/architecture.md#design-token-reload).
 
 ### `SINGLETONS`
 
@@ -181,7 +181,7 @@ Application QML is compiled into the executable by `qt_add_qml_module`, so the r
 single self-contained binary apart from Qt itself.
 
 **Qt is not bundled**, and there is no option to bundle it. See
-[platforms.md](platforms.md#why-qt-is-not-bundled) for the measurements behind that, and
+[platforms.md](../tooling/platforms.md#why-qt-is-not-bundled) for the measurements behind that, and
 use `linuxdeploy` or `appimage-builder` over the installed prefix if you need a
 self-contained artifact.
 

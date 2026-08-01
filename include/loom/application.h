@@ -30,7 +30,7 @@ class ReloadController;
 /// so the module URI has a single definition rather than one in CMake and
 /// another in C++.
 ///
-/// \sa docs/runtime-api.md
+/// \sa docs/reference/runtime-api.md
 class Application final {
 public:
     /// Called with the engine before the scene is loaded.

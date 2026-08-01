@@ -84,7 +84,7 @@ Linking `loom::loomplugin` registers the QML module through Qt's static-plugin
 machinery: no import paths, no `qml.conf`, nothing at runtime.
 
 For hot reload as well, use `loom_add_application` instead — see
-[cmake.md](cmake.md).
+[cmake.md](tooling/cmake.md).
 
 ## First styled component
 
@@ -123,19 +123,19 @@ loom: 1 unknown class(es) in 1 file(s)
 
 **Styling**
 
-- [tokens.md](tokens.md) — every typed scale
-- [utilities.md](utilities.md) — the full `Lo.style` grammar
-- [theming.md](theming.md) — semantic tokens and dark mode
-- [responsive.md](responsive.md) — breakpoint variants
-- [states.md](states.md) — hover, pressed, focus, disabled
-- [configuration.md](configuration.md) — the design token file
-- [limitations.md](limitations.md) — what utilities do on which types
+- [tokens.md](styling/tokens.md) — every typed scale
+- [utilities.md](styling/utilities.md) — the full `Lo.style` grammar
+- [theming.md](styling/theming.md) — semantic tokens and dark mode
+- [responsive.md](styling/responsive.md) — breakpoint variants
+- [states.md](styling/states.md) — hover, pressed, focus, disabled
+- [configuration.md](styling/configuration.md) — the design token file
+- [limitations.md](styling/limitations.md) — what utilities do on which types
 
 **Building and running**
 
-- [tooling.md](tooling.md) — the `loom` command reference
-- [manifest.md](manifest.md) — `loom.json`
-- [cmake.md](cmake.md) — CMake integration and `loom_add_application`
-- [runtime-api.md](runtime-api.md) — `loom::Application` and embedding
-- [architecture.md](architecture.md) — how the dev server and reload work
-- [troubleshooting.md](troubleshooting.md) — when something does not reload
+- [tooling.md](tooling/cli.md) — the `loom` command reference
+- [manifest.md](tooling/manifest.md) — `loom.json`
+- [cmake.md](tooling/cmake.md) — CMake integration and `loom_add_application`
+- [runtime-api.md](reference/runtime-api.md) — `loom::Application` and embedding
+- [architecture.md](reference/architecture.md) — how the dev server and reload work
+- [troubleshooting.md](tooling/troubleshooting.md) — when something does not reload

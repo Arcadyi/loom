@@ -20,7 +20,7 @@ Common options: `--target`, `--config`, `--prefix`, `--app`, `--generator`,
 error.
 
 The rest of this page is about the styling half; see
-[architecture.md](architecture.md) for what `loom dev` does.
+[architecture.md](../reference/architecture.md) for what `loom dev` does.
 
 ## Checking utility classes
 
@@ -138,8 +138,8 @@ $ loom style --catalogue  # the built-in vocabulary
 
 Outside a project, or with explicit paths, only the built-in tokens are known
 and project-defined classes report as unknown. See
-[configuration.md](configuration.md) for the token file, and
-[manifest.md](manifest.md) for the `design` key.
+[configuration.md](../styling/configuration.md) for the token file, and
+[manifest.md](../tooling/manifest.md) for the `design` key.
 
 ## From C++
 

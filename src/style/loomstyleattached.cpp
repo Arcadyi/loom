@@ -40,7 +40,7 @@ void warnUnsupportedOnce(const QMetaObject *type, LoomUtility utility, const QSt
     qCWarning(lcLoomApply).noquote()
         << "Lo.style: utility" << loomUtilityName(utility)
         << (key.isEmpty() ? QString() : QStringLiteral("(%1)").arg(key))
-        << "is not supported on" << type->className() << "- see docs/limitations.md";
+        << "is not supported on" << type->className() << "- see docs/styling/limitations.md";
 }
 
 void warnInvalidPathOnce(const QMetaObject *type, const QString &path)

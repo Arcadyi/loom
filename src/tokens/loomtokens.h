@@ -53,7 +53,7 @@ public:
     bool isDark() const;
 
     Q_INVOKABLE QStringList themes() const;
-    // Load a JSON config (see docs/configuration.md). Accepts file: and qrc:
+    // Load a JSON config (see docs/styling/configuration.md). Accepts file: and qrc:
     // URLs; relative URLs resolve against the caller's QML file.
     Q_INVOKABLE bool loadConfig(const QUrl &url);
     // A URL that serves `source` repainted in `color`, for anything that takes
@@ -62,7 +62,7 @@ public:
     //     icon.source: Loom.icon("home.svg", Loom.color.foreground)
     //
     // Setting `icon.color` cannot do this -- Qt only tints an icon item that
-    // is a mask, which a file source never is. See docs/tokens.md.
+    // is a mask, which a file source never is. See docs/styling/tokens.md.
     //
     // A relative `source` resolves against iconRoot, not against the calling
     // QML file: a singleton cannot see its caller, so per-file resolution is

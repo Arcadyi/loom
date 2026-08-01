@@ -67,7 +67,7 @@ Names the project's design token file — colours, spacing, breakpoints and
 themes. A separate file rather than a section of this one, so a design system
 can be shared between projects and loaded on its own with `loom::loadConfig()`.
 Its own schema is `share/loom/schemas/design-v1.schema.json`, and its contents
-are documented in [configuration.md](configuration.md).
+are documented in [configuration.md](../styling/configuration.md).
 
 Three things read it, and they must agree:
 

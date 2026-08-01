@@ -157,12 +157,23 @@ indistinguishable from an idle one at the TCP level. Without it, `loom dev` repo
 
 ## Compatibility
 
-`ProtocolVersion` is **1** and should not be bumped unless the frame layout changes.
+`ProtocolVersion` is **2** and should not be bumped unless the frame layout changes.
 
 Because the runtime is statically linked, bumping it strands every already-built
 application: they would all fail the `Hello` check until rebuilt. Additive changes — a new
 message type an older peer can ignore, a new optional field — do not need a bump. `Error`
-was added to the wire this way.
+was added to the wire this way, and so was `Design`.
+
+| Version | Shipped in | Change |
+| --- | --- | --- |
+| 1 | 0.1.0 | the original five messages; `Design` added additively in 0.2.0 |
+| 2 | 0.2.1 | the `Design` payload became a CBOR map carrying the document's project path alongside the tokens |
+
+The v2 change reshaped an existing frame rather than adding one, which is exactly what the
+version gates. Without the bump a mismatched pair would have handshaked successfully and
+then failed on the first design reload with a parse error — the confusing middle ground
+versioning exists to avoid. With it, the mismatch is reported at the handshake, by name,
+before the connection closes.
 
 ---
 

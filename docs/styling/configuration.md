@@ -12,7 +12,7 @@ In a `loom` project, name it in the manifest and the rest is automatic:
 `loom new` scaffolds exactly this. The file is then compiled into release
 builds, **hot-reloaded by `loom dev`**, and loaded by `loom style` and
 `loom lint` so project-defined classes are recognised. See
-[manifest.md](manifest.md#design).
+[manifest.md](../tooling/manifest.md#design).
 
 Outside a project, or to load an additional file, load it yourself:
 
@@ -78,7 +78,7 @@ you meant to restyle dark, not to be thrown back to the default.
   feeds `Loom.dark` and the `dark:` variant, and is inherited from the base
   otherwise. Merging into `light`/`dark` adjusts the built-ins in place.
 - **defaultTheme** — switches the active theme after loading.
-- **iconRoot** — directory that a relative [`Loom.icon()`](tokens.md#icons--loomicon)
+- **iconRoot** — directory that a relative [`Loom.icon()`](../styling/tokens.md#icons--loomicon)
   source resolves against, relative to this config file. Equivalent to setting
   `Loom.iconRoot` from QML; the config wins only if it loads later.
 

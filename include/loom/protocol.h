@@ -9,13 +9,19 @@
 /// length counts the type byte. There is no resynchronisation marker, so a
 /// framing error is fatal to the connection.
 ///
-/// \sa docs/protocol.md
+/// \sa docs/reference/protocol.md
 namespace loom {
 
 /// Bumping this strands every already-built application until it is rebuilt,
 /// because loom::Runtime is statically linked. Additive changes -- a new
 /// message type an older peer ignores, a new optional field -- do not need one.
-inline constexpr quint16 ProtocolVersion = 1;
+///
+/// v2 (loom 0.2.1): the Design payload gained the document's project path, so
+/// a relative `iconRoot` can resolve against the project rather than against
+/// wherever the bytes were staged. That reshaped an existing frame rather than
+/// adding one, so a mismatched peer must be told plainly at the handshake
+/// instead of failing later with a parse error on one message type.
+inline constexpr quint16 ProtocolVersion = 2;
 inline constexpr qsizetype MaximumFrameSize = 64 * 1024 * 1024;
 // A peer that has not authenticated may not declare a frame larger than this.
 // Frame length is read before the type is known, so without a separate limit an
@@ -36,9 +42,7 @@ enum class MessageType : quint8 {
     Error = 4,
     Ping = 5,
     // Design token JSON plus the path it came from, applied in place without
-    // rebuilding the scene. Additive, so ProtocolVersion stays 1: a runtime
-    // built before this existed rejects the type as unknown and keeps running,
-    // which is the right outcome for a message it cannot act on.
+    // rebuilding the scene.
     Design = 6,
 };
 

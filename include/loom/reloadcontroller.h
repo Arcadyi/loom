@@ -23,7 +23,7 @@ struct Bundle;
 /// is removed on destruction; directories left by processes that are gone are
 /// swept on the next start.
 ///
-/// \sa docs/runtime-api.md, docs/protocol.md
+/// \sa docs/reference/runtime-api.md, docs/reference/protocol.md
 class ReloadController final : public QObject {
     Q_OBJECT
 
