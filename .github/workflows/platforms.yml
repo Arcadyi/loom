@@ -1,0 +1,123 @@
+name: Platform adapters
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: linux_gcc_64
+          - os: macos-latest
+            arch: clang_64
+          - os: windows-latest
+            arch: win64_msvc2022_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.*'
+          arch: ${{ matrix.arch }}
+          cache: true
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLOOM_WERROR=ON -DLOOM_BUILD_E2E_TESTS=OFF
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -LE e2e
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+  android-emulator:
+    name: Android emulator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.*'
+          arch: linux_gcc_64
+          cache: true
+      - name: Remember host Qt
+        run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - name: Build and install host loom
+        run: |
+          cmake -S . -B build-host -G Ninja -DCMAKE_BUILD_TYPE=Release -DLOOM_BUILD_E2E_TESTS=OFF
+          cmake --build build-host
+          cmake --install build-host --prefix "$RUNNER_TEMP/loom"
+      - name: Install Qt for Android
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.*'
+          target: android
+          arch: android_x86_64
+          cache: true
+      - name: Generate adapter fixture
+        run: |
+          echo "QT_ANDROID_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/loom/bin/loom" new LoomAndroid --directory "$RUNNER_TEMP/LoomAndroid"
+          cd "$RUNNER_TEMP/LoomAndroid"
+          jq --arg qt "$QT_ROOT_DIR" --arg host "$QT_HOST_PATH" '.applications.LoomAndroid.platforms.android = {qtPath: $qt, hostQtPath: $host, abi: "x86_64", api: 36}' loom.json > loom.next.json
+          mv loom.next.json loom.json
+      - name: Build, install, and launch on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          script: |
+            cd "$RUNNER_TEMP/LoomAndroid"
+            "$RUNNER_TEMP/loom/bin/loom" build --target android --config Debug
+            "$RUNNER_TEMP/loom/bin/loom" deploy --target android --config Debug
+            adb shell am start -W -n dev.example.loomandroid/org.qtproject.qt.android.bindings.QtActivity
+
+  ios-simulator:
+    name: iOS simulator
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.*'
+          arch: clang_64
+          cache: true
+      - name: Remember host Qt
+        run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - name: Build and install host loom
+        run: |
+          cmake -S . -B build-host -G Ninja -DCMAKE_BUILD_TYPE=Release -DLOOM_BUILD_E2E_TESTS=OFF
+          cmake --build build-host
+          cmake --install build-host --prefix "$RUNNER_TEMP/loom"
+      - name: Install Qt for iOS
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.*'
+          target: ios
+          arch: ios
+          cache: true
+      - name: Generate and build adapter fixture
+        run: |
+          "$RUNNER_TEMP/loom/bin/loom" new LoomIos --directory "$RUNNER_TEMP/LoomIos"
+          cd "$RUNNER_TEMP/LoomIos"
+          jq --arg qt "$QT_ROOT_DIR" --arg host "$QT_HOST_PATH" '.applications.LoomIos.platforms.ios = {qtPath: $qt, hostQtPath: $host, sdk: "iphonesimulator", destination: "simulator", device: "booted"}' loom.json > loom.next.json
+          mv loom.next.json loom.json
+          "$RUNNER_TEMP/loom/bin/loom" build --target ios --config Debug
+          device=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.isAvailable)][0].udid')
+          xcrun simctl boot "$device" || true
+          xcrun simctl bootstatus "$device" -b
+          jq --arg device "$device" '.applications.LoomIos.platforms.ios.device = $device' loom.json > loom.next.json
+          mv loom.next.json loom.json
+          "$RUNNER_TEMP/loom/bin/loom" deploy --target ios --config Debug
+          xcrun simctl launch "$device" dev.example.loomios

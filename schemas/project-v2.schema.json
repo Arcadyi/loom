@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Arcadyi/loom/master/schemas/project-v2.schema.json",
+  "title": "Loom project manifest v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "project", "qt", "applications"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 2 },
+    "project": {
+      "type": "object", "additionalProperties": false, "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "defaultApplication": { "type": "string", "minLength": 1 }
+      }
+    },
+    "design": { "type": "string", "minLength": 1 },
+    "qt": {
+      "type": "object", "additionalProperties": false, "required": ["version"],
+      "properties": { "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+(?:\\.[0-9]+)*$" } }
+    },
+    "embeddedProfiles": {
+      "type": "object",
+      "propertyNames": { "minLength": 1 },
+      "additionalProperties": {
+        "type": "object", "additionalProperties": false,
+        "required": ["toolchainFile", "sysroot", "host", "remoteDir"],
+        "properties": {
+          "toolchainFile": { "type": "string", "minLength": 1 },
+          "hostQtPath": { "type": "string", "minLength": 1 },
+          "sysroot": { "type": "string", "minLength": 1 },
+          "host": { "type": "string", "minLength": 1 },
+          "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "user": { "type": "string" },
+          "remoteDir": { "type": "string", "minLength": 1 },
+          "environment": {
+            "type": "object",
+            "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+            "additionalProperties": { "type": "string" }
+          },
+          "launchCommand": { "type": "string" }
+        }
+      }
+    },
+    "applications": {
+      "type": "object", "minProperties": 1,
+      "additionalProperties": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "target", "id", "uri", "entry", "qmlRoots", "assetRoots", "platforms"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "target": { "type": "string", "minLength": 1 },
+          "id": { "type": "string", "minLength": 1 },
+          "uri": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+$" },
+          "entry": { "type": "string", "minLength": 1 },
+          "qmlRoots": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "assetRoots": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "platforms": {
+            "type": "object", "minProperties": 1, "additionalProperties": false,
+            "properties": {
+              "desktop": { "type": "object", "additionalProperties": false },
+              "android": {
+                "type": "object", "additionalProperties": false,
+                "properties": {
+                  "qtPath": { "type": "string", "minLength": 1 },
+                  "hostQtPath": { "type": "string", "minLength": 1 },
+                  "abi": { "enum": ["arm64-v8a", "armeabi-v7a", "x86_64"] },
+                  "abis": { "type": "array", "items": { "enum": ["arm64-v8a", "armeabi-v7a", "x86_64"] } },
+                  "api": { "type": "integer", "minimum": 23 },
+                  "device": { "type": "string" }
+                }
+              },
+              "ios": {
+                "type": "object", "additionalProperties": false,
+                "properties": {
+                  "qtPath": { "type": "string", "minLength": 1 },
+                  "hostQtPath": { "type": "string", "minLength": 1 },
+                  "sdk": { "enum": ["iphonesimulator", "iphoneos"] },
+                  "destination": { "enum": ["simulator", "device"] },
+                  "team": { "type": "string" },
+                  "device": { "type": "string" },
+                  "host": { "type": "string" }
+                }
+              },
+              "embedded": {
+                "type": "object", "additionalProperties": false,
+                "properties": { "profile": { "type": "string", "minLength": 1 } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

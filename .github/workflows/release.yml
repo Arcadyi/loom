@@ -1,0 +1,43 @@
+name: Release packages
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  package:
+    name: Native package (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: linux_gcc_64
+            artifact: build/*.deb
+          - os: macos-latest
+            arch: clang_64
+            artifact: build/*.dmg
+          - os: windows-latest
+            arch: win64_msvc2022_64
+            artifact: build/*.msi
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.*'
+          arch: ${{ matrix.arch }}
+          cache: true
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLOOM_BUILD_TESTS=OFF -DLOOM_BUILD_E2E_TESTS=OFF
+      - name: Build
+        run: cmake --build build
+      - name: Package
+        run: cpack --config build/CPackConfig.cmake -C Release -B build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: loom-${{ runner.os }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
