@@ -23,8 +23,7 @@ Column {
                 + " hover:bg-surface-alt hover:border-accent"
 
             Text {
-                Lo.style: "text-foreground text-sm"
-                anchors.centerIn: parent
+                Lo.style: "text-foreground text-sm center"
                 text: qsTr("hover:")
             }
         }
@@ -34,8 +33,7 @@ Column {
                 + " pressed:opacity-90"
 
             Text {
-                Lo.style: "text-on-accent text-sm font-medium"
-                anchors.centerIn: parent
+                Lo.style: "text-on-accent text-sm font-medium center"
                 text: qsTr("pressed: (passive TapHandler)")
             }
         }
@@ -49,13 +47,12 @@ Column {
                 + " hover:shadow-md pressed:bg-blue-100"
 
             Text {
-                Lo.style: "text-foreground text-sm"
-                anchors.centerIn: parent
+                Lo.style: "text-foreground text-sm center"
                 text: qsTr("clicked %n time(s)", "", clickCard.clicks)
             }
 
             MouseArea {
-                anchors.fill: parent
+                Lo.style: "fill"
                 onClicked: clickCard.clicks++
             }
         }
@@ -70,13 +67,12 @@ Column {
             activeFocusOnTab: true
 
             Text {
-                Lo.style: "text-foreground text-sm"
-                anchors.centerIn: parent
+                Lo.style: "text-foreground text-sm center"
                 text: parent.activeFocus ? qsTr("focused!") : qsTr("focus: (click me)")
             }
 
             MouseArea {
-                anchors.fill: parent
+                Lo.style: "fill"
                 onClicked: parent.forceActiveFocus()
             }
         }
@@ -89,8 +85,7 @@ Column {
             enabled: false
 
             Text {
-                Lo.style: "text-foreground text-sm"
-                anchors.centerIn: parent
+                Lo.style: "text-foreground text-sm center"
                 text: qsTr("disabled:opacity-40")
             }
         }
@@ -100,14 +95,13 @@ Column {
                 + " hover:bg-surface-alt"
 
             Text {
-                Lo.style: "text-foreground text-sm"
-                anchors.centerIn: parent
+                Lo.style: "text-foreground text-sm center"
                 text: disableCard.enabled ? qsTr("disable neighbor")
                                           : qsTr("enable neighbor")
             }
 
             MouseArea {
-                anchors.fill: parent
+                Lo.style: "fill"
                 onClicked: disableCard.enabled = !disableCard.enabled
             }
         }
@@ -127,11 +121,10 @@ Column {
         Lo.style: "w-56 h-20 opacity-100 pressed:opacity-60"
 
         Rectangle {
-            Lo.style: "bg-rose-500 rounded-lg w-full h-full"
+            Lo.style: "bg-rose-500 rounded-lg fill"
 
             Text {
-                Lo.style: "text-white text-sm font-medium"
-                anchors.centerIn: parent
+                Lo.style: "text-white text-sm font-medium center"
                 text: qsTr("press me")
             }
         }

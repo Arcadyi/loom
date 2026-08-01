@@ -24,6 +24,9 @@ private slots:
     void alphaModifierRejections();
     void borderWidthRejections();
     void hiddenIsSynonymForInvisible();
+    void layoutClasses();
+    void layoutRejections();
+    void aspectRatioTakesASlash();
 };
 
 void CompilerTests::init()
@@ -199,6 +202,75 @@ void CompilerTests::hiddenIsSynonymForInvisible()
     QCOMPARE(compiled->rules.size(), 1);
     QCOMPARE(compiled->rules.first().utility, LoomUtility::Visible);
     QCOMPARE(compiled->rules.first().flag, false);
+}
+
+void CompilerTests::layoutClasses()
+{
+    // Each of these is one rule. `fill` expands to two *writes* inside a
+    // layout, but that happens at apply time, where the parent is known --
+    // the compiler cannot see it.
+    const auto expect = [](const char *klass, LoomUtility utility) {
+        const auto compiled = compile(QLatin1String(klass));
+        QCOMPARE(compiled->rules.size(), 1);
+        QCOMPARE(compiled->rules.first().utility, utility);
+        QVERIFY(compiled->usesLayout);
+    };
+    expect("fill", LoomUtility::AnchorFill);
+    expect("fill-x", LoomUtility::AnchorFillX);
+    expect("fill-y", LoomUtility::AnchorFillY);
+    expect("center", LoomUtility::AnchorCenter);
+    expect("center-x", LoomUtility::AnchorCenterX);
+    expect("pin-t", LoomUtility::AnchorPinTop);
+    expect("pin-l", LoomUtility::AnchorPinLeft);
+    expect("self-center", LoomUtility::LayoutAlignment);
+    expect("min-w-16", LoomUtility::LayoutMinWidth);
+    expect("max-h-64", LoomUtility::LayoutMaxHeight);
+    expect("col-span-2", LoomUtility::LayoutColumnSpan);
+    expect("aspect-square", LoomUtility::AspectRatio);
+
+    QCOMPARE(
+        compile(QStringLiteral("self-center"))->rules.first().literal,
+        double(Qt::AlignCenter));
+    QCOMPARE(compile(QStringLiteral("col-span-3"))->rules.first().literal, 3.0);
+    QCOMPARE(
+        compile(QStringLiteral("min-w-16"))->rules.first().key, QStringLiteral("16"));
+
+    // Only aspect-* needs the item's own width tracked.
+    QVERIFY(compile(QStringLiteral("aspect-video"))->usesAspect);
+    QVERIFY(!compile(QStringLiteral("fill"))->usesAspect);
+}
+
+void CompilerTests::layoutRejections()
+{
+    for (const QString &klass :
+         {QStringLiteral("pin-x"), QStringLiteral("self-middle"),
+          QStringLiteral("min-w-nope"), QStringLiteral("col-span-0"),
+          QStringLiteral("col-span-x"), QStringLiteral("fill-z"),
+          QStringLiteral("aspect-0/9"), QStringLiteral("aspect-16/0")}) {
+        QCOMPARE(LoomStyleCompiler::unknownClasses(klass), QStringList{klass});
+    }
+}
+
+// The colour-opacity modifier used to be split off before any utility matcher
+// ran, so a slash could never be part of a class name: `aspect-16/9` parsed as
+// `aspect-16` with alpha 9 and was rejected. The whole name is tried first now.
+void CompilerTests::aspectRatioTakesASlash()
+{
+    const auto compiled = compile(QStringLiteral("aspect-16/9"));
+    QCOMPARE(compiled->rules.size(), 1);
+    QCOMPARE(compiled->rules.first().utility, LoomUtility::AspectRatio);
+    QVERIFY(qAbs(compiled->rules.first().literal - 16.0 / 9.0) < 1e-9);
+
+    // And the modifier still works, still only on colours, and still rejects
+    // an out-of-range value.
+    QCOMPARE(compile(QStringLiteral("bg-surface/70"))->rules.first().alphaPercent, 70);
+    QVERIFY(LoomStyleCompiler::unknownClasses(QStringLiteral("bg-surface/70")).isEmpty());
+    for (const QString &klass :
+         {QStringLiteral("w-full/70"), QStringLiteral("p-4/70"),
+          QStringLiteral("bg-surface/101"), QStringLiteral("bg-surface/half"),
+          QStringLiteral("w-1/2")}) {
+        QCOMPARE(LoomStyleCompiler::unknownClasses(klass), QStringList{klass});
+    }
 }
 
 void CompilerTests::unknownClassesWarnAndSkip()

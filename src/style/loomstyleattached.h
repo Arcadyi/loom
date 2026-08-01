@@ -5,6 +5,7 @@
 #include <QPointer>
 #include <QQmlProperty>
 #include <QQuickItem>
+#include <QVarLengthArray>
 #include <QVariant>
 #include <QVariantAnimation>
 #include <QtQml/qqmlregistration.h>
@@ -55,6 +56,24 @@ private:
     quint8 activeStates() const;
     QString marginPath(LoomUtility utility) const;
     QString backgroundPath(LoomUtility utility) const;
+    // Where a layout utility lands on *this* item right now: the Layout.*
+    // attached properties when the parent is a QtQuick.Layouts layout, anchors
+    // otherwise. Empty means the utility does not apply in this context --
+    // `self-center` outside a layout, `pin-l` inside one -- which the caller
+    // reports rather than writing something meaningless. One utility can yield
+    // two paths: `fill` inside a layout is fillWidth *and* fillHeight.
+    using LayoutPaths = QVarLengthArray<QString, 2>;
+    // Why a layout utility produced no paths, so the warning can say which of
+    // the two mismatches it is instead of claiming the type is unsupported.
+    enum class LayoutMismatch {
+        None,
+        RequiresLayout, // self-*, min-w-* ... outside any layout
+        NoLayoutForm,   // pin-*, center-x/y inside one
+    };
+    LayoutPaths layoutPaths(LoomUtility utility, LayoutMismatch *mismatch) const;
+    // The parent's anchor line for `edge`, relayed as an opaque QVariant so the
+    // private QQuickAnchorLine type is never named here.
+    QVariant parentAnchorLine(const QString &edge) const;
     int breakpointTier() const;
     bool connectPropertyNotify(QObject *sender, const char *propertyName);
 

@@ -44,6 +44,13 @@ private slots:
     void backgroundDelegationRestoresOriginal();
     void nonRectangleBackgroundWarns();
     void alphaModifierScalesResolvedColour();
+    void anchorsOutsideALayout();
+    void layoutAttachedInsideALayout();
+    void reparentReroutesBetweenAnchorsAndLayout();
+    void layoutOnlyUtilityWarnsOutsideALayout();
+    void pinInsideALayoutWarns();
+    void aspectRatioDerivesHeightFromWidth();
+    void removedAnchorIsReleased();
 };
 
 void ApplyTests::cleanup()
@@ -546,6 +553,227 @@ void ApplyTests::alphaModifierScalesResolvedColour()
     // against the pre-switch colour and prove nothing.
     QTRY_VERIFY(surface->property("color").value<QColor>().rgb() != light.rgb());
     QCOMPARE(alphaPercent(surface.data()), 50);
+}
+
+// Outside a QtQuick.Layouts layout the layout family writes anchors, and the
+// anchors are real: the item tracks its parent's geometry rather than just
+// receiving a number once.
+void ApplyTests::anchorsOutsideALayout()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> root(createItem(
+        component,
+        "import QtQuick\nimport Loom\n"
+        "Item {\n"
+        "    width: 200; height: 100\n"
+        "    Rectangle { objectName: \"filled\"; Lo.style: \"fill m-4\" }\n"
+        "    Rectangle {\n"
+        "        objectName: \"centred\"; width: 20; height: 20\n"
+        "        Lo.style: \"center\"\n"
+        "    }\n"
+        "    Rectangle {\n"
+        "        objectName: \"pinned\"; width: 10; height: 10\n"
+        "        Lo.style: \"pin-l\"\n"
+        "    }\n"
+        "}\n"));
+    QVERIFY2(root, qPrintable(component.errorString()));
+
+    QQuickItem *filled = root->findChild<QQuickItem *>(QStringLiteral("filled"));
+    QQuickItem *centred = root->findChild<QQuickItem *>(QStringLiteral("centred"));
+    QQuickItem *pinned = root->findChild<QQuickItem *>(QStringLiteral("pinned"));
+    QVERIFY(filled && centred && pinned);
+
+    // `fill` plus the existing m-* margins: the anchor is what finally makes
+    // those margins do something. `m-4` is spacing step 4, which is 16px.
+    QTRY_COMPARE(filled->width(), 168.0);
+    QCOMPARE(filled->height(), 68.0);
+    QCOMPARE(filled->x(), 16.0);
+
+    QCOMPARE(centred->x(), 90.0);
+    QCOMPARE(centred->y(), 40.0);
+    QCOMPARE(pinned->x(), 0.0);
+
+    // Still anchored, not merely positioned once.
+    root->setWidth(300);
+    QTRY_COMPARE(filled->width(), 268.0);
+    QCOMPARE(centred->x(), 140.0);
+}
+
+void ApplyTests::layoutAttachedInsideALayout()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> root(createItem(
+        component,
+        "import QtQuick\nimport QtQuick.Layouts\nimport Loom\n"
+        "ColumnLayout {\n"
+        "    width: 200; height: 200\n"
+        "    Rectangle {\n"
+        "        objectName: \"grown\"; implicitHeight: 10\n"
+        "        Lo.style: \"fill min-w-16 max-w-64\"\n"
+        "    }\n"
+        "    Rectangle {\n"
+        "        objectName: \"aligned\"; implicitWidth: 20; implicitHeight: 20\n"
+        "        Lo.style: \"self-center\"\n"
+        "    }\n"
+        "}\n"));
+    QVERIFY2(root, qPrintable(component.errorString()));
+
+    QQuickItem *grown = root->findChild<QQuickItem *>(QStringLiteral("grown"));
+    QQuickItem *aligned = root->findChild<QQuickItem *>(QStringLiteral("aligned"));
+    QVERIFY(grown && aligned);
+    QQmlContext *context = qmlContext(grown);
+
+    // `fill` in a layout is fillWidth + fillHeight, not anchors -- anchoring an
+    // item a layout manages is undefined behaviour Qt warns about.
+    QTRY_COMPARE(QQmlProperty(grown, "Layout.fillWidth", context).read().toBool(), true);
+    QCOMPARE(QQmlProperty(grown, "Layout.fillHeight", context).read().toBool(), true);
+    QCOMPARE(
+        QQmlProperty(grown, "anchors.fill", context).read().value<QQuickItem *>(),
+        nullptr);
+
+    QCOMPARE(QQmlProperty(grown, "Layout.minimumWidth", context).read().toReal(), 64.0);
+    QCOMPARE(QQmlProperty(grown, "Layout.maximumWidth", context).read().toReal(), 256.0);
+
+    QCOMPARE(
+        QQmlProperty(aligned, "Layout.alignment", context).read().toInt(),
+        int(Qt::AlignCenter));
+}
+
+// The routing is per instance and re-resolved on every apply, so moving an item
+// between the two worlds has to move the write with it.
+void ApplyTests::reparentReroutesBetweenAnchorsAndLayout()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> root(createItem(
+        component,
+        "import QtQuick\nimport QtQuick.Layouts\nimport Loom\n"
+        "Item {\n"
+        "    width: 200; height: 200\n"
+        "    property alias mover: mover\n"
+        "    property alias column: column\n"
+        "    ColumnLayout { id: column; width: 100; height: 100 }\n"
+        "    Rectangle { id: mover; Lo.style: \"fill\" }\n"
+        "}\n"));
+    QVERIFY2(root, qPrintable(component.errorString()));
+
+    QQuickItem *mover = root->property("mover").value<QQuickItem *>();
+    QQuickItem *column = root->property("column").value<QQuickItem *>();
+    QVERIFY(mover && column);
+    QQmlContext *context = qmlContext(mover);
+
+    QTRY_COMPARE(mover->width(), 200.0);
+    QCOMPARE(
+        QQmlProperty(mover, "anchors.fill", context).read().value<QQuickItem *>(),
+        root.data());
+
+    mover->setParentItem(column);
+    // The anchor is released and the Layout form takes over.
+    QTRY_COMPARE(QQmlProperty(mover, "Layout.fillWidth", context).read().toBool(), true);
+    QCOMPARE(
+        QQmlProperty(mover, "anchors.fill", context).read().value<QQuickItem *>(),
+        nullptr);
+}
+
+void ApplyTests::layoutOnlyUtilityWarnsOutsideALayout()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QTest::ignoreMessage(
+        QtWarningMsg,
+        QRegularExpression(
+            QStringLiteral(R"(utility self-\* only applies inside a RowLayout)")));
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\n"
+        "Rectangle { Lo.style: \"self-center\" }\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+    QTest::qWait(10);
+}
+
+void ApplyTests::pinInsideALayoutWarns()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    // A pin has no layout form that would not fight the layout's own placement.
+    // The warning has to say *that*, not "not supported on QQuickRectangle" --
+    // pin-l is perfectly supported on a Rectangle, just not inside a layout.
+    QTest::ignoreMessage(
+        QtWarningMsg,
+        QRegularExpression(QStringLiteral(
+            R"(utility pin-l has no form inside a layout.*use self-start)")));
+    QScopedPointer<QQuickItem> root(createItem(
+        component,
+        "import QtQuick\nimport QtQuick.Layouts\nimport Loom\n"
+        "ColumnLayout {\n"
+        "    width: 100; height: 100\n"
+        "    Rectangle { objectName: \"child\"; Lo.style: \"pin-l\" }\n"
+        "}\n"));
+    QVERIFY2(root, qPrintable(component.errorString()));
+    QTest::qWait(10);
+}
+
+void ApplyTests::aspectRatioDerivesHeightFromWidth()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\n"
+        "Rectangle { width: 80; Lo.style: \"aspect-square\" }\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+    QTRY_COMPARE(item->height(), 80.0);
+
+    // Tracks the width, which is the whole point.
+    item->setWidth(120);
+    QTRY_COMPARE(item->height(), 120.0);
+
+    QQmlComponent widescreen(&engine);
+    QScopedPointer<QQuickItem> video(createItem(
+        widescreen,
+        "import QtQuick\nimport Loom\n"
+        "Rectangle { width: 160; Lo.style: \"aspect-16/9\" }\n"));
+    QVERIFY2(video, qPrintable(widescreen.errorString()));
+    QTRY_COMPARE(video->height(), 90.0);
+}
+
+// Anchors cannot be released by writing the saved value back -- a default
+// anchor line names no item and Qt refuses it. Without the reset() fallback the
+// item would stay anchored after the class stopped applying.
+void ApplyTests::removedAnchorIsReleased()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> root(createItem(
+        component,
+        "import QtQuick\nimport Loom\n"
+        "Item {\n"
+        "    width: 200; height: 100\n"
+        "    Rectangle {\n"
+        "        objectName: \"child\"\n"
+        "        property bool stretched: true\n"
+        "        Lo.style: stretched ? \"fill\" : \"bg-surface\"\n"
+        "    }\n"
+        "}\n"));
+    QVERIFY2(root, qPrintable(component.errorString()));
+    QQuickItem *child = root->findChild<QQuickItem *>(QStringLiteral("child"));
+    QVERIFY(child);
+    QTRY_COMPARE(child->width(), 200.0);
+
+    child->setProperty("stretched", false);
+    QTRY_COMPARE(
+        QQmlProperty(child, "anchors.fill", qmlContext(child))
+            .read()
+            .value<QQuickItem *>(),
+        nullptr);
+
+    // Released, so the size is the item's own again.
+    child->setWidth(30);
+    QTRY_COMPARE(child->width(), 30.0);
+    root->setWidth(400);
+    QCOMPARE(child->width(), 30.0);
 }
 
 QTEST_MAIN(ApplyTests)

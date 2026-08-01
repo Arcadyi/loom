@@ -335,7 +335,7 @@ to be inside one.
 
 ```json
 {
-  "version": "0.2.1",
+  "version": "0.3.0",
   "theme": "light",
   "variants": ["dark", "disabled", "focus", "hover", "lg", "md", "pressed", "sm", "xl"],
   "classes": ["bg-accent", "bg-amber-100", "...", "w-full"],
@@ -347,7 +347,7 @@ to be inside one.
 ```
 
 - `classes` — every class that can be enumerated, without variant prefixes.
-  1550 with the default token set.
+  1702 with the default token set.
 - `families` — the same data grouped by prefix, when you want to complete the
   prefix first and the value second.
 - `numericPrefixes` — prefixes that additionally accept a bare number

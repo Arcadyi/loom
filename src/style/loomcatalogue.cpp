@@ -65,6 +65,11 @@ QList<StyleUtilityFamily> families(const LoomTokenRegistry *registry)
             QStringLiteral("spacing"), space);
     }
 
+    // Layout size constraints. The anchor and alignment classes take no value,
+    // so valuelessClasses() enumerates those.
+    for (const auto &prefix : {"min-w-", "max-w-", "min-h-", "max-h-"})
+        add(QLatin1String(prefix), QStringLiteral("spacing"), space);
+
     return out;
 }
 
@@ -79,7 +84,11 @@ StyleCatalogue styleCatalogue()
     catalogue.theme = registry->theme();
     catalogue.variants = LoomStyleCompiler::variantNames();
     catalogue.families = families(registry);
-    catalogue.numericPrefixes = {QStringLiteral("border-")};
+    // Spans take a cell count and aspect a ratio; neither comes from a token
+    // scale, so neither can be enumerated.
+    catalogue.numericPrefixes = {
+        QStringLiteral("border-"), QStringLiteral("col-span-"),
+        QStringLiteral("row-span-"), QStringLiteral("aspect-")};
 
     catalogue.classes = LoomStyleCompiler::valuelessClasses();
     for (const StyleUtilityFamily &family : catalogue.families) {

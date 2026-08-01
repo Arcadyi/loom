@@ -195,6 +195,44 @@ const QHash<QString, std::pair<LoomUtility, bool>> &exactUtilities()
         {QStringLiteral("no-underline"), {LoomUtility::Underline, false}},
         {QStringLiteral("w-full"), {LoomUtility::WidthFull, true}},
         {QStringLiteral("h-full"), {LoomUtility::HeightFull, true}},
+        // Layout. Valueless, so the catalogue enumerates them for free through
+        // valuelessClasses().
+        {QStringLiteral("fill"), {LoomUtility::AnchorFill, true}},
+        {QStringLiteral("fill-x"), {LoomUtility::AnchorFillX, true}},
+        {QStringLiteral("fill-y"), {LoomUtility::AnchorFillY, true}},
+        {QStringLiteral("center"), {LoomUtility::AnchorCenter, true}},
+        {QStringLiteral("center-x"), {LoomUtility::AnchorCenterX, true}},
+        {QStringLiteral("center-y"), {LoomUtility::AnchorCenterY, true}},
+        {QStringLiteral("pin-t"), {LoomUtility::AnchorPinTop, true}},
+        {QStringLiteral("pin-r"), {LoomUtility::AnchorPinRight, true}},
+        {QStringLiteral("pin-b"), {LoomUtility::AnchorPinBottom, true}},
+        {QStringLiteral("pin-l"), {LoomUtility::AnchorPinLeft, true}},
+    };
+    return table;
+}
+
+// `self-*` writes the whole Qt::Alignment at once rather than composing flags.
+// Two rules on one flags property would resolve by specificity instead of
+// merging, so a decomposed `self-x`/`self-y` pair would silently lose an axis.
+const QHash<QString, Qt::Alignment> &alignmentUtilities()
+{
+    static const QHash<QString, Qt::Alignment> table = {
+        {QStringLiteral("self-start"), Qt::AlignLeft | Qt::AlignTop},
+        {QStringLiteral("self-center"), Qt::AlignCenter},
+        {QStringLiteral("self-end"), Qt::AlignRight | Qt::AlignBottom},
+        // Qt's default is to stretch, which it spells as "no alignment".
+        {QStringLiteral("self-stretch"), Qt::Alignment()},
+    };
+    return table;
+}
+
+// `aspect-{n}/{m}` is parsed here rather than as a named token because the
+// ratio is a number, not a scale entry.
+const QHash<QString, double> &aspectUtilities()
+{
+    static const QHash<QString, double> table = {
+        {QStringLiteral("aspect-square"), 1.0},
+        {QStringLiteral("aspect-video"), 16.0 / 9.0},
     };
     return table;
 }
@@ -355,6 +393,77 @@ Parsed parseUtilityBase(QStringView name)
         return out;
     }
 
+    // Alignment, aspect ratio, size constraints and spans, all before the p/m
+    // spacing families below: those match on a single leading character, so
+    // anything starting with `p` or `m` has to be dispatched first.
+    const QHash<QString, Qt::Alignment> &alignments = alignmentUtilities();
+    if (const auto alignment = alignments.constFind(name.toString());
+        alignment != alignments.constEnd()) {
+        addRule(&out, LoomUtility::LayoutAlignment, QString(), double(*alignment));
+        return out;
+    }
+
+    const QHash<QString, double> &aspects = aspectUtilities();
+    if (const auto aspect = aspects.constFind(name.toString());
+        aspect != aspects.constEnd()) {
+        addRule(&out, LoomUtility::AspectRatio, QString(), *aspect);
+        return out;
+    }
+    if (name.startsWith(QLatin1String("aspect-"))) {
+        // `aspect-16/9`. Reaches here with the slash intact because parseUtility
+        // tries the whole name before treating a trailing /N as a colour alpha.
+        const QString rest = name.mid(qsizetype(qstrlen("aspect-"))).toString();
+        const qsizetype slash = rest.indexOf(QLatin1Char('/'));
+        if (slash > 0) {
+            bool okWidth = false;
+            bool okHeight = false;
+            const double width = rest.left(slash).toDouble(&okWidth);
+            const double height = rest.mid(slash + 1).toDouble(&okHeight);
+            if (okWidth && okHeight && width > 0 && height > 0)
+                addRule(&out, LoomUtility::AspectRatio, QString(), width / height);
+        }
+        return out;
+    }
+
+    struct ConstraintFamily {
+        const char *prefix;
+        LoomUtility utility;
+    };
+    static constexpr ConstraintFamily constraints[] = {
+        {"min-w-", LoomUtility::LayoutMinWidth},
+        {"max-w-", LoomUtility::LayoutMaxWidth},
+        {"min-h-", LoomUtility::LayoutMinHeight},
+        {"max-h-", LoomUtility::LayoutMaxHeight},
+    };
+    for (const ConstraintFamily &family : constraints) {
+        if (!name.startsWith(QLatin1String(family.prefix)))
+            continue;
+        const QString rest = name.mid(qsizetype(qstrlen(family.prefix))).toString();
+        if (registry->hasSpace(rest))
+            addRule(&out, family.utility, rest);
+        return out;
+    }
+
+    struct SpanFamily {
+        const char *prefix;
+        LoomUtility utility;
+    };
+    static constexpr SpanFamily spans[] = {
+        {"col-span-", LoomUtility::LayoutColumnSpan},
+        {"row-span-", LoomUtility::LayoutRowSpan},
+    };
+    for (const SpanFamily &family : spans) {
+        if (!name.startsWith(QLatin1String(family.prefix)))
+            continue;
+        const QString rest = name.mid(qsizetype(qstrlen(family.prefix))).toString();
+        bool isNumber = false;
+        const int span = rest.toInt(&isNumber);
+        // A span is a count of cells: at least one, and a whole number.
+        if (isNumber && span >= 1)
+            addRule(&out, family.utility, QString(), span);
+        return out;
+    }
+
     if (parseSpacingFamily(
             name, u'p', LoomUtility::PaddingTop, LoomUtility::PaddingRight,
             LoomUtility::PaddingBottom, LoomUtility::PaddingLeft, &out))
@@ -422,6 +531,42 @@ const char *loomUtilityName(LoomUtility utility)
         return "opacity-*";
     case LoomUtility::Visible:
         return "visible/hidden";
+    case LoomUtility::AnchorFill:
+        return "fill";
+    case LoomUtility::AnchorFillX:
+        return "fill-x";
+    case LoomUtility::AnchorFillY:
+        return "fill-y";
+    case LoomUtility::AnchorCenter:
+        return "center";
+    case LoomUtility::AnchorCenterX:
+        return "center-x";
+    case LoomUtility::AnchorCenterY:
+        return "center-y";
+    case LoomUtility::AnchorPinTop:
+        return "pin-t";
+    case LoomUtility::AnchorPinRight:
+        return "pin-r";
+    case LoomUtility::AnchorPinBottom:
+        return "pin-b";
+    case LoomUtility::AnchorPinLeft:
+        return "pin-l";
+    case LoomUtility::LayoutAlignment:
+        return "self-*";
+    case LoomUtility::LayoutMinWidth:
+        return "min-w-*";
+    case LoomUtility::LayoutMaxWidth:
+        return "max-w-*";
+    case LoomUtility::LayoutMinHeight:
+        return "min-h-*";
+    case LoomUtility::LayoutMaxHeight:
+        return "max-h-*";
+    case LoomUtility::LayoutColumnSpan:
+        return "col-span-*";
+    case LoomUtility::LayoutRowSpan:
+        return "row-span-*";
+    case LoomUtility::AspectRatio:
+        return "aspect-*";
     case LoomUtility::Shadow:
         return "shadow-*";
     case LoomUtility::TransitionMode:
@@ -461,26 +606,33 @@ bool takesAlphaModifier(LoomUtility utility)
     }
 }
 
-// Tailwind's colour-opacity modifier: `bg-surface/70`. Split off before the
-// name reaches any utility matcher, so every colour family gets it without
-// each one having to know it exists.
+// Tailwind's colour-opacity modifier: `bg-surface/70`. Handled here rather than
+// in each colour family, so every one of them gets it for free.
+//
+// The whole name is tried first, and the slash is only treated as a modifier if
+// that fails. Splitting first -- which is what this did originally -- meant a
+// slash could never be part of a class: `aspect-16/9` parsed as `aspect-16`
+// with alpha 9 and was rejected. Trying the base parse first also makes
+// `w-1/2` report as an unknown class rather than being silently mangled into
+// `w-1`, and leaves room for fractional widths later.
 Parsed parseUtility(QStringView name)
 {
-    int alphaPercent = 100;
-    const qsizetype slash = name.lastIndexOf(QLatin1Char('/'));
-    if (slash >= 0) {
-        bool isNumber = false;
-        const int parsed = name.mid(slash + 1).toInt(&isNumber);
-        // Anything but a plain 0-100 leaves `out.ok` false, so the class warns
-        // as unknown rather than quietly losing the modifier.
-        if (!isNumber || parsed < 0 || parsed > 100)
-            return {};
-        alphaPercent = parsed;
-        name = name.left(slash);
-    }
+    if (Parsed whole = parseUtilityBase(name); whole.ok)
+        return whole;
 
-    Parsed out = parseUtilityBase(name);
-    if (alphaPercent == 100 || !out.ok)
+    const qsizetype slash = name.lastIndexOf(QLatin1Char('/'));
+    if (slash < 0)
+        return {};
+
+    bool isNumber = false;
+    const int alphaPercent = name.mid(slash + 1).toInt(&isNumber);
+    // Anything but a plain 0-100 leaves `out.ok` false, so the class warns as
+    // unknown rather than quietly losing the modifier.
+    if (!isNumber || alphaPercent < 0 || alphaPercent > 100)
+        return {};
+
+    Parsed out = parseUtilityBase(name.left(slash));
+    if (!out.ok)
         return out;
 
     for (LoomStyleRule &rule : out.rules) {
@@ -542,6 +694,14 @@ std::shared_ptr<const LoomCompiledStyle> compile(const QString &style)
                 || rule.utility == LoomUtility::MarginBottom
                 || rule.utility == LoomUtility::MarginLeft)
                 compiled->usesMargins = true;
+            // Everything from the layout block routes on the parent's type, so
+            // a reparent has to re-apply. AspectRatio additionally tracks the
+            // item's own width.
+            if (rule.utility >= LoomUtility::AnchorFill
+                && rule.utility <= LoomUtility::AspectRatio)
+                compiled->usesLayout = true;
+            if (rule.utility == LoomUtility::AspectRatio)
+                compiled->usesAspect = true;
             compiled->rules.append(rule);
         }
     }
@@ -586,6 +746,10 @@ QStringList valuelessClasses()
     QStringList names = exactUtilities().keys();
     names.append(transitionModeUtilities().keys());
     names.append(easingUtilities().keys());
+    names.append(alignmentUtilities().keys());
+    // The named ratios only. `aspect-16/9` takes a value that is not a token,
+    // so it is advertised through numericPrefixes instead.
+    names.append(aspectUtilities().keys());
     // Both take an optional value, so the bare forms are valid classes too:
     // `rounded` is 4px and `border` is 1px.
     names.append(QStringLiteral("rounded"));

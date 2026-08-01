@@ -13,7 +13,7 @@ Rectangle {
 }
 ```
 
-There are **1550 classes** in the built-in vocabulary. This document lists all
+There are **1702 classes** in the built-in vocabulary. This document lists all
 of them by family, with the property each writes and the value it resolves to.
 `loom style --catalogue` emits the same list as JSON, generated from the
 parser's own tables — see [../tooling/cli.md](../tooling/cli.md).
@@ -29,7 +29,7 @@ and warns on a type that does not. What that costs you is in
 - [How a string becomes property writes](#how-a-string-becomes-property-writes)
 - [Colour](#colour) · [Typography](#typography) · [Spacing](#spacing--padding-margin-gap)
 - [Size](#size) · [Border and radius](#border-and-radius) · [Effects](#effects)
-- [Motion](#motion)
+- [Layout](#layout) · [Motion](#motion)
 - [Scales](#scales) — the numbers behind every key
 - [Variants](#variants) and [specificity](#specificity--which-rule-wins)
 - [Conflict rules](#conflict-rules--lostyle-versus-your-own-code)
@@ -258,6 +258,87 @@ Control casts a rounded shadow.
 Shadows are rectangular: `RectangularShadow` matches the target's geometry and
 corner radii, so irregular content casts a rectangular shadow. That is the
 honest limit of the approach. Values are in the [shadow scale](#shadow).
+
+## Layout
+
+Qt Quick places items two ways — **anchors**, which work on any Item, and the
+**`QtQuick.Layouts` attached properties**, which only mean anything inside a
+`RowLayout`, `ColumnLayout` or `GridLayout`. These classes resolve to whichever
+one applies, decided per item on every apply, so a reparent re-routes them.
+
+That is not a convenience: anchoring an item a layout manages is undefined
+behaviour, and Qt warns about it. Routing is how `fill` stays correct in both
+worlds.
+
+| Class | Outside a layout | Inside a layout |
+| --- | --- | --- |
+| `fill` | `anchors.fill: parent` | `Layout.fillWidth` + `Layout.fillHeight` |
+| `fill-x` | `anchors.left` + `anchors.right` | `Layout.fillWidth` |
+| `fill-y` | `anchors.top` + `anchors.bottom` | `Layout.fillHeight` |
+| `center` | `anchors.centerIn: parent` | `Layout.alignment: Qt.AlignCenter` |
+| `center-x` | `anchors.horizontalCenter` | — use `self-*` |
+| `center-y` | `anchors.verticalCenter` | — use `self-*` |
+| `pin-t` `pin-r` `pin-b` `pin-l` | `anchors.{top,right,bottom,left}` | — use `self-*` |
+
+`fill` is the equivalent of flexbox's `flex-1` / `grow`; there is no second
+name for it.
+
+**Anchors are what finally make `m-*` do something.** Anchor margins only take
+effect where an anchor line is set, so `fill m-4` is an item filling its parent
+inset by 16 px, and `pin-l ml-6` is an item on the left edge, 24 px in. The two
+families were designed to compose.
+
+```qml
+Rectangle {
+    // Fills the parent, inset by 16px on every side.
+    Lo.style: "bg-surface rounded-lg fill m-4"
+}
+```
+
+### Layout-only
+
+These have no anchors equivalent — Qt Quick has no min/max or span concept off
+a layout — so outside one they warn and skip, naming the reason.
+
+| Class | Writes |
+| --- | --- |
+| `self-start` `self-center` `self-end` `self-stretch` | `Layout.alignment`; `self-stretch` is Qt's default, which it spells as no alignment |
+| `min-w-{n}` `max-w-{n}` `min-h-{n}` `max-h-{n}` | `Layout.minimumWidth`, `maximumWidth`, `minimumHeight`, `maximumHeight`, from the [spacing scale](#spacing) |
+| `col-span-{n}` `row-span-{n}` | `Layout.columnSpan` / `rowSpan`; a whole number of cells, at least 1 |
+
+`self-*` writes the whole alignment at once rather than composing per-axis
+flags. Two rules on one flags property would resolve by
+[specificity](#specificity--which-rule-wins) rather than merging, so a
+decomposed pair would silently lose an axis. For finer control — say
+`Qt.AlignLeft | Qt.AlignVCenter` — bind `Layout.alignment` directly.
+
+Anything writing `Layout.*` needs the item's **own file** to
+`import QtQuick.Layouts`, because attached types resolve through the document's
+imports. A warning names the item when it does not. This is the same constraint
+`m-*` already has.
+
+### Aspect ratio
+
+| Class | Ratio |
+| --- | --- |
+| `aspect-square` | 1 / 1 |
+| `aspect-video` | 16 / 9 |
+| `aspect-{n}/{m}` | any positive `n / m`, e.g. `aspect-4/3` |
+
+Width drives height: the item's height is set to `width / ratio` and re-derived
+whenever the width changes. Inside a layout it writes `Layout.preferredHeight`
+instead, because a layout owns its children's geometry.
+
+### What layout utilities do not do
+
+- **No sibling anchors.** `anchors.left: sidebar.right` has no class form — a
+  class string cannot name another item's `id`. Write it in QML.
+- **No container-level alignment.** Tailwind's `items-*` and `justify-*` go on
+  the container; Qt Quick Layouts have no such property, only the per-child
+  `Layout.alignment` that `self-*` writes.
+- **No offsets of their own.** There is no `pin-l-4`; use `pin-l ml-4`.
+- **`fill` and `w-full` are different mechanisms** and must not be combined.
+  `fill` anchors; `w-full` copies the parent's width imperatively. Pick one.
 
 ## Motion
 

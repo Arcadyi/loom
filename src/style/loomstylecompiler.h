@@ -40,6 +40,29 @@ enum class LoomUtility : quint8 {
     BorderColor,
     Opacity,
     Visible,
+    // Layout. These resolve to anchors outside a QtQuick.Layouts layout and to
+    // the Layout.* attached properties inside one, decided per apply -- see
+    // LoomStyleAttached::layoutPaths(). Anchoring an item a layout manages is
+    // undefined behaviour that Qt warns about, so the routing is a correctness
+    // requirement rather than a convenience.
+    AnchorFill,
+    AnchorFillX,
+    AnchorFillY,
+    AnchorCenter,
+    AnchorCenterX,
+    AnchorCenterY,
+    AnchorPinTop,
+    AnchorPinRight,
+    AnchorPinBottom,
+    AnchorPinLeft,
+    LayoutAlignment, // literal carries a Qt::Alignment
+    LayoutMinWidth,
+    LayoutMaxWidth,
+    LayoutMinHeight,
+    LayoutMaxHeight,
+    LayoutColumnSpan, // literal carries the span
+    LayoutRowSpan,
+    AspectRatio, // literal carries width / height
     Shadow,
     TransitionMode,     // literal carries a LoomTransitionMode
     TransitionDuration, // key is a duration token
@@ -94,6 +117,8 @@ public:
     bool usesBreakpoints = false;
     bool usesParentSize = false; // w-full / h-full
     bool usesMargins = false;    // m-* re-routes between anchors and Layout
+    bool usesLayout = false;     // fill / center / pin-* / self-* / min-w-* ...
+    bool usesAspect = false;     // aspect-* derives height from the item's width
 };
 
 // The utility family a rule came from, spelled the way a user writes it, for

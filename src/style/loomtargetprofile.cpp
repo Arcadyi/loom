@@ -92,6 +92,31 @@ const LoomTargetProfile *LoomTargetProfile::forType(const QMetaObject *metaObjec
     set(LoomUtility::MarginBottom, "anchors.bottomMargin");
     set(LoomUtility::MarginLeft, "anchors.leftMargin");
 
+    // Layout utilities. Registered unconditionally: every Item has anchors, and
+    // whether the Layout.* form applies depends on the item's *parent*, which is
+    // per-instance and so cannot live in this per-type cache. These entries are
+    // only the "the type supports this at all" gate -- LoomStyleAttached
+    // ::layoutPaths() decides where the write actually lands, and reports the
+    // context mismatches this table cannot see.
+    set(LoomUtility::AnchorFill, "anchors.fill");
+    set(LoomUtility::AnchorFillX, "anchors.left");
+    set(LoomUtility::AnchorFillY, "anchors.top");
+    set(LoomUtility::AnchorCenter, "anchors.centerIn");
+    set(LoomUtility::AnchorCenterX, "anchors.horizontalCenter");
+    set(LoomUtility::AnchorCenterY, "anchors.verticalCenter");
+    set(LoomUtility::AnchorPinTop, "anchors.top");
+    set(LoomUtility::AnchorPinRight, "anchors.right");
+    set(LoomUtility::AnchorPinBottom, "anchors.bottom");
+    set(LoomUtility::AnchorPinLeft, "anchors.left");
+    set(LoomUtility::LayoutAlignment, "Layout.alignment");
+    set(LoomUtility::LayoutMinWidth, "Layout.minimumWidth");
+    set(LoomUtility::LayoutMaxWidth, "Layout.maximumWidth");
+    set(LoomUtility::LayoutMinHeight, "Layout.minimumHeight");
+    set(LoomUtility::LayoutMaxHeight, "Layout.maximumHeight");
+    set(LoomUtility::LayoutColumnSpan, "Layout.columnSpan");
+    set(LoomUtility::LayoutRowSpan, "Layout.rowSpan");
+    set(LoomUtility::AspectRatio, "height");
+
     set(LoomUtility::Width, "width");
     set(LoomUtility::Height, "height");
     set(LoomUtility::WidthFull, "width");

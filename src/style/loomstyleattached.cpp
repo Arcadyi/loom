@@ -44,6 +44,31 @@ void warnUnsupportedOnce(const QMetaObject *type, LoomUtility utility, const QSt
         << "- see docs/styling/limitations.md";
 }
 
+// Distinct from warnUnsupportedOnce: the utility is fine and the type supports
+// it, the item is just on the wrong side of the anchors/layout divide. Claiming
+// "not supported on QQuickRectangle" would send someone after the wrong problem
+// -- `pin-l` is perfectly supported on a Rectangle, just not inside a layout.
+void warnLayoutMismatchOnce(
+    const QMetaObject *type, LoomUtility utility, bool requiresLayout)
+{
+    static QSet<QPair<const QMetaObject *, quint8>> warned;
+    const auto entry = qMakePair(type, quint8(utility));
+    if (warned.contains(entry))
+        return;
+    warned.insert(entry);
+    if (requiresLayout) {
+        qCWarning(lcLoomApply).noquote()
+            << "Lo.style: utility" << loomUtilityName(utility)
+            << "only applies inside a RowLayout, ColumnLayout or GridLayout;"
+            << type->className() << "is not in one";
+        return;
+    }
+    qCWarning(lcLoomApply).noquote()
+        << "Lo.style: utility" << loomUtilityName(utility)
+        << "has no form inside a layout, which places" << type->className()
+        << "itself - use self-start/self-center/self-end instead";
+}
+
 void warnInvalidPathOnce(const QMetaObject *type, const QString &path)
 {
     static QSet<QPair<const QMetaObject *, QString>> warned;
@@ -194,11 +219,17 @@ void LoomStyleAttached::updateSubscriptions()
             Qt::UniqueConnection);
         trackParent();
     }
-    // Margins resolve against the parent's type (Layout vs. anchors), so a
-    // reparent re-routes them.
-    if (m_compiled && m_compiled->usesMargins)
+    // Margins and the layout family resolve against the parent's type (Layout
+    // vs. anchors), so a reparent re-routes them.
+    if (m_compiled && (m_compiled->usesMargins || m_compiled->usesLayout))
         connect(
             m_target, &QQuickItem::parentChanged, this, &LoomStyleAttached::scheduleApply,
+            Qt::UniqueConnection);
+    // aspect-* derives height from the item's own width. Writing height raises
+    // heightChanged, not widthChanged, so this cannot feed back on itself.
+    if (m_compiled && m_compiled->usesAspect)
+        connect(
+            m_target, &QQuickItem::widthChanged, this, &LoomStyleAttached::scheduleApply,
             Qt::UniqueConnection);
 }
 
@@ -264,6 +295,123 @@ QString LoomStyleAttached::marginPath(LoomUtility utility) const
     if (parent && loomInheritsByName(parent->metaObject(), "QQuickLayout"))
         return QStringLiteral("Layout.") + QLatin1String(side);
     return QStringLiteral("anchors.") + QLatin1String(side);
+}
+
+// Layout utilities land in one of two worlds, decided by the parent's type.
+// Anchoring an item that a layout manages is undefined behaviour Qt warns
+// about, so this is not a convenience: writing the anchors form inside a layout
+// would be actively wrong. Resolved per apply, so a reparent re-routes.
+LoomStyleAttached::LayoutPaths
+LoomStyleAttached::layoutPaths(LoomUtility utility, LayoutMismatch *mismatch) const
+{
+    *mismatch = LayoutMismatch::None;
+    const QQuickItem *parent = m_target->parentItem();
+    const bool inLayout =
+        parent && loomInheritsByName(parent->metaObject(), "QQuickLayout");
+
+    const auto anchors = [](const char *name) {
+        return LayoutPaths{QStringLiteral("anchors.") + QLatin1String(name)};
+    };
+    const auto layout = [](const char *name) {
+        return LayoutPaths{QStringLiteral("Layout.") + QLatin1String(name)};
+    };
+
+    switch (utility) {
+    case LoomUtility::AnchorFill:
+        if (inLayout)
+            return {
+                QStringLiteral("Layout.fillWidth"), QStringLiteral("Layout.fillHeight")};
+        return anchors("fill");
+    case LoomUtility::AnchorFillX:
+        if (inLayout)
+            return layout("fillWidth");
+        return {QStringLiteral("anchors.left"), QStringLiteral("anchors.right")};
+    case LoomUtility::AnchorFillY:
+        if (inLayout)
+            return layout("fillHeight");
+        return {QStringLiteral("anchors.top"), QStringLiteral("anchors.bottom")};
+    case LoomUtility::AnchorCenter:
+        // A layout has no "centre in the parent"; centring is an alignment.
+        return inLayout ? layout("alignment") : anchors("centerIn");
+
+    // Single-axis centring and edge pins have no layout equivalent that does
+    // not fight the layout's own placement. `self-*` is the answer there.
+    case LoomUtility::AnchorCenterX:
+    case LoomUtility::AnchorCenterY:
+    case LoomUtility::AnchorPinTop:
+    case LoomUtility::AnchorPinRight:
+    case LoomUtility::AnchorPinBottom:
+    case LoomUtility::AnchorPinLeft:
+        if (inLayout) {
+            *mismatch = LayoutMismatch::NoLayoutForm;
+            return {};
+        }
+        switch (utility) {
+        case LoomUtility::AnchorCenterX:
+            return anchors("horizontalCenter");
+        case LoomUtility::AnchorCenterY:
+            return anchors("verticalCenter");
+        case LoomUtility::AnchorPinTop:
+            return anchors("top");
+        case LoomUtility::AnchorPinRight:
+            return anchors("right");
+        case LoomUtility::AnchorPinBottom:
+            return anchors("bottom");
+        default:
+            return anchors("left");
+        }
+
+    // Layout-only: Qt Quick has no min/max or span concept off a layout.
+    case LoomUtility::LayoutAlignment:
+    case LoomUtility::LayoutMinWidth:
+    case LoomUtility::LayoutMaxWidth:
+    case LoomUtility::LayoutMinHeight:
+    case LoomUtility::LayoutMaxHeight:
+    case LoomUtility::LayoutColumnSpan:
+    case LoomUtility::LayoutRowSpan:
+        if (!inLayout) {
+            *mismatch = LayoutMismatch::RequiresLayout;
+            return {};
+        }
+        switch (utility) {
+        case LoomUtility::LayoutAlignment:
+            return layout("alignment");
+        case LoomUtility::LayoutMinWidth:
+            return layout("minimumWidth");
+        case LoomUtility::LayoutMaxWidth:
+            return layout("maximumWidth");
+        case LoomUtility::LayoutMinHeight:
+            return layout("minimumHeight");
+        case LoomUtility::LayoutMaxHeight:
+            return layout("maximumHeight");
+        case LoomUtility::LayoutColumnSpan:
+            return layout("columnSpan");
+        default:
+            return layout("rowSpan");
+        }
+
+    case LoomUtility::AspectRatio:
+        // A layout owns its children's geometry, so state a preference rather
+        // than writing height under it.
+        return inLayout ? layout("preferredHeight")
+                        : LayoutPaths{QStringLiteral("height")};
+
+    default:
+        return {};
+    }
+}
+
+// `parent.left` as a value. QQuickItem exposes its anchor lines through
+// Q_PRIVATE_PROPERTY, so they are in the metaobject and resolvable by name,
+// and QQuickAnchorLine is a registered metatype -- which means the value can be
+// carried in a QVariant and written straight into the target's anchors group
+// without loom ever naming the private type or linking a private header.
+QVariant LoomStyleAttached::parentAnchorLine(const QString &edge) const
+{
+    QQuickItem *parent = m_target->parentItem();
+    if (!parent)
+        return {};
+    return QQmlProperty(parent, edge, qmlContext(m_target)).read();
 }
 
 // A Control is not a Rectangle: it paints its box through a `background`
@@ -488,6 +636,76 @@ void LoomStyleAttached::applyNow()
             case LoomUtility::Opacity:
                 writes.append({path, registry->opacityValue(rule.key)});
                 break;
+            case LoomUtility::AnchorFill:
+            case LoomUtility::AnchorFillX:
+            case LoomUtility::AnchorFillY:
+            case LoomUtility::AnchorCenter:
+            case LoomUtility::AnchorCenterX:
+            case LoomUtility::AnchorCenterY:
+            case LoomUtility::AnchorPinTop:
+            case LoomUtility::AnchorPinRight:
+            case LoomUtility::AnchorPinBottom:
+            case LoomUtility::AnchorPinLeft:
+            case LoomUtility::LayoutAlignment:
+            case LoomUtility::LayoutMinWidth:
+            case LoomUtility::LayoutMaxWidth:
+            case LoomUtility::LayoutMinHeight:
+            case LoomUtility::LayoutMaxHeight:
+            case LoomUtility::LayoutColumnSpan:
+            case LoomUtility::LayoutRowSpan:
+            case LoomUtility::AspectRatio: {
+                // The path from the profile is only the support gate; where the
+                // write actually lands depends on this item's parent, so it is
+                // resolved here per apply. Same shape as m-* above.
+                LayoutMismatch mismatch = LayoutMismatch::None;
+                const LayoutPaths paths = layoutPaths(rule.utility, &mismatch);
+                if (paths.isEmpty()) {
+                    if (mismatch != LayoutMismatch::None)
+                        warnLayoutMismatchOnce(
+                            m_target->metaObject(), rule.utility,
+                            mismatch == LayoutMismatch::RequiresLayout);
+                    else
+                        warnUnsupportedOnce(
+                            m_target->metaObject(), rule.utility, rule.key);
+                    break;
+                }
+                QQuickItem *parent = m_target->parentItem();
+                for (const QString &target : paths) {
+                    if (target == QLatin1String("anchors.fill")
+                        || target == QLatin1String("anchors.centerIn")) {
+                        if (!parent)
+                            break;
+                        writes.append({target, QVariant::fromValue(parent)});
+                    } else if (target.startsWith(QLatin1String("anchors."))) {
+                        const QVariant line =
+                            parentAnchorLine(target.mid(qstrlen("anchors.")));
+                        if (!line.isValid())
+                            break;
+                        writes.append({target, line});
+                    } else if (
+                        target == QLatin1String("Layout.fillWidth")
+                        || target == QLatin1String("Layout.fillHeight")) {
+                        writes.append({target, true});
+                    } else if (target == QLatin1String("Layout.alignment")) {
+                        // `center` in a layout means centred; `self-*` carries
+                        // its own alignment in the rule.
+                        const auto alignment = rule.utility == LoomUtility::AnchorCenter
+                            ? Qt::Alignment(Qt::AlignCenter)
+                            : Qt::Alignment(Qt::AlignmentFlag(int(rule.literal)));
+                        writes.append({target, QVariant::fromValue(alignment)});
+                    } else if (
+                        rule.utility == LoomUtility::LayoutColumnSpan
+                        || rule.utility == LoomUtility::LayoutRowSpan) {
+                        writes.append({target, int(rule.literal)});
+                    } else if (rule.utility == LoomUtility::AspectRatio) {
+                        if (rule.literal > 0)
+                            writes.append({target, m_target->width() / rule.literal});
+                    } else {
+                        writes.append({target, registry->space(rule.key)});
+                    }
+                }
+                break;
+            }
             case LoomUtility::Shadow:
             case LoomUtility::TransitionMode:
             case LoomUtility::TransitionDuration:
@@ -532,7 +750,16 @@ void LoomStyleAttached::applyNow()
             continue;
         }
         stopAnimation(it.key());
-        QQmlProperty(m_target, it.key(), context).write(m_originals.take(it.key()));
+        QQmlProperty property(m_target, it.key(), context);
+        const QVariant original = m_originals.take(it.key());
+        // Writing the saved value back is right whenever it is assignable, and
+        // for an anchor that was unset before Loom touched it, it is not: a
+        // default anchor line names no item, and Qt refuses it. Falling back to
+        // reset() releases the anchor instead of leaving the item stuck to it.
+        // Type-agnostic on purpose -- QQuickAnchorLine is private, so the saved
+        // value can only be moved around opaquely, never inspected.
+        if (!property.write(original))
+            property.reset();
         it = m_lastWritten.erase(it);
     }
 

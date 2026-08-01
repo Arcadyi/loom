@@ -98,9 +98,9 @@ Rectangle {
     radius: Loom.radius.lg
 
     Text {
-        anchors.centerIn: parent
-        // Utility strings: terse, variant-aware.
-        Lo.style: "text-foreground text-lg font-semibold"
+        // Utility strings: terse, variant-aware — and `center` anchors this
+        // label in its parent without a line of anchors.
+        Lo.style: "text-foreground text-lg font-semibold center"
         text: "Hello, Loom"
     }
 }

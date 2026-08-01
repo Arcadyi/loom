@@ -105,9 +105,7 @@ Rectangle {
 
     Column {
         id: body
-        anchors.fill: parent
-        anchors.margins: 16
-        Lo.style: "gap-3"
+        Lo.style: "fill m-4 gap-3"
     }
 }
 ```
@@ -115,9 +113,10 @@ Rectangle {
 Notes:
 
 - **`p-4` would not work here.** A Rectangle has no `topPadding`, so padding
-  utilities warn and skip. Real padding on a plain Item means an inner item with
-  margins — which is what `anchors.margins` does above. This is the single most
-  common surprise coming from Tailwind; see
+  utilities warn and skip. Real padding on a plain Item means an inner item
+  inset from its parent — which is what `fill m-4` does above: `fill` anchors
+  the column to the card, and `m-4` supplies the 16 px inset the anchors then
+  honour. This is the single most common surprise coming from Tailwind; see
   [limitations.md](limitations.md).
 - **`gap-3` on the Column** sets `spacing`, which is the positioner's own
   property and works exactly as expected.
@@ -190,9 +189,7 @@ Rectangle {
     Lo.style: "bg-background"
 
     ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: 16
-        Lo.style: "gap-4 md:gap-6"
+        Lo.style: "fill m-4 gap-4 md:gap-6"
 
         Text {
             text: qsTr("Dashboard")
@@ -200,17 +197,17 @@ Rectangle {
         }
 
         GridLayout {
-            Layout.fillWidth: true
-            // Layout is QML's job; loom styles what is laid out.
+            // How many columns is a structural decision: loom can place an item
+            // in a grid but cannot decide the grid's shape.
             columns: width >= Loom.breakpoint.md ? 3 : 1
-            Lo.style: "gap-4"
+            Lo.style: "fill-x gap-4"
 
             Repeater {
                 model: 6
                 Rectangle {
-                    Layout.fillWidth: true
                     implicitHeight: 120
-                    Lo.style: "bg-surface border border-outline rounded-lg shadow-sm"
+                    Lo.style: "fill-x aspect-video bg-surface border border-outline"
+                             + " rounded-lg shadow-sm"
                 }
             }
         }
@@ -218,12 +215,22 @@ Rectangle {
 }
 ```
 
-The division of labour is the point:
+Three different resolutions of `fill*` in one file, decided by each item's
+parent:
+
+- the **ColumnLayout** is a child of a plain Rectangle, so `fill` anchors it and
+  `m-4` becomes the anchor margins;
+- the **GridLayout** is inside the ColumnLayout, so `fill-x` becomes
+  `Layout.fillWidth`;
+- each **cell** is inside the GridLayout, so `fill-x` is `Layout.fillWidth`
+  there too, and `aspect-video` sets `Layout.preferredHeight` rather than
+  writing `height` under a layout that owns it.
+
+You do not have to track which is which. The remaining division of labour:
 
 - **Breakpoint variants handle appearance** — `md:gap-6`, `md:text-3xl`.
-- **Layout structure is QML** — the column count binds to
-  `Loom.breakpoint.md` because "how many columns" is a layout decision, and
-  loom has no grid utilities.
+- **Structure is QML** — the column count, because "how many columns" is not
+  something a class on a child can express.
 
 Both react to the same window width, so they stay in step.
 
@@ -304,12 +311,11 @@ ListView {
                  + (index === list.currentIndex ? "bg-accent" : "bg-surface hover:bg-surface-alt")
 
         Text {
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.left: parent.left
-            anchors.leftMargin: 12
             text: parent.name
-            Lo.style: index === list.currentIndex ? "text-on-accent text-sm"
-                                                  : "text-foreground text-sm"
+            // The icon/label row idiom: pinned left, centred vertically,
+            // inset by the margin the anchor then honours.
+            Lo.style: "center-y pin-l ml-3 text-sm "
+                     + (index === list.currentIndex ? "text-on-accent" : "text-foreground")
         }
     }
 }

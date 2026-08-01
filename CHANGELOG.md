@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.3.0
+
+**Layout utilities.** loom could style an item but never place one, so every
+layout decision fell back to raw QML — 37 `anchors.*` lines in the gallery
+alone, inside an example whose job is to show you don't need them.
+
+```qml
+// Fills its parent, inset by 16px, in one string.
+Rectangle { Lo.style: "bg-surface rounded-lg fill m-4" }
+```
+
+152 new classes. The vocabulary is 1702.
+
+### Anchors and fill
+
+`fill`, `fill-x`, `fill-y`, `center`, `center-x`, `center-y`, and the edge pins
+`pin-t` / `pin-r` / `pin-b` / `pin-l`.
+
+**These resolve to whichever layout system the item is actually in**, decided
+per apply: anchors outside a `QtQuick.Layouts` layout, the `Layout.*` attached
+properties inside one. `fill` is `anchors.fill` in an Item and
+`Layout.fillWidth` + `Layout.fillHeight` in a ColumnLayout. Reparenting between
+the two re-routes the write and releases the old one.
+
+That is a correctness feature rather than a convenience: anchoring an item a
+layout manages is undefined behaviour Qt warns about. It is the same routing
+`m-*` has always done between `anchors.topMargin` and `Layout.topMargin`.
+
+**Anchors are also what finally make `m-*` work.** Anchor margins only take
+effect where an anchor line is set, which until now there was no way to do — so
+`fill m-4` insets by 16 px, and `pin-l ml-6` sits 24 px from the left edge. The
+two families were designed to compose.
+
+### Layout-only
+
+- `self-start` / `self-center` / `self-end` / `self-stretch` → `Layout.alignment`
+- `min-w-{n}` `max-w-{n}` `min-h-{n}` `max-h-{n}` → the `Layout` size constraints
+- `col-span-{n}` `row-span-{n}` → `Layout.columnSpan` / `rowSpan`
+
+Qt Quick has no min/max or span concept off a layout, so outside one these warn
+and skip, naming the reason rather than reporting "not supported on
+QQuickRectangle" and sending you after the wrong problem.
+
+### Aspect ratio
+
+`aspect-square`, `aspect-video`, and any `aspect-{n}/{m}`. Width drives height,
+re-derived whenever the width changes; inside a layout it sets
+`Layout.preferredHeight` rather than writing `height` under a layout that owns
+it.
+
+### Also
+
+- **The colour-opacity modifier no longer eats a slash.** `parseUtility` split
+  on the last `/` before any utility matcher ran, so a slash could never be part
+  of a class name. The whole name is tried first now, which is what lets
+  `aspect-16/9` parse — and makes `w-1/2` report as an unknown class rather
+  than being silently mangled into `w-1` with 2% alpha.
+- Anchors are released with `QQmlProperty::reset()` when a class stops applying.
+  Writing the saved value back cannot work for an anchor that was unset before:
+  a default anchor line names no item and Qt refuses it, which would have left
+  the item anchored forever.
+- The gallery's `StatesPage.qml` lost all 10 of its `anchors.*` lines.
+
 ## 0.2.1
 
 A correctness release, plus a documentation rewrite. Every fix below is a bug

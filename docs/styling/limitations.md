@@ -13,6 +13,9 @@ invent a box model that Qt Quick doesn't have. That draws some hard lines.
 | `p-*` family | anything declaring `topPadding`/`rightPadding`/… (all Quick Controls; your components can opt in by declaring them) | plain Items have no content padding — warns; use `Loom.space.*` in bindings instead |
 | `gap-*` | anything with `spacing` | warns |
 | `shadow-*` | any Item (via RectangularShadow) | rectangular silhouette only |
+| `fill`, `center`, `pin-*` | any Item, as anchors; inside a Layout `fill` and `center` route to `Layout.*` | `center-x/y` and `pin-*` have no layout form and warn there — use `self-*` |
+| `self-*`, `min-w-*`/`max-w-*`/…, `col-span-*` | items inside a RowLayout, ColumnLayout or GridLayout | Qt Quick has no min/max or span off a layout — warns, naming the reason |
+| `aspect-*` | any Item; writes `height` from `width` | inside a Layout it sets `Layout.preferredHeight` instead |
 
 ## Semantics that differ from CSS
 
@@ -34,7 +37,12 @@ invent a box model that Qt Quick doesn't have. That draws some hard lines.
   down/hover colouring; restore it with `hover:`/`pressed:` variants rather than
   expecting both to apply.
 - **`w-full`/`h-full` copy the parent's size** (kept in sync), they do not
-  create a constraint system.
+  create a constraint system. `fill` anchors instead, which is usually what you
+  want; the two are different mechanisms and must not be combined on one item.
+- **The layout family routes on the parent's type**, resolved on every apply, so
+  reparenting an item between a Layout and anything else moves the write with
+  it. Anchoring an item a layout manages is undefined behaviour in Qt, which is
+  why this is routing rather than a warning.
 - **Shadows are rectangles.** `RectangularShadow` matches the target's
   geometry and corner radii; irregular content casts a rectangular shadow.
 - **`tracking-*` resolves against the text size applied in the same string**
@@ -87,12 +95,15 @@ flicker-critical properties.
 ## Vocabulary Tailwind has and loom does not
 
 Worth knowing before you reach for a class that is not there. None of these are
-in the 1550, and a string naming one is reported as unknown.
+in the 1702, and a string naming one is reported as unknown.
 
 | Missing | What to do instead |
 | --- | --- |
-| **Layout and position** — `flex`, `grid`, `absolute`, `inset-*`, `items-*`, `justify-*`, `self-*`, `z-*` | layout is QML's job: anchors, positioners, `QtQuick.Layouts`. Loom styles what is laid out |
-| **Sizing constraints** — `min-w-*`, `max-w-*`, fractional `w-1/2`, `aspect-*` | `Layout.minimumWidth`/`maximumWidth`, or bind `width` |
+| **Container-level alignment** — `items-*`, `justify-*` | Qt Quick Layouts have no container alignment property; only the per-child `Layout.alignment` that [`self-*`](utilities.md#layout-only) writes |
+| **Sibling anchors** — `anchors.left: sidebar.right` | no class can name another item's `id`. Write it in QML |
+| **Grid and flex containers** — `flex`, `grid` | a class cannot change an item's *type*. Use `RowLayout`/`ColumnLayout`/`GridLayout` and style the children |
+| **Positional offsets** — `top-4`, `inset-x-2` | `pin-t mt-4`: the [pin classes](utilities.md#layout) set the anchor, `m-*` supplies the offset |
+| **Fractional widths** — `w-1/2` | a Layout with `fill-x`, or bind `width` |
 | **Arbitrary values** — `p-[13]`, `bg-[#7c5cff]` | add the value to the [design token file](configuration.md), or use `Loom.space.*` in a binding |
 | **Negative values** — `-mt-4` | write the anchor margin directly |
 | **Text layout** — `text-center`, `truncate`, `line-clamp-*`, `uppercase`, `leading-*` alone | the underlying Text properties: `horizontalAlignment`, `elide`, `maximumLineCount`, `font.capitalization`, `lineHeight` |
@@ -103,8 +114,10 @@ in the 1550, and a string naming one is reported as unknown.
 | **More variants** — `group-hover:`, `first:`, `last:`, `checked:`, `max-md:`, `not-*`, `rtl:` | bind the style string to the condition, as in [the cookbook](cookbook.md#styling-quick-controls) |
 | **`@apply` / named class sets** | no component layer exists; factor the QML into a component instead |
 
-The general shape: loom covers **appearance**, not **layout**, and offers no
-escape hatch for values outside the token scales. Where a utility is missing,
+The general shape: loom covers **appearance** and **placement**, but not
+*structure* — it can anchor and align an item, and cannot change what kind of
+item it is or how its container arranges children. It also offers no escape
+hatch for values outside the token scales. Where a utility is missing,
 the typed `Loom.*` API and ordinary QML properties are the intended answer, not
 a workaround.
 
