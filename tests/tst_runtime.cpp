@@ -87,10 +87,9 @@ public:
     {
         static QAtomicInt counter;
         QStandardPaths::setTestModeEnabled(true);
-        QCoreApplication::setApplicationName(
-            QStringLiteral("loom-test-%1-%2")
-                .arg(QCoreApplication::applicationPid())
-                .arg(counter.fetchAndAddOrdered(1)));
+        QCoreApplication::setApplicationName(QStringLiteral("loom-test-%1-%2")
+                                                 .arg(QCoreApplication::applicationPid())
+                                                 .arg(counter.fetchAndAddOrdered(1)));
         m_base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
         m_valid = !m_base.isEmpty() && QDir().mkpath(m_base);
     }

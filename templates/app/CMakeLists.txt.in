@@ -11,8 +11,13 @@ find_package(Qt6 6.11 REQUIRED COMPONENTS Quick QuickControls2 Test)
 # CLI that created this project so a direct IDE configure does not depend on the
 # IDE inheriting the terminal's PATH. If that installation has moved, normal
 # CMake package discovery remains the portable fallback.
+#
+# The hint names the host package, so a cross build has to ignore it: an
+# Android or iOS application links loom's static libraries and needs the ones
+# built for that target, which `loom build` puts on CMAKE_PREFIX_PATH.
 set(_loom_generated_package_hint "@LOOM_CMAKE_PACKAGE_DIR@")
-if(EXISTS "${_loom_generated_package_hint}/loomConfig.cmake")
+if(NOT CMAKE_CROSSCOMPILING
+   AND EXISTS "${_loom_generated_package_hint}/loomConfig.cmake")
     find_package(loom @LOOM_VERSION@ CONFIG REQUIRED
         PATHS "${_loom_generated_package_hint}"
         NO_DEFAULT_PATH

@@ -37,6 +37,13 @@ jobs:
           arch: ${{ matrix.arch }}
           aqtsource: ${{ runner.os == 'Windows' && env.LOOM_AQT_WINDOWS_SOURCE || '' }}
           cache: true
+      # Ninja would otherwise pick MinGW off PATH and fail to link against the
+      # msvc2022_64 Qt; see .github/workflows/platforms.yml.
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
       - uses: seanmiddleditch/gha-setup-ninja@v5
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLOOM_BUILD_TESTS=OFF -DLOOM_BUILD_E2E_TESTS=OFF

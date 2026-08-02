@@ -39,6 +39,16 @@ jobs:
           arch: ${{ matrix.arch }}
           aqtsource: ${{ runner.os == 'Windows' && env.LOOM_AQT_WINDOWS_SOURCE || '' }}
           cache: true
+      # The Visual Studio generator finds cl.exe by itself; Ninja takes whatever
+      # compiler is first on PATH, and that is MinGW on windows-latest. Building
+      # against the msvc2022_64 Qt then fails at link with Itanium-mangled
+      # "undefined reference to __imp__ZN5QTest..." against MSVC import
+      # libraries. This puts the MSVC toolchain in the environment instead.
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
       - uses: seanmiddleditch/gha-setup-ninja@v5
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLOOM_WERROR=ON -DLOOM_BUILD_E2E_TESTS=OFF
@@ -80,6 +90,22 @@ jobs:
           target: android
           arch: android_x86_64
           cache: true
+      # The application links loom's static libraries, so the host build above
+      # -- which exists to provide the CLI -- cannot serve it. Build the library
+      # for the device ABI and hand the CLI that prefix with --prefix.
+      - name: Cross-build loom for Android
+        run: |
+          cmake -S . -B build-android -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QT_ROOT_DIR/lib/cmake/Qt6/qt.toolchain.cmake" \
+            -DQT_HOST_PATH="$QT_HOST_PATH" \
+            -DANDROID_ABI=x86_64 \
+            -DLOOM_BUILD_CLI=OFF \
+            -DLOOM_BUILD_TESTS=OFF \
+            -DLOOM_BUILD_E2E_TESTS=OFF \
+            -DLOOM_BUILD_EXAMPLES=OFF
+          cmake --build build-android
+          cmake --install build-android --prefix "$RUNNER_TEMP/loom-android"
       - name: Generate adapter fixture
         run: |
           echo "QT_ANDROID_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
@@ -87,6 +113,14 @@ jobs:
           cd "$RUNNER_TEMP/LoomAndroid"
           jq --arg qt "$QT_ROOT_DIR" --arg host "$QT_HOST_PATH" '.applications.LoomAndroid.platforms.android = {qtPath: $qt, hostQtPath: $host, abi: "x86_64", api: 36}' loom.json > loom.next.json
           mv loom.next.json loom.json
+      # ubuntu-latest ships /dev/kvm owned by a group the runner user is not in,
+      # so the emulator falls back to software rendering and never boots:
+      # "ProbeKVM: This user doesn't have permissions to use KVM (/dev/kvm)".
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
       - name: Build, install, and launch on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -94,8 +128,8 @@ jobs:
           arch: x86_64
           script: |
             cd "$RUNNER_TEMP/LoomAndroid"
-            "$RUNNER_TEMP/loom/bin/loom" build --target android --config Debug
-            "$RUNNER_TEMP/loom/bin/loom" deploy --target android --config Debug
+            "$RUNNER_TEMP/loom/bin/loom" build --target android --config Debug --prefix "$RUNNER_TEMP/loom-android"
+            "$RUNNER_TEMP/loom/bin/loom" deploy --target android --config Debug --prefix "$RUNNER_TEMP/loom-android"
             adb shell am start -W -n dev.example.loomandroid/org.qtproject.qt.android.bindings.QtActivity
 
   ios-simulator:
@@ -124,17 +158,32 @@ jobs:
           target: ios
           arch: ios
           cache: true
+      # The application links loom's static libraries, so the host build above
+      # -- which exists to provide the CLI -- cannot serve it. Build the library
+      # for the simulator SDK and hand the CLI that prefix with --prefix.
+      - name: Cross-build loom for iOS
+        run: |
+          cmake -S . -B build-ios -G Xcode \
+            -DCMAKE_TOOLCHAIN_FILE="$QT_ROOT_DIR/lib/cmake/Qt6/qt.toolchain.cmake" \
+            -DQT_HOST_PATH="$QT_HOST_PATH" \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DLOOM_BUILD_CLI=OFF \
+            -DLOOM_BUILD_TESTS=OFF \
+            -DLOOM_BUILD_E2E_TESTS=OFF \
+            -DLOOM_BUILD_EXAMPLES=OFF
+          cmake --build build-ios --config Debug
+          cmake --install build-ios --config Debug --prefix "$RUNNER_TEMP/loom-ios"
       - name: Generate and build adapter fixture
         run: |
           "$RUNNER_TEMP/loom/bin/loom" new LoomIos --directory "$RUNNER_TEMP/LoomIos"
           cd "$RUNNER_TEMP/LoomIos"
           jq --arg qt "$QT_ROOT_DIR" --arg host "$QT_HOST_PATH" '.applications.LoomIos.platforms.ios = {qtPath: $qt, hostQtPath: $host, sdk: "iphonesimulator", destination: "simulator", device: "booted"}' loom.json > loom.next.json
           mv loom.next.json loom.json
-          "$RUNNER_TEMP/loom/bin/loom" build --target ios --config Debug
+          "$RUNNER_TEMP/loom/bin/loom" build --target ios --config Debug --prefix "$RUNNER_TEMP/loom-ios"
           device=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.isAvailable)][0].udid')
           xcrun simctl boot "$device" || true
           xcrun simctl bootstatus "$device" -b
           jq --arg device "$device" '.applications.LoomIos.platforms.ios.device = $device' loom.json > loom.next.json
           mv loom.next.json loom.json
-          "$RUNNER_TEMP/loom/bin/loom" deploy --target ios --config Debug
+          "$RUNNER_TEMP/loom/bin/loom" deploy --target ios --config Debug --prefix "$RUNNER_TEMP/loom-ios"
           xcrun simctl launch "$device" dev.example.loomios

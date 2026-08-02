@@ -168,9 +168,25 @@ QString installedPackagePrefix()
     return prefix;
 }
 
+// Every target that builds against a Qt other than the host's, and so needs a
+// loom built for it rather than the one this CLI was installed beside.
+bool isCrossTarget(const QString &target)
+{
+    return target == QLatin1String("android") || target == QLatin1String("ios")
+        || target == QLatin1String("embedded");
+}
+
 // CMAKE_PREFIX_PATH replaces rather than appends, so the user's value and the
 // inferred one have to be combined into a single definition.
-QStringList cmakePrefixArguments(const QString &userPrefix)
+//
+// Cross targets need the same list in CMAKE_FIND_ROOT_PATH as well. A sysroot
+// build sets CMAKE_FIND_ROOT_PATH_MODE_PACKAGE to ONLY -- CMake's own
+// Platform/Darwin.cmake does it for the iOS SDK -- which re-roots every
+// find_package search path, including an explicit PATHS ... NO_DEFAULT_PATH,
+// underneath the target sysroot. A prefix outside it is then invisible however
+// it was named. Toolchain files append to this variable, so seeding it from the
+// command line leaves the sysroot they add intact.
+QStringList cmakePrefixArguments(const QString &userPrefix, const QString &target)
 {
     QStringList prefixes;
     if (!userPrefix.isEmpty())
@@ -180,7 +196,11 @@ QStringList cmakePrefixArguments(const QString &userPrefix)
         prefixes.append(inferred);
     if (prefixes.isEmpty())
         return {};
-    return {QStringLiteral("-DCMAKE_PREFIX_PATH=") + prefixes.join(QLatin1Char(';'))};
+    const auto joined = prefixes.join(QLatin1Char(';'));
+    QStringList arguments{QStringLiteral("-DCMAKE_PREFIX_PATH=") + joined};
+    if (isCrossTarget(target))
+        arguments.append(QStringLiteral("-DCMAKE_FIND_ROOT_PATH=") + joined);
+    return arguments;
 }
 
 // Options shared by every command that configures or builds a project.
@@ -405,7 +425,8 @@ int resolveProjectContext(
     }
     context.buildDirectory =
         buildDirectoryFor(context.root, context.target, context.configuration);
-    context.cmakeArguments = cmakePrefixArguments(parsed.value(QStringLiteral("prefix")));
+    context.cmakeArguments =
+        cmakePrefixArguments(parsed.value(QStringLiteral("prefix")), context.target);
     context.generator =
         parsed.value(QStringLiteral("generator"), QStringLiteral("Ninja"));
     context.platformOptions =

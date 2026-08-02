@@ -168,10 +168,8 @@ const LoomTargetProfile *LoomTargetProfile::forType(const QMetaObject *metaObjec
     cache.insert_or_assign(
         metaObject,
         CacheEntry{
-            QByteArray(metaObject->className()),
-            metaObject->propertyCount(),
-            metaObject->methodCount(),
-            std::move(owned)});
+            QByteArray(metaObject->className()), metaObject->propertyCount(),
+            metaObject->methodCount(), std::move(owned)});
     return profile;
 }
 

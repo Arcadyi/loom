@@ -16,6 +16,29 @@ under `applications.<target>.platforms` in `loom.json`.
 `loom doctor --target ...` checks host prerequisites. Platform paths can be
 relative to the manifest or supplied by the documented environment variables.
 
+## loom itself on cross targets
+
+An application links loom's libraries, so every cross target needs a loom built
+for it -- the installation the CLI came from is a host build and cannot be
+linked into an Android or iOS binary. Build and install one per target, then
+name its prefix:
+
+```sh
+cmake -S <loom> -B build-android -G Ninja \
+    -DCMAKE_TOOLCHAIN_FILE=$QT_ANDROID/lib/cmake/Qt6/qt.toolchain.cmake \
+    -DQT_HOST_PATH=$QT_HOST -DANDROID_ABI=arm64-v8a -DLOOM_BUILD_CLI=OFF
+cmake --build build-android
+cmake --install build-android --prefix /opt/loom-android
+
+loom build --target android --prefix /opt/loom-android
+```
+
+`--prefix` goes on the front of `CMAKE_PREFIX_PATH`, and on cross targets into
+`CMAKE_FIND_ROOT_PATH` as well: a sysroot build sets
+`CMAKE_FIND_ROOT_PATH_MODE_PACKAGE` to `ONLY`, which otherwise hides any prefix
+outside the sysroot from `find_package`. Desktop targets need none of this and
+keep using the package recorded when `loom new` generated the project.
+
 ## Desktop and native packages
 
 Desktop uses the ordinary CMake configure/build/test flow. `loom deploy`
