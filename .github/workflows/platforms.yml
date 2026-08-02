@@ -121,16 +121,26 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      # A file rather than inline commands: the emulator runner hands each line
+      # of `script` to its own `sh -c`, so a `cd` on one line is gone by the
+      # next and loom looks for loom.json in the wrong directory.
+      - name: Write emulator script
+        run: |
+          cat > "$RUNNER_TEMP/android-smoke.sh" <<'SCRIPT'
+          set -eu
+          cd "$RUNNER_TEMP/LoomAndroid"
+          loom="$RUNNER_TEMP/loom/bin/loom"
+          "$loom" build --target android --config Debug --prefix "$RUNNER_TEMP/loom-android"
+          "$loom" deploy --target android --config Debug --prefix "$RUNNER_TEMP/loom-android"
+          adb shell am start -W -n dev.example.loomandroid/org.qtproject.qt.android.bindings.QtActivity
+          SCRIPT
+          chmod +x "$RUNNER_TEMP/android-smoke.sh"
       - name: Build, install, and launch on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
           arch: x86_64
-          script: |
-            cd "$RUNNER_TEMP/LoomAndroid"
-            "$RUNNER_TEMP/loom/bin/loom" build --target android --config Debug --prefix "$RUNNER_TEMP/loom-android"
-            "$RUNNER_TEMP/loom/bin/loom" deploy --target android --config Debug --prefix "$RUNNER_TEMP/loom-android"
-            adb shell am start -W -n dev.example.loomandroid/org.qtproject.qt.android.bindings.QtActivity
+          script: bash "$RUNNER_TEMP/android-smoke.sh"
 
   ios-simulator:
     name: iOS simulator
@@ -167,6 +177,7 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$QT_ROOT_DIR/lib/cmake/Qt6/qt.toolchain.cmake" \
             -DQT_HOST_PATH="$QT_HOST_PATH" \
             -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DLOOM_BUILD_CLI=OFF \
             -DLOOM_BUILD_TESTS=OFF \
             -DLOOM_BUILD_E2E_TESTS=OFF \

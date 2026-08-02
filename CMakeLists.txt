@@ -33,7 +33,12 @@ set(QT_QML_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/qml")
 # $<LINK_ONLY:...> in INTERFACE_LINK_LIBRARIES, and install(EXPORT loomTargets)
 # then fails because the warnings target is not itself exported.
 if(MSVC)
-    set(LOOM_WARNING_OPTIONS /W4 /permissive-)
+    # C4702 fires inside qnumeric.h, not loom's own sources. CMake already marks
+    # the Qt include directories external and compiles with /external:W0, but
+    # that governs the front end only: unreachable-code analysis runs during code
+    # generation and is still attributed to the header, so /WX fails the build on
+    # a warning no change here can fix.
+    set(LOOM_WARNING_OPTIONS /W4 /permissive- /wd4702)
     set(LOOM_WERROR_OPTION /WX)
 else()
     set(LOOM_WARNING_OPTIONS
