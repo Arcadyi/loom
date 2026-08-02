@@ -13,6 +13,7 @@
 #include <QUrl>
 #ifdef Q_OS_WIN
 #include <QWinEventNotifier>
+#include <fcntl.h>
 #include <io.h>
 #include <windows.h>
 #else
@@ -200,6 +201,17 @@ int LanguageServerProxy::run(const QString &qmllsPath, const QStringList &qmllsA
                             << m_qmlls.errorString() << '\n';
         return 127;
     }
+
+#ifdef Q_OS_WIN
+    // LSP frames messages by byte count over stdio, and the Windows C runtime
+    // opens those streams in text mode: every \n written becomes \r\n and every
+    // \r\n read becomes \n. Content-Length then stops describing the bytes on
+    // the wire, and the \r\n\r\n that ends a header never survives the trip, so
+    // the proxy read an editor's request without ever recognising a message in
+    // it and answered nothing at all.
+    _setmode(_fileno(stdin), _O_BINARY);
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
 
     if (!m_input.open(stdin, QIODevice::ReadOnly, QFileDevice::DontCloseHandle)
         || !m_output.open(stdout, QIODevice::WriteOnly, QFileDevice::DontCloseHandle)) {

@@ -69,6 +69,10 @@ void StateTests::stateVariantBeatsBreakpoint()
         &window));
     QVERIFY2(item, qPrintable(component.errorString()));
 
+    // Park the cursor clear of the item rather than assuming it starts there:
+    // whatever the previous test function left behind is still in effect on
+    // Windows, where this arrived already hovered and read black.
+    QTest::mouseMove(&window, QPoint(500, 250));
     // Unhovered the breakpoint rule is the only qualified one.
     QTRY_COMPARE(item->property("color").value<QColor>(), QColor(0xef, 0x44, 0x44));
 
