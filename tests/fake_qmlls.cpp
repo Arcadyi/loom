@@ -5,7 +5,28 @@
 #include <QJsonArray>
 #include <QJsonObject>
 
+#include <cstdio>
+#ifdef Q_OS_WIN
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
+
 namespace {
+
+// Hands back whatever has arrived. Reading stdin through QFile asks for the
+// whole buffer, and on Windows that waits until the buffer fills or the pipe
+// closes: the proxy's request sat unread for the length of the test while this
+// stub waited for 64 KiB that was never coming, and by the time the pipe
+// closing let the read through there was nobody left to answer.
+qint64 readAvailable(char *buffer, qsizetype size)
+{
+#ifdef Q_OS_WIN
+    return _read(_fileno(stdin), buffer, static_cast<unsigned int>(size));
+#else
+    return ::read(fileno(stdin), buffer, static_cast<size_t>(size));
+#endif
+}
 
 void send(QFile *output, const QJsonObject &message)
 {
@@ -39,20 +60,19 @@ int main(int argc, char **argv)
     // The proxy under test frames by byte count, so this end of the pipe has to
     // leave the Windows text mode behind exactly as the real one does.
     lsp::useBinaryStdio();
-    QFile input;
     QFile output;
-    if (!input.open(stdin, QIODevice::ReadOnly, QFileDevice::DontCloseHandle)
-        || !output.open(stdout, QIODevice::WriteOnly, QFileDevice::DontCloseHandle)) {
+    if (!output.open(stdout, QIODevice::WriteOnly, QFileDevice::DontCloseHandle))
         return 1;
-    }
 
     lsp::trace("fake qmlls waiting");
     lsp::JsonRpcFramer framer;
+    QByteArray buffer(64 * 1024, Qt::Uninitialized);
     while (true) {
-        const QByteArray bytes = input.read(64 * 1024);
-        lsp::trace("fake qmlls read", QString::number(bytes.size()));
-        if (bytes.isEmpty())
+        const qint64 read = readAvailable(buffer.data(), buffer.size());
+        lsp::trace("fake qmlls read", QString::number(read));
+        if (read <= 0)
             break;
+        const QByteArray bytes(buffer.constData(), static_cast<qsizetype>(read));
         const auto messages = framer.push(bytes);
         for (const auto &message : messages) {
             const QString method = message.value(QStringLiteral("method")).toString();
