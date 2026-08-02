@@ -158,7 +158,16 @@ jobs:
           loom="$RUNNER_TEMP/loom/bin/loom"
           "$loom" build --target android --config Debug --prefix "$RUNNER_TEMP/loom-android"
           "$loom" deploy --target android --config Debug --prefix "$RUNNER_TEMP/loom-android"
-          adb shell am start -W -n dev.example.loomandroid/org.qtproject.qt.android.bindings.QtActivity
+          # Resolve the launcher activity rather than naming a class: Qt has
+          # more than one QtActivity, and the installed package picked one that
+          # is not org.qtproject.qt.android.bindings.QtActivity.
+          activity=$(adb shell cmd package resolve-activity --brief \
+            -c android.intent.category.LAUNCHER dev.example.loomandroid | tail -n 1 | tr -d '\r')
+          case "$activity" in
+            dev.example.loomandroid/*) ;;
+            *) echo "no launcher activity for dev.example.loomandroid: $activity" >&2; exit 1 ;;
+          esac
+          adb shell am start -W -n "$activity"
           SCRIPT
           chmod +x "$RUNNER_TEMP/android-smoke.sh"
       - name: Build, install, and launch on emulator

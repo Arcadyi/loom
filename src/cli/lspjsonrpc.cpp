@@ -3,6 +3,12 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QRegularExpression>
+#include <QtGlobal>
+#ifdef Q_OS_WIN
+#include <cstdio>
+#include <fcntl.h>
+#include <io.h>
+#endif
 
 namespace lsp {
 
@@ -79,6 +85,14 @@ QString requestIdKey(const QJsonValue &id)
 {
     return QString::fromUtf8(
         QJsonDocument(QJsonArray{id}).toJson(QJsonDocument::Compact));
+}
+
+void useBinaryStdio()
+{
+#ifdef Q_OS_WIN
+    _setmode(_fileno(stdin), _O_BINARY);
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
 }
 
 } // namespace lsp

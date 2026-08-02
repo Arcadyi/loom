@@ -29,6 +29,9 @@ int main(int argc, char **argv)
     QCoreApplication application(argc, argv);
     const bool receivedShimArgument =
         QCoreApplication::arguments().contains(QStringLiteral("--loom-shim-test"));
+    // The proxy under test frames by byte count, so this end of the pipe has to
+    // leave the Windows text mode behind exactly as the real one does.
+    lsp::useBinaryStdio();
     QFile input;
     QFile output;
     if (!input.open(stdin, QIODevice::ReadOnly, QFileDevice::DontCloseHandle)

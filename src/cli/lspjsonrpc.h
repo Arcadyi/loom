@@ -21,4 +21,12 @@ private:
 
 QString requestIdKey(const QJsonValue &id);
 
+// Takes stdin and stdout out of the Windows C runtime's text mode, and does
+// nothing anywhere else. Every process speaking the framing above has to call
+// this before it reads or writes a byte: text mode grows each \n written into
+// \r\n and shrinks each \r\n read back into \n, so Content-Length stops
+// describing the bytes on the wire and the \r\n\r\n ending a header never
+// survives the trip. Neither end can then find a message boundary.
+void useBinaryStdio();
+
 } // namespace lsp
