@@ -16,9 +16,12 @@
 #include <QMetaObject>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
+#include <QQmlContext>
 #include <QQmlError>
+#include <QQuickItem>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QSet>
 #include <QStandardPaths>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -400,6 +403,144 @@ QUrl ReloadController::bundleEntryUrl(const QString &directory) const
         + QStringLiteral(".qml"));
 }
 
+// The paths whose contents differ from the scene that is running. Empty means
+// "reload everything": either nothing is known about the running scene, or the
+// file list itself changed, and a file that has appeared or disappeared cannot
+// be swapped into a tree that was built without it.
+QStringList ReloadController::changedFiles(const Bundle &bundle) const
+{
+    if (m_activeFileHashes.isEmpty() || bundle.files.size() != m_activeFileHashes.size())
+        return {};
+    QStringList changed;
+    for (const auto &file : bundle.files) {
+        const auto known = m_activeFileHashes.constFind(file.path);
+        if (known == m_activeFileHashes.constEnd())
+            return {};
+        if (*known != file.sha256)
+            changed.append(file.path);
+    }
+    return changed;
+}
+
+namespace {
+
+// The document an object was built from, as a bundle-relative path. Bundles are
+// staged into a fresh directory each time, so the tail is the part that can be
+// compared with what the server sent.
+bool objectCameFrom(QObject *object, const QString &bundleRelativePath)
+{
+    QQmlContext *context = qmlContext(object);
+    if (!context)
+        return false;
+    const QString file = context->baseUrl().toLocalFile();
+    return !file.isEmpty() && file.endsWith(QLatin1Char('/') + bundleRelativePath);
+}
+
+// Every object in the scene, each recorded against the Loader it sits behind --
+// the smallest thing that can be rebuilt around it, because the Loader itself
+// outlives the swap and whatever the surrounding document bound to it survives.
+// Objects under no Loader map to nullptr: instantiated inline, they cannot be
+// replaced without breaking the ids and bindings their parent holds, which is
+// the whole reason a boundary has to be declared to get one.
+//
+// Descends visual children as well as QObject ones. A Loader's item is not
+// reliably a QObject child of the Loader, and an item's children are parented
+// visually, so either walk alone misses most of a scene.
+void mapBoundaries(QObject *object, QObject *boundary, QHash<QObject *, QObject *> &into)
+{
+    if (!object || into.contains(object))
+        return;
+    into.insert(object, boundary);
+
+    QObject *loaded = nullptr;
+    if (object->inherits("QQuickLoader")) {
+        loaded = object->property("item").value<QObject *>();
+        if (loaded)
+            mapBoundaries(loaded, object, into);
+    }
+    for (QObject *child : object->children()) {
+        if (child != loaded)
+            mapBoundaries(child, boundary, into);
+    }
+    if (auto *item = qobject_cast<QQuickItem *>(object)) {
+        for (QQuickItem *child : item->childItems()) {
+            if (child != loaded)
+                mapBoundaries(child, boundary, into);
+        }
+    }
+}
+
+} // namespace
+
+// Reloads the Loaders that contain the changed files and nothing else. Bails out
+// -- leaving the scene untouched -- whenever the change cannot be confined,
+// because a partial application of a bundle is worse than a whole one.
+bool ReloadController::reloadBoundaries(
+    const Bundle &bundle, const QString &destination, QString *error)
+{
+    const QStringList changed = changedFiles(bundle);
+    if (changed.isEmpty() || !m_rootObject)
+        return false;
+
+    QHash<QObject *, QObject *> boundaryOf;
+    mapBoundaries(m_rootObject, nullptr, boundaryOf);
+
+    QSet<QObject *> boundaries;
+    for (const QString &path : changed) {
+        // A changed file with nothing built from it right now cannot be
+        // reloaded, and leaving it would let a later navigation resolve the
+        // stale copy out of the directory the scene is still rooted in.
+        bool instantiated = false;
+        for (auto entry = boundaryOf.cbegin(); entry != boundaryOf.cend(); ++entry) {
+            if (!objectCameFrom(entry.key(), path))
+                continue;
+            instantiated = true;
+            QObject *loader = entry.value();
+            if (!loader)
+                return false;
+            // A Loader driven by sourceComponent has no URL to repoint.
+            if (loader->property("source").toUrl().isEmpty())
+                return false;
+            boundaries.insert(loader);
+        }
+        if (!instantiated)
+            return false;
+    }
+    if (boundaries.isEmpty())
+        return false;
+
+    for (QObject *loader : boundaries) {
+        // source reads back as it was written, which is usually relative to the
+        // document holding the Loader; only the resolved form names a file.
+        const QVariant previous = loader->property("source");
+        QQmlContext *context = qmlContext(loader);
+        const QUrl resolved =
+            context ? context->resolvedUrl(previous.toUrl()) : previous.toUrl();
+        const QString file = resolved.toLocalFile();
+        // Everything a bundle stages sits under qt/qml, so that is where the
+        // staging directory ends and the part to carry across begins.
+        const qsizetype cut = file.indexOf(QStringLiteral("/qt/qml/"));
+        if (cut < 0)
+            return false;
+        const QUrl replacement = QUrl::fromLocalFile(destination + file.mid(cut));
+
+        const QVariantMap state =
+            captureSceneState(loader->property("item").value<QObject *>());
+        loader->setProperty("source", replacement);
+        QObject *item = loader->property("item").value<QObject *>();
+        if (!item) {
+            loader->setProperty("source", previous);
+            if (error) {
+                *error =
+                    QStringLiteral("could not reload %1").arg(replacement.toLocalFile());
+            }
+            return false;
+        }
+        applySceneState(item, state);
+    }
+    return true;
+}
+
 bool ReloadController::applyBundle(const QByteArray &payload, QString *error)
 {
     Bundle bundle;
@@ -448,6 +589,19 @@ bool ReloadController::applyBundle(const QByteArray &payload, QString *error)
         }
     }
 
+    // Confined changes rebuild their own Loader and stop there: the window, the
+    // scene around it and everything the engine has already compiled stay as
+    // they are. The directory the scene was rooted in has to stay too -- the
+    // untouched parts of the tree still resolve their files out of it -- so
+    // this deliberately does not sweep the superseded bundle.
+    if (reloadBoundaries(bundle, destination, error)) {
+        for (const auto &file : bundle.files)
+            m_activeFileHashes.insert(file.path, file.sha256);
+        m_activeBundleId = bundle.id;
+        emit sceneReloaded(bundle.id);
+        return true;
+    }
+
     const auto state = saveState();
     const auto oldRoot = m_rootObject;
     m_rootObject.clear();
@@ -483,6 +637,9 @@ bool ReloadController::applyBundle(const QByteArray &payload, QString *error)
     m_previousBundleDirectory = superseded;
     m_activeBundleDirectory = destination;
     m_activeBundleId = bundle.id;
+    m_activeFileHashes.clear();
+    for (const auto &file : bundle.files)
+        m_activeFileHashes.insert(file.path, file.sha256);
     if (!superseded.isEmpty() && superseded != destination)
         removePath(superseded);
     emit sceneReloaded(bundle.id);

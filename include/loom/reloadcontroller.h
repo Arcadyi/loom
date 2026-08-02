@@ -1,7 +1,9 @@
 #pragma once
 
+#include <QHash>
 #include <QObject>
 #include <QPointer>
+#include <QStringList>
 #include <QUrl>
 
 #include <memory>
@@ -98,6 +100,12 @@ private:
     materializeBundle(const Bundle &bundle, const QString &destination, QString *error);
     QVariant saveState() const;
     void restoreState(QObject *root, const QVariant &state);
+    // Rebuilds only the Loaders whose contents changed, leaving the window and
+    // everything around them alive. Returns false when the change cannot be
+    // confined to a boundary, which is the caller's cue to reload the scene.
+    bool
+    reloadBoundaries(const Bundle &bundle, const QString &destination, QString *error);
+    QStringList changedFiles(const Bundle &bundle) const;
     void openConnection();
     void scheduleReconnect(const QString &reason);
     void handleServerSilence();
@@ -127,6 +135,9 @@ private:
     QString m_activeBundleId;
     QString m_activeBundleDirectory;
     QString m_previousBundleDirectory;
+    // What the running scene was built from, so the next bundle can be reduced
+    // to the files that actually differ rather than reloaded wholesale.
+    QHash<QString, QByteArray> m_activeFileHashes;
     QString m_lastError;
 };
 

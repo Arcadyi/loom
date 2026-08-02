@@ -8,8 +8,10 @@ import QtQuick.Layouts
 Item {
     id: page
 
+    // The page owns what the page shows. Nothing binds across the Loader that
+    // holds it, which is what lets this file be rebuilt on its own: a property
+    // the window bound to would be pointing at the replaced instance.
     property int count: 0
-    signal incrementRequested
 
     Flickable {
         id: viewport
@@ -107,7 +109,7 @@ Item {
                     Button {
                         Layout.topMargin: Loom.space.s2
                         text: qsTr("Count: %1").arg(page.count)
-                        onClicked: page.incrementRequested()
+                        onClicked: page.count += 1
                     }
                 }
             }

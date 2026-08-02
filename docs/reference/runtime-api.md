@@ -67,9 +67,39 @@ Direct access, for anything the wrapper does not cover.
 
 ---
 
+## How much of the scene a reload rebuilds
+
+A change is applied to the smallest part of the scene that can hold it. Every `Loader` is a
+seam: the Loader itself survives, so the document around it keeps its bindings, and only what
+was inside is built again. When every file that changed is behind one, the reload stops there
+— the window, its geometry and everything outside the seam are never touched, and the engine
+keeps what it has already compiled.
+
+```qml
+ApplicationWindow {
+    // Editing HomePage.qml, or anything HomePage.qml is built from, replaces
+    // what is inside this Loader and nothing else.
+    Loader { anchors.fill: parent; source: "pages/HomePage.qml" }
+}
+```
+
+The scene is rebuilt whole when the change cannot be confined: a file used outside any
+`Loader`, one that nothing has instantiated yet, a `Loader` driven by `sourceComponent`
+rather than a URL, or a file appearing or disappearing from the project. Editing the window
+itself is the ordinary case of the first.
+
+This is why a seam is a `Loader` and not any component boundary. An inline `HomePage { }` is
+created by the document around it: its `id` lives in that document's context and that
+document's bindings point at that instance, so replacing it would leave both dangling. There
+is no public way to rebind them, which is the reason a seam has to be declared rather than
+inferred. For the same reason, do not bind onto a loaded item from outside — the binding would
+address the instance that gets replaced. Give the loaded document its own state instead, as
+the scaffolded `HomePage.qml` does with its counter.
+
 ## Scene state across a reload
 
-Reload destroys the root object and creates a new one. Most state carries across on its own:
+Whatever a reload rebuilds — the scene or one seam — is destroyed and created again, so the
+same capture applies to both. Most state carries across on its own:
 every **QML-declared, writable property** of every object that has an `id` is captured and
 written back, keyed by file name and id. Nothing needs annotating, and nothing needs routing
 through the root.

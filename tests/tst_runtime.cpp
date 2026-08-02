@@ -43,6 +43,21 @@ QByteArray encodedDesign(const QByteArray &tokens, const QString &path = QString
     return loom::encodeDesign(loom::Design{.path = path, .tokens = tokens});
 }
 
+loom::Bundle
+bundleWithFiles(const QString &id, const QList<QPair<QString, QByteArray>> &files)
+{
+    loom::Bundle bundle{.id = id, .files = {}};
+    for (const auto &[path, contents] : files) {
+        bundle.files.append(
+            loom::BundleFile{
+                .path = QStringLiteral("qt/qml/com/example/Test/") + path,
+                .contents = contents,
+                .sha256 = QCryptographicHash::hash(contents, QCryptographicHash::Sha256),
+            });
+    }
+    return bundle;
+}
+
 loom::Bundle bundleWithMain(const QString &id, const QByteArray &contents)
 {
     return bundleAt(id, QStringLiteral("qt/qml/com/example/Test/Main.qml"), contents);
@@ -618,6 +633,84 @@ private slots:
 
     // A directory left behind by a run that died mid-stage has no marker. Trust
     // it and the app loads half a scene.
+    // Editing a file behind a Loader used to cost the whole scene: the root was
+    // deleted and rebuilt, which on a real application means the window goes
+    // away and comes back on every keystroke that lands. Only the Loader's
+    // contents have changed, so only the Loader is rebuilt.
+    void aChangeBehindALoaderRebuildsOnlyTheLoader()
+    {
+        const QByteArray shell = R"(
+            import QtQuick
+            Item {
+                objectName: "shell"
+                property int visits: 0
+                Loader { objectName: "boundary"; source: "Panel.qml" }
+            }
+        )";
+        const auto panel = [](const char *name) {
+            return QByteArray("import QtQuick\nItem { objectName: \"") + name + "\" }\n";
+        };
+
+        QQmlApplicationEngine engine;
+        loom::ReloadController controller(engine);
+        QVERIFY(
+            controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")));
+
+        QString error;
+        QVERIFY2(
+            controller.applyBundle(
+                loom::encodeBundle(bundleWithFiles(
+                    QStringLiteral("one"),
+                    {{QStringLiteral("Main.qml"), shell},
+                     {QStringLiteral("Panel.qml"), panel("first")}})),
+                &error),
+            qPrintable(error));
+
+        QObject *root = controller.rootObject();
+        QVERIFY(root);
+        QVERIFY(root->setProperty("visits", 7));
+        auto *boundary = root->findChild<QObject *>(QStringLiteral("boundary"));
+        QVERIFY(boundary);
+        QVERIFY2(
+            boundary->property("item").value<QObject *>(),
+            qPrintable(QStringLiteral("loader status %1")
+                           .arg(boundary->property("status").toInt())));
+        QCOMPARE(
+            boundary->property("item").value<QObject *>()->objectName(),
+            QStringLiteral("first"));
+
+        // Same shell, different panel.
+        QVERIFY2(
+            controller.applyBundle(
+                loom::encodeBundle(bundleWithFiles(
+                    QStringLiteral("two"),
+                    {{QStringLiteral("Main.qml"), shell},
+                     {QStringLiteral("Panel.qml"), panel("second")}})),
+                &error),
+            qPrintable(error));
+
+        QCOMPARE(controller.rootObject(), root);
+        QCOMPARE(root->property("visits").toInt(), 7);
+        QCOMPARE(root->findChild<QObject *>(QStringLiteral("boundary")), boundary);
+        QCOMPARE(
+            boundary->property("item").value<QObject *>()->objectName(),
+            QStringLiteral("second"));
+
+        // The shell itself is not behind anything, so changing it still costs
+        // the scene -- there is nothing smaller left to rebuild.
+        const QByteArray editedShell =
+            QByteArray(shell).replace("visits: 0", "visits: 1");
+        QVERIFY2(
+            controller.applyBundle(
+                loom::encodeBundle(bundleWithFiles(
+                    QStringLiteral("three"),
+                    {{QStringLiteral("Main.qml"), editedShell},
+                     {QStringLiteral("Panel.qml"), panel("second")}})),
+                &error),
+            qPrintable(error));
+        QVERIFY(controller.rootObject() != root);
+    }
+
     void unmarkedBundleDirectoryIsRestagedRatherThanTrusted()
     {
         ScopedCacheHome cacheHome;

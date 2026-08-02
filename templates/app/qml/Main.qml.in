@@ -1,4 +1,3 @@
-import "pages"
 import Loom
 import QtQuick
 import QtQuick.Controls
@@ -6,11 +5,12 @@ import QtQuick.Controls
 ApplicationWindow {
     id: window
 
-    property int count: 0
-
+    // Only what the automatic capture cannot reach. Properties of id-bearing
+    // objects are saved and restored across a reload without being listed here;
+    // the window's own geometry is not one, because it belongs to the window
+    // rather than to any object inside the scene.
     function loomSaveState() {
         return {
-            "count": count,
             "theme": Loom.theme,
             "width": width,
             "height": height
@@ -18,7 +18,6 @@ ApplicationWindow {
     }
 
     function loomRestoreState(state) {
-        count = state.count ?? 0;
         Loom.theme = state.theme ?? Loom.theme;
         width = state.width ?? width;
         height = state.height ?? height;
@@ -32,9 +31,13 @@ ApplicationWindow {
     visible: true
     title: qsTr("@LOOM_DISPLAY_NAME@")
 
-    HomePage {
+    // A Loader rather than `HomePage { }` on purpose: it is the seam hot reload
+    // rebuilds. Editing anything the page is built from swaps what is inside
+    // this Loader and leaves the window, its size and its position alone, where
+    // an inline page would take the whole scene down with it. Keep bindings off
+    // the loaded item -- they would point at the instance that gets replaced.
+    Loader {
         anchors.fill: parent
-        count: window.count
-        onIncrementRequested: window.count += 1
+        source: "pages/HomePage.qml"
     }
 }
