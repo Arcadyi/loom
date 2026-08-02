@@ -58,6 +58,13 @@ jobs:
         run: ctest --test-dir build --output-on-failure -LE e2e
         env:
           QT_QPA_PLATFORM: offscreen
+      # --output-on-failure has printed nothing at all for the failures on the
+      # Windows runner. ctest records every test's output here regardless of
+      # what it echoes, so this is the copy worth reading.
+      - name: Test log
+        if: failure()
+        shell: bash
+        run: cat build/Testing/Temporary/LastTest.log
 
   android-emulator:
     name: Android emulator
@@ -111,7 +118,10 @@ jobs:
           echo "QT_ANDROID_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/loom/bin/loom" new LoomAndroid --directory "$RUNNER_TEMP/LoomAndroid"
           cd "$RUNNER_TEMP/LoomAndroid"
-          jq --arg qt "$QT_ROOT_DIR" --arg host "$QT_HOST_PATH" '.applications.LoomAndroid.platforms.android = {qtPath: $qt, hostQtPath: $host, abi: "x86_64", api: 36}' loom.json > loom.next.json
+          # api is the NDK's ANDROID_PLATFORM, not the emulator's image: NDK 27
+          # rejects anything above 35 ("android-36 is above the maximum
+          # supported version 35"), and a 35 minimum runs on the 36 emulator.
+          jq --arg qt "$QT_ROOT_DIR" --arg host "$QT_HOST_PATH" '.applications.LoomAndroid.platforms.android = {qtPath: $qt, hostQtPath: $host, abi: "x86_64", api: 35}' loom.json > loom.next.json
           mv loom.next.json loom.json
       # ubuntu-latest ships /dev/kvm owned by a group the runner user is not in,
       # so the emulator falls back to software rendering and never boots:
@@ -177,6 +187,10 @@ jobs:
       # architectures") or looks for the objects somewhere Xcode did not put
       # them. Ninja knows where its object files are. Only static libraries are
       # built here, so nothing wants the Xcode-only bundle handling.
+      #
+      # Both simulator architectures, matching Qt's own universal simulator
+      # libraries: Xcode builds the application for every applicable one, so an
+      # arm64-only loom leaves it undefined for x86_64.
       - name: Cross-build loom for iOS
         run: |
           cmake -S . -B build-ios -G Ninja \
@@ -184,7 +198,7 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$QT_ROOT_DIR/lib/cmake/Qt6/qt.toolchain.cmake" \
             -DQT_HOST_PATH="$QT_HOST_PATH" \
             -DCMAKE_OSX_SYSROOT=iphonesimulator \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64' \
             -DLOOM_BUILD_CLI=OFF \
             -DLOOM_BUILD_TESTS=OFF \
             -DLOOM_BUILD_E2E_TESTS=OFF \
