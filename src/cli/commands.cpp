@@ -176,6 +176,19 @@ bool isCrossTarget(const QString &target)
         || target == QLatin1String("embedded");
 }
 
+// Qt packages an Android application through a build target of its own, and the
+// APK it produces is what deploy, dev and test all go looking for afterwards.
+// Building the application target alone leaves just the shared library that
+// belongs inside the package, and every adapter then reports a build that
+// succeeded with nothing to install. The packaging target depends on the
+// application, so naming it builds both.
+QString buildTargetFor(const QString &platform, const QString &application)
+{
+    if (platform == QLatin1String("android") && !application.isEmpty())
+        return application + QStringLiteral("_make_apk");
+    return application;
+}
+
 // CMAKE_PREFIX_PATH replaces rather than appends, so the user's value and the
 // inferred one have to be combined into a single definition.
 //
@@ -945,7 +958,9 @@ int Commands::build(const QStringList &arguments)
         return status;
     }
     return BuildRunner::build(
-        context.buildDirectory, context.application.target, context.configuration);
+        context.buildDirectory,
+        buildTargetFor(context.target, context.application.target),
+        context.configuration);
 }
 
 int Commands::lint(const QStringList &arguments)
@@ -1341,8 +1356,10 @@ int Commands::develop(const QStringList &arguments)
             root, buildDirectory, config, extra, context.generator)) {
         return status;
     }
-    if (const auto status = BuildRunner::build(buildDirectory, app.target, config))
+    if (const auto status = BuildRunner::build(
+            buildDirectory, buildTargetFor(context.target, app.target), config)) {
         return status;
+    }
 
     QString executable;
     if (context.target == QLatin1String("android"))
@@ -1624,7 +1641,9 @@ int Commands::deploy(const QStringList &arguments)
         return status;
     }
     if (const auto status = BuildRunner::build(
-            context.buildDirectory, context.application.target, context.configuration)) {
+            context.buildDirectory,
+            buildTargetFor(context.target, context.application.target),
+            context.configuration)) {
         return status;
     }
     if (context.target != QLatin1String("desktop")
