@@ -52,7 +52,8 @@ Accepted by `build`, `test`, `lint`, `fmt`, `clean`, `dev` and `deploy`:
 ## `loom new`
 
 ```
-loom new <name> [--org dev.example] [--directory path] [--ci github|none]
+loom new <name> [--org dev.example] [--platforms desktop,android]
+    [--directory path] [--ci github|none]
 ```
 
 Scaffolds a complete, buildable, loom-styled application: `CMakeLists.txt`,
@@ -69,12 +70,20 @@ the same server after the first CMake reload.
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `--org <id>` | `dev.example` | Reverse-DNS organization, used to build the application id and module URI |
+| `--platforms <list>` | all four | Comma-separated `desktop`, `android`, `ios`, `embedded` |
 | `--directory <path>` | `./<name>` | Where to create the project |
 | `--ci <provider>` | `none` | Generate a CI workflow: `github` or `none` |
 
 ```console
 $ loom new hello --org com.example && cd hello && loom dev
+$ loom new kiosk --platforms desktop,embedded
 ```
+
+`--platforms` writes the `platforms` block of `loom.json`, and every adapter
+refuses a `--target` the application does not list. Narrowing is a statement of
+intent rather than a restriction that is hard to undo: adding a platform later
+is one key in `loom.json`. Order and repeats do not matter, and an unknown name
+is refused rather than written out to fail later at build time.
 
 `--ci github` currently emits a workflow with a deliberate `TODO` in its
 *Install loom* step, because loom has no published release to install from. The

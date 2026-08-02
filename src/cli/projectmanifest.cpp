@@ -336,8 +336,19 @@ bool validateManifestShape(const QJsonObject &root, QString *error)
 
 } // namespace
 
-ProjectManifest
-ProjectManifest::createDefault(const QString &projectName, const QString &organization)
+const QStringList &ProjectManifest::supportedPlatforms()
+{
+    static const QStringList platforms{
+        QStringLiteral("desktop"),
+        QStringLiteral("android"),
+        QStringLiteral("ios"),
+        QStringLiteral("embedded"),
+    };
+    return platforms;
+}
+
+ProjectManifest ProjectManifest::createDefault(
+    const QString &projectName, const QString &organization, const QStringList &platforms)
 {
     ProjectManifest manifest;
     const auto identifier = identifierFromName(projectName);
@@ -366,13 +377,7 @@ ProjectManifest::createDefault(const QString &projectName, const QString &organi
             .entry = QStringLiteral("Main"),
             .qmlRoots = {QStringLiteral("qml")},
             .assetRoots = {QStringLiteral("assets")},
-            .platforms =
-                {
-                    QStringLiteral("desktop"),
-                    QStringLiteral("android"),
-                    QStringLiteral("ios"),
-                    QStringLiteral("embedded"),
-                },
+            .platforms = platforms.isEmpty() ? supportedPlatforms() : platforms,
             .platformOptions = {},
         });
     return manifest;
@@ -513,12 +518,7 @@ bool ProjectManifest::validate(QString *error) const
 
     // Enforcement catching up to the schema that ships alongside it. An
     // installed schema nothing validates against is a promise, not a feature.
-    static const QStringList knownPlatforms{
-        QStringLiteral("desktop"),
-        QStringLiteral("android"),
-        QStringLiteral("ios"),
-        QStringLiteral("embedded"),
-    };
+    const QStringList &knownPlatforms = supportedPlatforms();
     const QRegularExpression uriPattern(
         QStringLiteral("^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+$"));
     for (const auto &application : m_applications) {

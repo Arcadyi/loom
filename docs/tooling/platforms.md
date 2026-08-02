@@ -2,7 +2,9 @@
 
 The same `loom build`, `dev`, `test`, and `deploy` commands select a platform
 with `--target`. Each application opts into targets and provides target options
-under `applications.<target>.platforms` in `loom.json`.
+under `applications.<target>.platforms` in `loom.json`. `loom new` fills that in
+from `--platforms`, defaulting to all of them; a platform can be added or
+removed afterwards by editing the block.
 
 | Target | Build | Development transport | Deploy | Hosted validation |
 | --- | --- | --- | --- | --- |

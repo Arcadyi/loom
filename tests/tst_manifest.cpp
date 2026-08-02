@@ -69,6 +69,37 @@ private slots:
         QCOMPARE(decoded.primaryApplication().entry, QStringLiteral("Main"));
     }
 
+    // A project that only ever ships to the desktop should not have to explain
+    // to every reader of its manifest why it lists three platforms it has never
+    // built for. Narrowing has to survive the round trip and still validate.
+    void selectedPlatformsRoundTripAndOthersAreRefused()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const auto path = temporary.filePath(QStringLiteral("loom.json"));
+        const auto source = ProjectManifest::createDefault(
+            QStringLiteral("Sample"), QStringLiteral("com.acme"),
+            {QStringLiteral("desktop"), QStringLiteral("ios")});
+        QString error;
+        QVERIFY2(source.validate(&error), qPrintable(error));
+        QVERIFY2(source.save(path, &error), qPrintable(error));
+
+        ProjectManifest decoded;
+        QVERIFY2(ProjectManifest::load(path, decoded, &error), qPrintable(error));
+        auto platforms = decoded.primaryApplication().platforms;
+        platforms.sort();
+        QCOMPARE(
+            platforms, QStringList({QStringLiteral("desktop"), QStringLiteral("ios")}));
+
+        // Asking for none of them is the caller forgetting to choose, not a
+        // request for an application that builds nowhere.
+        const auto unselected =
+            ProjectManifest::createDefault(QStringLiteral("Sample"), {}, {});
+        QCOMPARE(
+            unselected.primaryApplication().platforms,
+            ProjectManifest::supportedPlatforms());
+    }
+
     // The scaffolder writes design/tokens.json, the generated CMakeLists.txt
     // passes the same path to loom_add_application as DESIGN, and `loom dev`
     // watches whatever this says. All three have to agree.

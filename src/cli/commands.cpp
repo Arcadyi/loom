@@ -626,12 +626,15 @@ int Commands::createProject(const QStringList &arguments)
         .name = QStringLiteral("new"),
         .summary = QStringLiteral("Create a Qt/QML application."),
         .usage = QStringLiteral(
-            "loom new <name> [--org dev.example] "
+            "loom new <name> [--org dev.example] [--platforms desktop,android] "
             "[--directory path] [--ci github|none]"),
         .options =
             {
                 {QStringLiteral("org"), QStringLiteral("id"),
                  QStringLiteral("Reverse-DNS organization (default: dev.example).")},
+                {QStringLiteral("platforms"), QStringLiteral("list"),
+                 QStringLiteral("Comma-separated platforms to target (default: %1).")
+                     .arg(ProjectManifest::supportedPlatforms().join(QLatin1Char(',')))},
                 {QStringLiteral("directory"), QStringLiteral("path"),
                  QStringLiteral("Where to create the project (default: ./<name>).")},
                 {QStringLiteral("ci"), QStringLiteral("provider"),
@@ -666,9 +669,42 @@ int Commands::createProject(const QStringList &arguments)
                 .arg(ci));
     }
 
+    // Rebuilt in the order supportedPlatforms() declares rather than the order
+    // they were typed, which drops repeats and keeps the list the adapters
+    // report back to a user the same whatever they typed.
+    QStringList platforms;
+    const auto requestedPlatforms = parsed.value(QStringLiteral("platforms"));
+    if (!requestedPlatforms.isEmpty()) {
+        QStringList requested;
+        for (const auto &entry : requestedPlatforms.split(QLatin1Char(','))) {
+            const auto platform = entry.trimmed().toLower();
+            if (platform.isEmpty())
+                continue;
+            if (!ProjectManifest::supportedPlatforms().contains(platform)) {
+                return cli::reportUsageError(
+                    spec,
+                    QStringLiteral("unknown platform '%1'; expected one of %2")
+                        .arg(
+                            platform,
+                            ProjectManifest::supportedPlatforms().join(
+                                QStringLiteral(", "))));
+            }
+            requested.append(platform);
+        }
+        if (requested.isEmpty()) {
+            return cli::reportUsageError(
+                spec, QStringLiteral("--platforms needs at least one platform"));
+        }
+        for (const auto &platform : ProjectManifest::supportedPlatforms()) {
+            if (requested.contains(platform))
+                platforms.append(platform);
+        }
+    }
+
     const ProjectScaffolder::Options options{
         .organization =
             parsed.value(QStringLiteral("org"), QStringLiteral("dev.example")),
+        .platforms = platforms,
         .githubWorkflow = ci == QStringLiteral("github"),
     };
     const auto destination =

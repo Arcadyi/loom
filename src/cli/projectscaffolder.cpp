@@ -241,7 +241,8 @@ bool ProjectScaffolder::create(
         return false;
     }
 
-    const auto manifest = ProjectManifest::createDefault(name, options.organization);
+    const auto manifest =
+        ProjectManifest::createDefault(name, options.organization, options.platforms);
     const auto application = manifest.primaryApplication();
     // The identifier goes into project() and the target name; the display name
     // survives only in QML and the README, and is escaped for its context.

@@ -18,8 +18,16 @@ struct ApplicationDefinition {
 
 class ProjectManifest {
 public:
-    static ProjectManifest
-    createDefault(const QString &projectName, const QString &organization);
+    // Every platform an application may list, in the order a manifest writes
+    // them. Exposed because validation, scaffolding and `loom new --platforms`
+    // all have to agree on the vocabulary, and each used to spell it out.
+    static const QStringList &supportedPlatforms();
+
+    // An application declares the platforms it intends to support; the adapters
+    // refuse a --target it does not list. Defaults to all of them.
+    static ProjectManifest createDefault(
+        const QString &projectName, const QString &organization,
+        const QStringList &platforms = supportedPlatforms());
     static ProjectManifest
     create(const QString &projectName, const ApplicationDefinition &application);
     static bool

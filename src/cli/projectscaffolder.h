@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 class ProjectScaffolder {
 public:
@@ -11,6 +12,11 @@ public:
 
     struct Options {
         QString organization = QStringLiteral("dev.example");
+        // The platforms the generated application declares. Empty means all of
+        // ProjectManifest::supportedPlatforms(): a project that has not said
+        // otherwise is not committing to anything by listing them, and adding a
+        // platform later is one line of loom.json.
+        QStringList platforms;
         // Off by default. The generated workflow cannot install loom without a
         // published release, so scaffolding one by default gave every new
         // project a guaranteed red X on its first push.
