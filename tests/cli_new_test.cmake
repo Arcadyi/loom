@@ -74,11 +74,20 @@ if(EXISTS "${expected_build_tree_config}")
         message(FATAL_ERROR
             "loom new did not record its build-tree CMake package for direct IDE configure")
     endif()
-    file(TO_CMAKE_PATH "$ENV{HOME}" user_home)
-    string(FIND "${generated_cmake}" "${user_home}/" leaked_home_position)
-    if(NOT leaked_home_position EQUAL -1)
-        message(FATAL_ERROR
-            "loom new wrote the developer's absolute home path into generated CMake")
+    # HOME is not set on Windows, where the variable is USERPROFILE. Searching
+    # for an empty home leaves the needle as "/", which every generated path
+    # matches, so the check has to know it has a home before it runs at all.
+    set(user_home "$ENV{HOME}")
+    if(user_home STREQUAL "")
+        set(user_home "$ENV{USERPROFILE}")
+    endif()
+    if(NOT user_home STREQUAL "")
+        file(TO_CMAKE_PATH "${user_home}" user_home)
+        string(FIND "${generated_cmake}" "${user_home}/" leaked_home_position)
+        if(NOT leaked_home_position EQUAL -1)
+            message(FATAL_ERROR
+                "loom new wrote the developer's absolute home path into generated CMake")
+        endif()
     endif()
 endif()
 if(NOT generated_cmake MATCHES "DESIGN")

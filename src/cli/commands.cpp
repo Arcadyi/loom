@@ -1415,6 +1415,12 @@ int Commands::migrate(const QStringList &arguments)
         return reportError(QStringLiteral("could not read %1").arg(manifestPath));
     QJsonParseError parseError;
     const QByteArray originalManifestBytes = manifestFile.readAll();
+    // Closed before the rewrite below rather than at the end of the function:
+    // QSaveFile::commit() replaces the original, and Windows refuses that with
+    // "Access is denied" while this process still holds the file open. POSIX
+    // renames over an open file without complaint, which is why leaving it to
+    // the destructor looked correct.
+    manifestFile.close();
     QJsonDocument manifestDocument =
         QJsonDocument::fromJson(originalManifestBytes, &parseError);
     if (parseError.error != QJsonParseError::NoError || !manifestDocument.isObject())

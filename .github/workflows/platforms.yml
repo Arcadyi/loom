@@ -58,13 +58,29 @@ jobs:
         run: ctest --test-dir build --output-on-failure -LE e2e
         env:
           QT_QPA_PLATFORM: offscreen
-      # --output-on-failure has printed nothing at all for the failures on the
+      # --output-on-failure printed nothing at all for the failures on the
       # Windows runner. ctest records every test's output here regardless of
       # what it echoes, so this is the copy worth reading.
       - name: Test log
         if: failure()
         shell: bash
         run: cat build/Testing/Temporary/LastTest.log
+      # ctest captures nothing from the Qt test binaries on Windows -- it logs
+      # "<end of output>" even for the ones that pass -- so ask QTest for a file
+      # instead, which does not go through the stdout that is coming up empty.
+      - name: Qt test output
+        if: failure() && runner.os == 'Windows'
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QSG_RHI_BACKEND: software
+        run: |
+          for name in tst_states tst_lsp; do
+            [ -x "build/$name.exe" ] || continue
+            echo "===== $name ====="
+            "./build/$name.exe" -o "$name.txt,txt" || true
+            cat "$name.txt" || true
+          done
 
   android-emulator:
     name: Android emulator
