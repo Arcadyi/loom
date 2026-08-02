@@ -172,12 +172,19 @@ jobs:
           loom="$RUNNER_TEMP/loom/bin/loom"
           "$loom" build --target android --config Debug --prefix "$RUNNER_TEMP/loom-android"
           "$loom" deploy --target android --config Debug --prefix "$RUNNER_TEMP/loom-android"
-          # Ask the device what went on rather than naming a package and an
-          # activity. loom does not set QT_ANDROID_PACKAGE_NAME, so the APK
-          # keeps Qt's default identity instead of the manifest's organization,
-          # and Qt has more than one QtActivity to choose between.
-          package=$(adb shell pm list packages -3 | tr -d '\r' | sed 's/^package://' | head -n 1)
-          [ -n "$package" ] || { echo "the APK installed no third-party package" >&2; exit 1; }
+          # The package is the id from loom.json, which is what deploy and dev
+          # launch by. Asserting it rather than asking the device what turned up
+          # is the point: an APK under Qt's default org.qtproject.example.*
+          # installs perfectly well and then cannot be found again.
+          package=dev.example.loomandroid
+          adb shell pm list packages -3 | tr -d '\r' | sed 's/^package://' \
+            | grep -qx "$package" || {
+              echo "expected $package, device has:" >&2
+              adb shell pm list packages -3 >&2
+              exit 1
+            }
+          # The activity is still resolved: Qt has more than one QtActivity and
+          # which one it uses is its business, not the manifest's.
           activity=$(adb shell cmd package resolve-activity --brief \
             -c android.intent.category.LAUNCHER "$package" | tail -n 1 | tr -d '\r')
           case "$activity" in
@@ -213,6 +220,22 @@ jobs:
           cmake -S . -B build-host -G Ninja -DCMAKE_BUILD_TYPE=Release -DLOOM_BUILD_E2E_TESTS=OFF
           cmake --build build-host
           cmake --install build-host --prefix "$RUNNER_TEMP/loom"
+      # A disk image that resolves Qt from the machine that built it works
+      # everywhere except where it is meant to. The install copies the
+      # frameworks in; check they arrived and that nothing still names the Qt
+      # they came from, which is the part no later step here would notice.
+      - name: Check the installed CLI carries its own Qt
+        run: |
+          test -d "$RUNNER_TEMP/loom/lib/QtCore.framework" || {
+            echo "no QtCore.framework beside the installed CLI" >&2
+            ls "$RUNNER_TEMP/loom/lib" >&2
+            exit 1
+          }
+          if otool -l "$RUNNER_TEMP/loom/bin/loom" | grep -qF "$QT_ROOT_DIR"; then
+            echo "the installed CLI still points at the Qt that built it:" >&2
+            otool -l "$RUNNER_TEMP/loom/bin/loom" | grep -F "$QT_ROOT_DIR" >&2
+            exit 1
+          fi
       - name: Install Qt for iOS
         uses: jurplel/install-qt-action@v4
         with:

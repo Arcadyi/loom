@@ -75,6 +75,13 @@ The adapter passes Qt's Android toolchain, ABI, and API level to CMake.
 - `loom dev --target android` installs it, establishes `adb reverse`, and
   starts the activity with the authenticated reload connection arguments.
 
+The package name is the application's `id` from `loom.json`, carried into the
+build by the `QT_ANDROID_PACKAGE_NAME` property the generated `CMakeLists.txt`
+sets. Deploy and dev install and launch by that same id, so a project that drops
+the property ships under Qt's default `org.qtproject.example.<target>` and
+neither can find what it has just installed. Renaming an installed application
+leaves the old package behind on the device.
+
 Native source changes rebuild, reinstall, and restart the application. QML,
 asset, and design changes use the normal hot-reload protocol.
 

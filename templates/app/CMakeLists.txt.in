@@ -54,9 +54,16 @@ target_link_libraries(@LOOM_TARGET@ PRIVATE
     loom::loomplugin
 )
 
+# One identity across the platforms that ask for one. `loom deploy` and
+# `loom dev` install and launch the Android package by the id in loom.json, so
+# without the package name here the application ships as Qt's default
+# org.qtproject.example.@LOOM_TARGET@ and neither can find what it just
+# installed. Declared with the target rather than passed in by the CLI so a
+# plain `cmake` configure produces the same identity `loom build` does.
 set_target_properties(@LOOM_TARGET@ PROPERTIES
     MACOSX_BUNDLE TRUE
     MACOSX_BUNDLE_GUI_IDENTIFIER "@LOOM_APP_ID@"
+    QT_ANDROID_PACKAGE_NAME "@LOOM_APP_ID@"
     WIN32_EXECUTABLE TRUE
 )
 

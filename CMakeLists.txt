@@ -390,17 +390,75 @@ if(LOOM_BUILD_CLI)
     # macOS is the one desktop platform where Qt will not bundle itself around a
     # command-line binary: qt_deploy_runtime_dependencies delegates to
     # macdeployqt, which only understands .app bundles and fails the install
-    # outright with "Could not find app bundle" on a plain executable. Point the
-    # installed binaries at the Qt they were built against instead -- the same
-    # "runs against the Qt the host already has" tradeoff that
-    # loom_install_application documents for applications.
+    # outright with "Could not find app bundle" on a plain executable. Do the
+    # same job directly -- copy the frameworks the CLI actually loads in beside
+    # it and resolve them through @executable_path -- so the installed tree, and
+    # the disk image CPack builds from it, carry their own Qt instead of
+    # pointing at whichever one happened to be on the machine that built them.
+    #
+    # Deliberately no absolute Qt path in the rpath as well: a fallback would
+    # hide an incomplete copy on the build machine and produce a package that
+    # only fails once it reaches someone else's.
     if(APPLE)
         set_property(TARGET loom_cli APPEND PROPERTY
-            INSTALL_RPATH "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_LIBS}"
+            INSTALL_RPATH "@executable_path/../${CMAKE_INSTALL_LIBDIR}"
         )
-        set_property(TARGET loom_qmlls_shim APPEND PROPERTY
-            INSTALL_RPATH "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_LIBS}"
-        )
+        # The shim already carries a @loader_path entry to the same directory.
+        install(CODE "set(loom_built_cli \"$<TARGET_FILE:loom_cli>\")")
+        install(CODE "set(loom_relative_libdir \"${CMAKE_INSTALL_LIBDIR}\")")
+        install(CODE [[
+            # Asked of the built binary rather than the installed one: the
+            # install rpath points at frameworks this is about to put there, so
+            # resolving against it would find nothing.
+            file(GET_RUNTIME_DEPENDENCIES
+                EXECUTABLES "${loom_built_cli}"
+                RESOLVED_DEPENDENCIES_VAR loom_resolved
+                UNRESOLVED_DEPENDENCIES_VAR loom_unresolved
+                POST_EXCLUDE_REGEXES "^/usr/lib/" "^/System/"
+            )
+            set(loom_frameworks "")
+            set(loom_libraries "")
+            foreach(loom_dependency IN LISTS loom_resolved)
+                # .../QtCore.framework/Versions/A/QtCore -> .../QtCore.framework
+                if(loom_dependency MATCHES "^(.*\\.framework)/")
+                    list(APPEND loom_frameworks "${CMAKE_MATCH_1}")
+                else()
+                    list(APPEND loom_libraries "${loom_dependency}")
+                endif()
+            endforeach()
+            list(REMOVE_DUPLICATES loom_frameworks)
+            list(REMOVE_DUPLICATES loom_libraries)
+
+            set(loom_libdir "${CMAKE_INSTALL_PREFIX}/${loom_relative_libdir}")
+            if(loom_frameworks)
+                # Headers are a large part of a Qt framework and nothing loads
+                # them; the binary and its Resources are what dyld needs.
+                file(INSTALL DESTINATION "${loom_libdir}" TYPE DIRECTORY
+                    FILES ${loom_frameworks}
+                    REGEX "/Headers(/|$)" EXCLUDE
+                )
+            endif()
+            if(loom_libraries)
+                file(INSTALL DESTINATION "${loom_libdir}" TYPE SHARED_LIBRARY
+                    FOLLOW_SYMLINK_CHAIN FILES ${loom_libraries}
+                )
+            endif()
+            # Dropping the headers rewrites the bundle a signature covers, so
+            # re-sign ad hoc the way macdeployqt does. Best effort: a machine
+            # without codesign is not a reason to fail an install.
+            foreach(loom_framework IN LISTS loom_frameworks)
+                get_filename_component(loom_framework_name "${loom_framework}" NAME)
+                execute_process(
+                    COMMAND codesign --force --sign - "${loom_libdir}/${loom_framework_name}"
+                    OUTPUT_QUIET ERROR_QUIET
+                )
+            endforeach()
+            if(loom_unresolved)
+                message(WARNING
+                    "loom: these runtime dependencies were not found, and the "
+                    "installed CLI will look for them on the host: ${loom_unresolved}")
+            endif()
+        ]])
     else()
         qt_generate_deploy_script(
             TARGET loom_cli
