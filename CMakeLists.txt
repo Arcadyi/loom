@@ -308,8 +308,18 @@ if(LOOM_BUILD_CLI)
 
     # The library target is already named `loom`, so the executable cannot be.
     # OUTPUT_NAME is what makes the installed binary `bin/loom` regardless.
+    #
+    # ARCHIVE_OUTPUT_NAME keeps that rename from colliding on Windows, where an
+    # executable also produces an import library named after its output: the
+    # linker is handed /implib:loom.lib beside the static library's own
+    # loom.lib and stops with "LNK1149: output filename matches input
+    # filename". Nothing installs this import library; it only needs a name of
+    # its own. Inert on platforms where executables have no archive output.
     qt_add_executable(loom_cli src/cli/main.cpp)
-    set_target_properties(loom_cli PROPERTIES OUTPUT_NAME loom)
+    set_target_properties(loom_cli PROPERTIES
+        OUTPUT_NAME loom
+        ARCHIVE_OUTPUT_NAME loom_cli
+    )
     target_link_libraries(loom_cli PRIVATE loom_cli_core)
     loom_set_target_defaults(loom_cli)
 

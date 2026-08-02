@@ -96,7 +96,7 @@ jobs:
       - name: Cross-build loom for Android
         run: |
           cmake -S . -B build-android -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_TOOLCHAIN_FILE="$QT_ROOT_DIR/lib/cmake/Qt6/qt.toolchain.cmake" \
             -DQT_HOST_PATH="$QT_HOST_PATH" \
             -DANDROID_ABI=x86_64 \
@@ -171,9 +171,16 @@ jobs:
       # The application links loom's static libraries, so the host build above
       # -- which exists to provide the CLI -- cannot serve it. Build the library
       # for the simulator SDK and hand the CLI that prefix with --prefix.
+      # Ninja rather than Xcode, even though the application itself needs Xcode:
+      # loom exports object libraries, and installing those under Xcode either
+      # refuses outright ("may not be installed under Xcode with multiple
+      # architectures") or looks for the objects somewhere Xcode did not put
+      # them. Ninja knows where its object files are. Only static libraries are
+      # built here, so nothing wants the Xcode-only bundle handling.
       - name: Cross-build loom for iOS
         run: |
-          cmake -S . -B build-ios -G Xcode \
+          cmake -S . -B build-ios -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_TOOLCHAIN_FILE="$QT_ROOT_DIR/lib/cmake/Qt6/qt.toolchain.cmake" \
             -DQT_HOST_PATH="$QT_HOST_PATH" \
             -DCMAKE_OSX_SYSROOT=iphonesimulator \
@@ -182,8 +189,8 @@ jobs:
             -DLOOM_BUILD_TESTS=OFF \
             -DLOOM_BUILD_E2E_TESTS=OFF \
             -DLOOM_BUILD_EXAMPLES=OFF
-          cmake --build build-ios --config Debug
-          cmake --install build-ios --config Debug --prefix "$RUNNER_TEMP/loom-ios"
+          cmake --build build-ios
+          cmake --install build-ios --prefix "$RUNNER_TEMP/loom-ios"
       - name: Generate and build adapter fixture
         run: |
           "$RUNNER_TEMP/loom/bin/loom" new LoomIos --directory "$RUNNER_TEMP/LoomIos"
