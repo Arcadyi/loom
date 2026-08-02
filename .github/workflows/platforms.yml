@@ -79,8 +79,13 @@ jobs:
           for name in tst_states tst_lsp; do
             [ -x "build/$name.exe" ] || continue
             echo "===== $name ====="
-            "./build/$name.exe" -o "$name.txt,txt" || true
+            LOOM_LSP_TRACE="$PWD/$name-lsp-trace.txt" \
+              "./build/$name.exe" -o "$name.txt,txt" || true
             cat "$name.txt" || true
+            if [ -f "$name-lsp-trace.txt" ]; then
+              echo "----- server trace -----"
+              cat "$name-lsp-trace.txt"
+            fi
           done
       # tst_lsp only reports that nothing came back, and the proxy's own
       # diagnostics go to a stderr the test discards. Drive both ends over a

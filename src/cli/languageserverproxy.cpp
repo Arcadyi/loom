@@ -1,11 +1,13 @@
 #include "languageserverproxy.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLibraryInfo>
+#include <QMutex>
 #include <QProcessEnvironment>
 #include <QSocketNotifier>
 #include <QStandardPaths>
@@ -25,13 +27,33 @@ namespace lsp {
 
 namespace {
 
+// A language server has no console to complain to -- stdout carries the
+// protocol and an editor rarely shows stderr -- so when one goes quiet there is
+// nothing to look at. Point LOOM_LSP_TRACE at a file to find out how far it
+// got. Every process writing there tags its lines with its own id, since the
+// proxy and the qmlls shim can be running at once. Costs one environment lookup
+// when unset.
+void trace(const char *event, const QString &detail = {})
+{
+    static const QString path = qEnvironmentVariable("LOOM_LSP_TRACE");
+    if (path.isEmpty())
+        return;
+    static QMutex mutex;
+    QMutexLocker locker(&mutex);
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
+        return;
+    QTextStream(&file) << QCoreApplication::applicationPid() << ' '
+                       << QDateTime::currentDateTime().toString(Qt::ISODateWithMs) << ' '
+                       << event << (detail.isEmpty() ? QString() : ' ' + detail) << '\n';
+}
+
 #ifdef Q_OS_WIN
 // Nothing on Windows lets an event loop watch the pipe an editor hands a
 // language server for readability: QWinEventNotifier reports handles the
 // Windows wait functions can signal, and a pipe is not one of them. Read on a
 // thread that is allowed to block instead, and hand each chunk to the proxy's
-// own thread. Reading the handle also sidesteps the C runtime, so the bytes
-// arrive exactly as they were written.
+// own thread.
 class StdinReader final : public QThread {
 public:
     StdinReader(
@@ -51,14 +73,17 @@ protected:
         // whatever has arrived instead of waiting for the buffer to fill, and
         // it reads the descriptor the parent set up, which is the one an
         // ordinary console application would read and the one QProcess feeds.
+        trace("reader started");
         QByteArray buffer(64 * 1024, Qt::Uninitialized);
         for (;;) {
             const int read = _read(
                 _fileno(stdin), buffer.data(), static_cast<unsigned int>(buffer.size()));
             if (read <= 0) {
+                trace("reader ended", QString::number(read));
                 QMetaObject::invokeMethod(m_receiver, m_onClosed, Qt::QueuedConnection);
                 return;
             }
+            trace("reader read", QString::number(read));
             QMetaObject::invokeMethod(
                 m_receiver,
                 [callback = m_onBytes,
@@ -236,7 +261,9 @@ QString LanguageServerProxy::discoverQmlls(const QString &requested)
 
 int LanguageServerProxy::run(const QString &qmllsPath, const QStringList &qmllsArguments)
 {
+    trace("run", qmllsPath);
     const QString executable = discoverQmlls(qmllsPath);
+    trace("qmlls resolved", executable);
     if (executable.isEmpty()) {
         QTextStream(stderr)
             << "loom lsp: qmlls was not found; pass --qmlls <path> or set "
@@ -249,10 +276,12 @@ int LanguageServerProxy::run(const QString &qmllsPath, const QStringList &qmllsA
     m_qmlls.setProcessChannelMode(QProcess::SeparateChannels);
     m_qmlls.start();
     if (!m_qmlls.waitForStarted(5000)) {
+        trace("qmlls did not start", m_qmlls.errorString());
         QTextStream(stderr) << "loom lsp: could not start " << executable << ": "
                             << m_qmlls.errorString() << '\n';
         return 127;
     }
+    trace("qmlls started");
 
     useBinaryStdio();
     if (!m_input.open(stdin, QIODevice::ReadOnly, QFileDevice::DontCloseHandle)
@@ -273,6 +302,7 @@ int LanguageServerProxy::run(const QString &qmllsPath, const QStringList &qmllsA
     connect(
         m_inputNotifier, &QSocketNotifier::activated, this, [this]() { readEditor(); });
 #endif
+    trace("waiting for the editor");
 
     QCoreApplication::exec();
 
@@ -307,6 +337,12 @@ void LanguageServerProxy::handleEditorBytes(const QByteArray &bytes)
         return;
     QString error;
     const auto messages = m_editorFramer.push(bytes, &error);
+    trace(
+        "editor bytes",
+        QStringLiteral("%1 -> %2 message(s) %3")
+            .arg(bytes.size())
+            .arg(messages.size())
+            .arg(error));
     if (!error.isEmpty())
         QTextStream(stderr) << "loom lsp: " << error << '\n';
     for (const auto &message : messages)
@@ -317,6 +353,7 @@ void LanguageServerProxy::readChild()
 {
     QString error;
     const auto messages = m_childFramer.push(m_qmlls.readAllStandardOutput(), &error);
+    trace("from qmlls", QStringLiteral("%1 message(s)").arg(messages.size()));
     if (!error.isEmpty())
         QTextStream(stderr) << "loom lsp: invalid qmlls output: " << error << '\n';
     for (const auto &message : messages)
@@ -339,6 +376,7 @@ void LanguageServerProxy::readChildError()
 void LanguageServerProxy::sendEditor(const QJsonObject &message)
 {
     const QByteArray framed = JsonRpcFramer::frame(message);
+    trace("to editor", QString::number(framed.size()));
     qsizetype written = 0;
     while (written < framed.size()) {
         const qint64 chunk =
