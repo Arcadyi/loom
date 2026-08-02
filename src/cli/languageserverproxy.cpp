@@ -299,6 +299,8 @@ void LanguageServerProxy::readEditor()
 
 void LanguageServerProxy::handleEditorBytes(const QByteArray &bytes)
 {
+    if (m_stopping)
+        return;
     QString error;
     const auto messages = m_editorFramer.push(bytes, &error);
     if (!error.isEmpty())
@@ -688,10 +690,9 @@ void LanguageServerProxy::stop(int status)
     m_exitStatus = status;
     if (m_inputNotifier)
         m_inputNotifier->setEnabled(false);
-#ifdef Q_OS_WIN
-    if (m_winInputNotifier)
-        m_winInputNotifier->setEnabled(false);
-#endif
+    // The Windows reader has no switch to turn off from here -- it is parked in
+    // a blocking read that only the cancellation after exec() returns ends. Any
+    // chunk it already queued is dropped by handleEditorBytes instead.
     if (m_qmlls.state() != QProcess::NotRunning) {
         m_qmlls.closeWriteChannel();
         if (!m_qmlls.waitForFinished(1000)) {

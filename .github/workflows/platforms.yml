@@ -64,7 +64,8 @@ jobs:
       - name: Test log
         if: failure()
         shell: bash
-        run: cat build/Testing/Temporary/LastTest.log
+        # A failure before ctest ran leaves no log; that is not a second failure.
+        run: cat build/Testing/Temporary/LastTest.log || true
       # ctest captures nothing from the Qt test binaries on Windows -- it logs
       # "<end of output>" even for the ones that pass -- so ask QTest for a file
       # instead, which does not go through the stdout that is coming up empty.
