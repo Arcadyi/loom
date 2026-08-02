@@ -13,7 +13,9 @@
 #include <QUrl>
 #ifdef Q_OS_WIN
 #include <QThread>
+#include <cstdio>
 #include <functional>
+#include <io.h>
 #include <windows.h>
 #else
 #include <unistd.h>
@@ -45,13 +47,15 @@ public:
 protected:
     void run() override
     {
-        const HANDLE handle = GetStdHandle(STD_INPUT_HANDLE);
+        // _read rather than ReadFile on the standard handle: it hands back
+        // whatever has arrived instead of waiting for the buffer to fill, and
+        // it reads the descriptor the parent set up, which is the one an
+        // ordinary console application would read and the one QProcess feeds.
         QByteArray buffer(64 * 1024, Qt::Uninitialized);
         for (;;) {
-            DWORD read = 0;
-            const bool ok = ReadFile(
-                handle, buffer.data(), static_cast<DWORD>(buffer.size()), &read, nullptr);
-            if (!ok || read == 0) {
+            const int read = _read(
+                _fileno(stdin), buffer.data(), static_cast<unsigned int>(buffer.size()));
+            if (read <= 0) {
                 QMetaObject::invokeMethod(m_receiver, m_onClosed, Qt::QueuedConnection);
                 return;
             }
