@@ -82,6 +82,26 @@ jobs:
             "./build/$name.exe" -o "$name.txt,txt" || true
             cat "$name.txt" || true
           done
+      # tst_lsp only reports that nothing came back, and the proxy's own
+      # diagnostics go to a stderr the test discards. Drive both ends over a
+      # pipe that stays open and keep everything they say.
+      - name: LSP transport probe
+        if: failure() && runner.os == 'Windows'
+        shell: bash
+        run: |
+          body='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}'
+          frame() { printf 'Content-Length: %d\r\n\r\n%s' "${#body}" "$body"; }
+
+          echo "===== fake_qmlls alone ====="
+          { frame; sleep 3; } | ./build/fake_qmlls.exe > fake.bin 2> fake.err || true
+          echo "--- stdout ---"; od -c fake.bin | head -20 || true
+          echo "--- stderr ---"; cat fake.err || true
+
+          echo "===== loom lsp ====="
+          { frame; sleep 8; } | ./build/loom.exe lsp --qmlls "$PWD/build/fake_qmlls.exe" \
+            > proxy.bin 2> proxy.err || true
+          echo "--- stdout ---"; od -c proxy.bin | head -30 || true
+          echo "--- stderr ---"; cat proxy.err || true
 
   android-emulator:
     name: Android emulator
