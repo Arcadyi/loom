@@ -1,8 +1,13 @@
 #include "lspjsonrpc.h"
 
+#include <QCoreApplication>
+#include <QDateTime>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QMutex>
 #include <QRegularExpression>
+#include <QTextStream>
 #include <QtGlobal>
 #ifdef Q_OS_WIN
 #include <cstdio>
@@ -85,6 +90,21 @@ QString requestIdKey(const QJsonValue &id)
 {
     return QString::fromUtf8(
         QJsonDocument(QJsonArray{id}).toJson(QJsonDocument::Compact));
+}
+
+void trace(const char *event, const QString &detail)
+{
+    static const QString path = qEnvironmentVariable("LOOM_LSP_TRACE");
+    if (path.isEmpty())
+        return;
+    static QMutex mutex;
+    QMutexLocker locker(&mutex);
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
+        return;
+    QTextStream(&file) << QCoreApplication::applicationPid() << ' '
+                       << QDateTime::currentDateTime().toString(Qt::ISODateWithMs) << ' '
+                       << event << (detail.isEmpty() ? QString() : ' ' + detail) << '\n';
 }
 
 void useBinaryStdio()

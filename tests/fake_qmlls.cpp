@@ -9,8 +9,15 @@ namespace {
 
 void send(QFile *output, const QJsonObject &message)
 {
-    output->write(lsp::JsonRpcFramer::frame(message));
-    output->flush();
+    const QByteArray framed = lsp::JsonRpcFramer::frame(message);
+    const qint64 written = output->write(framed);
+    const bool flushed = output->flush();
+    lsp::trace(
+        "fake qmlls sent",
+        QStringLiteral("%1 of %2 flushed %3")
+            .arg(written)
+            .arg(framed.size())
+            .arg(flushed));
 }
 
 QJsonObject response(const QJsonObject &request, const QJsonValue &result)
@@ -39,14 +46,17 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    lsp::trace("fake qmlls waiting");
     lsp::JsonRpcFramer framer;
     while (true) {
         const QByteArray bytes = input.read(64 * 1024);
+        lsp::trace("fake qmlls read", QString::number(bytes.size()));
         if (bytes.isEmpty())
             break;
         const auto messages = framer.push(bytes);
         for (const auto &message : messages) {
             const QString method = message.value(QStringLiteral("method")).toString();
+            lsp::trace("fake qmlls message", method);
             if (method == QStringLiteral("initialize")) {
                 send(
                     &output,

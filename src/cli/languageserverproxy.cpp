@@ -27,27 +27,6 @@ namespace lsp {
 
 namespace {
 
-// A language server has no console to complain to -- stdout carries the
-// protocol and an editor rarely shows stderr -- so when one goes quiet there is
-// nothing to look at. Point LOOM_LSP_TRACE at a file to find out how far it
-// got. Every process writing there tags its lines with its own id, since the
-// proxy and the qmlls shim can be running at once. Costs one environment lookup
-// when unset.
-void trace(const char *event, const QString &detail = {})
-{
-    static const QString path = qEnvironmentVariable("LOOM_LSP_TRACE");
-    if (path.isEmpty())
-        return;
-    static QMutex mutex;
-    QMutexLocker locker(&mutex);
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
-        return;
-    QTextStream(&file) << QCoreApplication::applicationPid() << ' '
-                       << QDateTime::currentDateTime().toString(Qt::ISODateWithMs) << ' '
-                       << event << (detail.isEmpty() ? QString() : ' ' + detail) << '\n';
-}
-
 #ifdef Q_OS_WIN
 // Nothing on Windows lets an event loop watch the pipe an editor hands a
 // language server for readability: QWinEventNotifier reports handles the
@@ -395,7 +374,9 @@ void LanguageServerProxy::sendChild(const QJsonObject &message)
 {
     if (m_qmlls.state() == QProcess::Running) {
         const QByteArray framed = JsonRpcFramer::frame(message);
-        if (m_qmlls.write(framed) != framed.size())
+        const qint64 written = m_qmlls.write(framed);
+        trace("to qmlls", QStringLiteral("%1 of %2").arg(written).arg(framed.size()));
+        if (written != framed.size())
             stop(1);
     }
 }

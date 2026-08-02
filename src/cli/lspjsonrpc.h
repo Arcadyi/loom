@@ -29,4 +29,12 @@ QString requestIdKey(const QJsonValue &id);
 // survives the trip. Neither end can then find a message boundary.
 void useBinaryStdio();
 
+// A language server has no console to complain to -- stdout carries the
+// protocol and an editor rarely shows stderr -- so when one goes quiet there is
+// nothing to look at. Point LOOM_LSP_TRACE at a file to find out how far it
+// got. Every process writing there tags its lines with its own id, since a
+// proxy and the server behind it can be running at once. Costs one environment
+// lookup when unset.
+void trace(const char *event, const QString &detail = {});
+
 } // namespace lsp
