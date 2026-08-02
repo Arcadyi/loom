@@ -97,11 +97,19 @@ jobs:
           echo "--- stdout ---"; od -c fake.bin | head -20 || true
           echo "--- stderr ---"; cat fake.err || true
 
-          echo "===== loom lsp ====="
+          echo "===== loom lsp, stdout to a file ====="
           { frame; sleep 8; } | ./build/loom.exe lsp --qmlls "$PWD/build/fake_qmlls.exe" \
             > proxy.bin 2> proxy.err || true
           echo "--- stdout ---"; od -c proxy.bin | head -30 || true
           echo "--- stderr ---"; cat proxy.err || true
+
+          # The test reads the reply through a pipe rather than a file, and
+          # ctest sees nothing from any Qt binary here either. If a file
+          # answers and a pipe does not, the transport was never the problem.
+          echo "===== loom lsp, stdout to a pipe ====="
+          { frame; sleep 8; } | ./build/loom.exe lsp --qmlls "$PWD/build/fake_qmlls.exe" \
+            2> proxy2.err | od -c | head -30 || true
+          echo "--- stderr ---"; cat proxy2.err || true
 
   android-emulator:
     name: Android emulator
