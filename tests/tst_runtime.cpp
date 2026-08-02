@@ -666,10 +666,14 @@ private slots:
                 &error),
             qPrintable(error));
 
-        QObject *root = controller.rootObject();
+        // Guarded, because a rebuilt scene can land on the address the old one
+        // was freed from and a raw comparison would call that "not rebuilt".
+        // A QPointer answers the question actually being asked.
+        QPointer<QObject> root = controller.rootObject();
         QVERIFY(root);
         QVERIFY(root->setProperty("visits", 7));
-        auto *boundary = root->findChild<QObject *>(QStringLiteral("boundary"));
+        QPointer<QObject> boundary =
+            root->findChild<QObject *>(QStringLiteral("boundary"));
         QVERIFY(boundary);
         QVERIFY2(
             boundary->property("item").value<QObject *>(),
@@ -689,9 +693,11 @@ private slots:
                 &error),
             qPrintable(error));
 
-        QCOMPARE(controller.rootObject(), root);
+        QVERIFY2(root, "the scene was rebuilt for a change behind the Loader");
+        QCOMPARE(controller.rootObject(), root.data());
         QCOMPARE(root->property("visits").toInt(), 7);
-        QCOMPARE(root->findChild<QObject *>(QStringLiteral("boundary")), boundary);
+        QVERIFY(boundary);
+        QCOMPARE(root->findChild<QObject *>(QStringLiteral("boundary")), boundary.data());
         QCOMPARE(
             boundary->property("item").value<QObject *>()->objectName(),
             QStringLiteral("second"));
@@ -708,7 +714,9 @@ private slots:
                      {QStringLiteral("Panel.qml"), panel("second")}})),
                 &error),
             qPrintable(error));
-        QVERIFY(controller.rootObject() != root);
+        QVERIFY2(!root, "the scene survived a change to the document holding it");
+        QVERIFY(controller.rootObject());
+        QCOMPARE(controller.rootObject()->property("visits").toInt(), 1);
     }
 
     void unmarkedBundleDirectoryIsRestagedRatherThanTrusted()
