@@ -56,7 +56,7 @@ void writeMessage(QProcess *process, const QJsonObject &message)
 
 QList<QJsonObject> readUntil(
     QProcess *process, lsp::JsonRpcFramer *framer,
-    const std::function<bool(const QJsonObject &)> &done)
+    const std::function<bool(const QJsonObject &)> &done, QByteArray *raw = nullptr)
 {
     QList<QJsonObject> all;
     QElapsedTimer timer;
@@ -64,13 +64,29 @@ QList<QJsonObject> readUntil(
     while (timer.elapsed() < 5000) {
         if (process->bytesAvailable() == 0 && !process->waitForReadyRead(250))
             continue;
-        all.append(framer->push(process->readAllStandardOutput()));
+        const QByteArray chunk = process->readAllStandardOutput();
+        if (raw)
+            raw->append(chunk);
+        all.append(framer->push(chunk));
         for (const auto &message : all) {
             if (done(message))
                 return all;
         }
     }
     return all;
+}
+
+// "returned FALSE" says only that nothing arrived, which is the one thing
+// already known. Everything below is what tells apart a server that answered
+// something unexpected, one that died, and one that never spoke.
+QString transcript(QProcess *process, const QByteArray &raw)
+{
+    return QStringLiteral("read %1 byte(s) %2; stderr: %3; state %4")
+        .arg(raw.size())
+        .arg(
+            QString::fromLatin1(raw.toPercentEncoding()),
+            QString::fromUtf8(process->readAllStandardError()))
+        .arg(int(process->state()));
 }
 
 QJsonObject responseWithId(const QList<QJsonObject> &messages, int id)
@@ -264,11 +280,15 @@ void LspTests::proxyMergesQmllsAndLoomFeatures()
                  QUrl::fromLocalFile(QDir::currentPath()).toString()},
                 {QStringLiteral("capabilities"), QJsonObject{}},
             }));
-    auto messages = readUntil(&proxy, &framer, [](const QJsonObject &message) {
-        return message.value(QStringLiteral("id")).toInt(-1) == 1;
-    });
+    QByteArray raw;
+    auto messages = readUntil(
+        &proxy, &framer,
+        [](const QJsonObject &message) {
+            return message.value(QStringLiteral("id")).toInt(-1) == 1;
+        },
+        &raw);
     const QJsonObject initialize = responseWithId(messages, 1);
-    QVERIFY(!initialize.isEmpty());
+    QVERIFY2(!initialize.isEmpty(), qPrintable(transcript(&proxy, raw)));
     const QJsonObject capabilities = initialize.value(QStringLiteral("result"))
                                          .toObject()
                                          .value(QStringLiteral("capabilities"))
@@ -402,11 +422,16 @@ void LspTests::qmllsShimForwardsArguments()
                  QUrl::fromLocalFile(QDir::currentPath()).toString()},
                 {QStringLiteral("capabilities"), QJsonObject{}},
             }));
-    auto messages = readUntil(&shim, &framer, [](const QJsonObject &message) {
-        return message.value(QStringLiteral("id")).toInt(-1) == 1;
-    });
-    const QJsonObject result =
-        responseWithId(messages, 1).value(QStringLiteral("result")).toObject();
+    QByteArray raw;
+    auto messages = readUntil(
+        &shim, &framer,
+        [](const QJsonObject &message) {
+            return message.value(QStringLiteral("id")).toInt(-1) == 1;
+        },
+        &raw);
+    const QJsonObject response = responseWithId(messages, 1);
+    QVERIFY2(!response.isEmpty(), qPrintable(transcript(&shim, raw)));
+    const QJsonObject result = response.value(QStringLiteral("result")).toObject();
     QCOMPARE(
         result.value(QStringLiteral("serverInfo"))
             .toObject()
