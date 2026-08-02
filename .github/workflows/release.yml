@@ -5,6 +5,13 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# See .github/workflows/platforms.yml for why Windows needs an unreleased
+# aqtinstall to see Qt 6.11's split repository layout.
+env:
+  LOOM_QT_VERSION: '6.11.*'
+  LOOM_AQT_WINDOWS_SOURCE: >-
+    git+https://github.com/miurahr/aqtinstall.git@7e5a5c3d95cf962cfc2f36c86ffa0d2c07f1a0d4
+
 jobs:
   package:
     name: Native package (${{ matrix.os }})
@@ -26,8 +33,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: jurplel/install-qt-action@v4
         with:
-          version: '6.11.*'
+          version: ${{ env.LOOM_QT_VERSION }}
           arch: ${{ matrix.arch }}
+          aqtsource: ${{ runner.os == 'Windows' && env.LOOM_AQT_WINDOWS_SOURCE || '' }}
           cache: true
       - uses: seanmiddleditch/gha-setup-ninja@v5
       - name: Configure

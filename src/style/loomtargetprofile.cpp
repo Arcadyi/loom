@@ -1,5 +1,6 @@
 #include "loomtargetprofile.h"
 
+#include <QByteArray>
 #include <QMetaObject>
 #include <QMutex>
 #include <memory>
@@ -21,6 +22,27 @@ bool hasProperty(const QMetaObject *metaObject, const char *name)
     return metaObject->indexOfProperty(name) >= 0;
 }
 
+// A QMetaObject address is not a stable identity for a QML-defined type: the
+// engine heap-allocates one per compiled document and frees it with the type,
+// so the very next document can be handed the same address. Caching on the
+// pointer alone then answers for `Item { ... }` with the profile built for a
+// `Rectangle { ... }` that happened to live there first -- bg-*/rounded-* land
+// on properties the item does not have and warn instead of applying. Storing
+// what the profile was built from turns a recycled address into a rebuild.
+struct CacheEntry {
+    QByteArray className;
+    int propertyCount = 0;
+    int methodCount = 0;
+    std::unique_ptr<LoomTargetProfile> profile;
+
+    bool matches(const QMetaObject *metaObject) const
+    {
+        return className == metaObject->className()
+            && propertyCount == metaObject->propertyCount()
+            && methodCount == metaObject->methodCount();
+    }
+};
+
 } // namespace
 
 const LoomTargetProfile *LoomTargetProfile::forType(const QMetaObject *metaObject)
@@ -29,12 +51,12 @@ const LoomTargetProfile *LoomTargetProfile::forType(const QMetaObject *metaObjec
     // Owning pointers so the exit-time destructor releases the cache and the
     // leak-sanitizer job stays meaningful without suppressions. unordered_map
     // because QHash requires copyable values.
-    static std::unordered_map<const QMetaObject *, std::unique_ptr<LoomTargetProfile>>
-        cache;
+    static std::unordered_map<const QMetaObject *, CacheEntry> cache;
 
     QMutexLocker locker(&mutex);
-    if (const auto cached = cache.find(metaObject); cached != cache.end())
-        return cached->second.get();
+    const auto cached = cache.find(metaObject);
+    if (cached != cache.end() && cached->second.matches(metaObject))
+        return cached->second.profile.get();
 
     auto owned = std::unique_ptr<LoomTargetProfile>(new LoomTargetProfile);
     LoomTargetProfile *profile = owned.get();
@@ -141,7 +163,15 @@ const LoomTargetProfile *LoomTargetProfile::forType(const QMetaObject *metaObjec
     set(LoomUtility::Scale, "scale");
     set(LoomUtility::TransformOrigin, "transformOrigin");
 
-    cache.emplace(metaObject, std::move(owned));
+    // insert_or_assign rather than emplace: a recycled address arrives here
+    // with a stale entry already sitting under the key.
+    cache.insert_or_assign(
+        metaObject,
+        CacheEntry{
+            QByteArray(metaObject->className()),
+            metaObject->propertyCount(),
+            metaObject->methodCount(),
+            std::move(owned)});
     return profile;
 }
 

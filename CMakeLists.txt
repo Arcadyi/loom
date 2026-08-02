@@ -372,38 +372,54 @@ if(LOOM_BUILD_CLI)
         RUNTIME DESTINATION "${LOOM_QMLLS_SHIM_INSTALL_DIR}"
         BUNDLE DESTINATION "${LOOM_QMLLS_SHIM_INSTALL_DIR}"
     )
-    qt_generate_deploy_script(
-        TARGET loom_cli
-        OUTPUT_SCRIPT loom_deploy_script
-        CONTENT "
-            qt_deploy_runtime_dependencies(
-                EXECUTABLE \"$<TARGET_FILE:loom_cli>\"
-                GENERATE_QT_CONF
-                NO_PLUGINS
-                NO_TRANSLATIONS
-                NO_COMPILER_RUNTIME
-                POST_EXCLUDE_REGEXES
-                    [[^/lib/]]
-                    [[^/lib64/]]
-                    [[^/usr/lib/]]
-                    [[^/usr/lib64/]]
-                POST_INCLUDE_FILES
-                    \"$<TARGET_FILE:Qt6::Core>\"
-                    \"$<TARGET_FILE:Qt6::Network>\"
-                    # Gui/Qml/Quick came in with the style catalogue behind
-                    # `loom style`. Without them the deployed binary resolves
-                    # Core and Network from its own lib/ and the rest from the
-                    # host, which is exactly the mismatch this list prevents.
-                    # No semicolons in this block: CONTENT reaches
-                    # cmake_parse_arguments through an unquoted ${ARGN}, so a
-                    # semicolon splits the script into stray arguments.
-                    \"$<TARGET_FILE:Qt6::Gui>\"
-                    \"$<TARGET_FILE:Qt6::Qml>\"
-                    \"$<TARGET_FILE:Qt6::Quick>\"
-            )
-        "
-    )
-    install(SCRIPT "${loom_deploy_script}")
+    # macOS is the one desktop platform where Qt will not bundle itself around a
+    # command-line binary: qt_deploy_runtime_dependencies delegates to
+    # macdeployqt, which only understands .app bundles and fails the install
+    # outright with "Could not find app bundle" on a plain executable. Point the
+    # installed binaries at the Qt they were built against instead -- the same
+    # "runs against the Qt the host already has" tradeoff that
+    # loom_install_application documents for applications.
+    if(APPLE)
+        set_property(TARGET loom_cli APPEND PROPERTY
+            INSTALL_RPATH "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_LIBS}"
+        )
+        set_property(TARGET loom_qmlls_shim APPEND PROPERTY
+            INSTALL_RPATH "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_LIBS}"
+        )
+    else()
+        qt_generate_deploy_script(
+            TARGET loom_cli
+            OUTPUT_SCRIPT loom_deploy_script
+            CONTENT "
+                qt_deploy_runtime_dependencies(
+                    EXECUTABLE \"$<TARGET_FILE:loom_cli>\"
+                    GENERATE_QT_CONF
+                    NO_PLUGINS
+                    NO_TRANSLATIONS
+                    NO_COMPILER_RUNTIME
+                    POST_EXCLUDE_REGEXES
+                        [[^/lib/]]
+                        [[^/lib64/]]
+                        [[^/usr/lib/]]
+                        [[^/usr/lib64/]]
+                    POST_INCLUDE_FILES
+                        \"$<TARGET_FILE:Qt6::Core>\"
+                        \"$<TARGET_FILE:Qt6::Network>\"
+                        # Gui/Qml/Quick came in with the style catalogue behind
+                        # `loom style`. Without them the deployed binary resolves
+                        # Core and Network from its own lib/ and the rest from
+                        # the host, which is exactly the mismatch this list
+                        # prevents. No semicolons in this block: CONTENT reaches
+                        # cmake_parse_arguments through an unquoted ${ARGN}, so a
+                        # semicolon splits the script into stray arguments.
+                        \"$<TARGET_FILE:Qt6::Gui>\"
+                        \"$<TARGET_FILE:Qt6::Qml>\"
+                        \"$<TARGET_FILE:Qt6::Quick>\"
+                )
+            "
+        )
+        install(SCRIPT "${loom_deploy_script}")
+    endif()
     install(CODE "set(loom_relative_bindir \"${CMAKE_INSTALL_BINDIR}\")")
     install(CODE
         "set(loom_relative_qmlls_shim \"${LOOM_QMLLS_SHIM_INSTALL_DIR}/qmlls${CMAKE_EXECUTABLE_SUFFIX}\")"

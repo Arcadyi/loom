@@ -69,19 +69,38 @@ QStringList bundleCacheRoots()
 
 // Gives one test function a cache base nobody else writes to. Without this the
 // directory bookkeeping below counts roots created by the other tests in this
-// process, and by any concurrent run sharing the build tree's XDG_CACHE_HOME --
-// which is precisely the multi-process situation these tests are about, so it
-// happens readily.
+// process, and by any concurrent run sharing the cache -- which is precisely
+// the multi-process situation these tests are about, so it happens readily.
+//
+// The isolation runs through the application name rather than XDG_CACHE_HOME
+// because QStandardPaths only reads that variable on Unix-but-not-Apple: on
+// macOS the cache is under ~/Library/Caches and the override was silently
+// ignored, so every test function shared one base and counted the roots the
+// previous one deliberately left behind. CacheLocation ends in
+// <organization>/<application> on all three desktop platforms, which makes a
+// unique application name the one lever that isolates everywhere. Test mode
+// keeps the directories under ~/.qttest instead of the real user cache.
 class ScopedCacheHome {
 public:
     ScopedCacheHome()
-        : m_previous(qgetenv("XDG_CACHE_HOME"))
+        : m_previous(QCoreApplication::applicationName())
     {
-        qputenv("XDG_CACHE_HOME", QFile::encodeName(m_directory.path()));
+        static QAtomicInt counter;
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setApplicationName(
+            QStringLiteral("loom-test-%1-%2")
+                .arg(QCoreApplication::applicationPid())
+                .arg(counter.fetchAndAddOrdered(1)));
+        m_base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+        m_valid = !m_base.isEmpty() && QDir().mkpath(m_base);
     }
     ~ScopedCacheHome()
     {
-        qputenv("XDG_CACHE_HOME", m_previous);
+        // Nothing else ever names this directory again, and the tests plant
+        // roots that outlive the sweep on purpose.
+        if (m_valid)
+            QDir(m_base).removeRecursively();
+        QCoreApplication::setApplicationName(m_previous);
     }
 
     ScopedCacheHome(const ScopedCacheHome &) = delete;
@@ -89,12 +108,13 @@ public:
 
     bool isValid() const
     {
-        return m_directory.isValid();
+        return m_valid;
     }
 
 private:
-    QTemporaryDir m_directory;
-    QByteArray m_previous;
+    QString m_previous;
+    QString m_base;
+    bool m_valid = false;
 };
 
 bool isMarkedComplete(const QString &bundleDirectory)
