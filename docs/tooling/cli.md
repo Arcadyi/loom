@@ -264,6 +264,14 @@ Without `--qmlls`, Loom checks `LOOM_QMLLS_PATH`, the bin directory of the Qt
 installation it runs against, `qtpaths6`/`qtpaths`, and finally `PATH`. A missing
 server exits 127 with the reason on stderr; stdout is reserved for LSP frames.
 
+Because stdout carries the protocol and editors rarely surface stderr, a
+language server that goes quiet leaves nothing to look at. Set
+`LOOM_LSP_TRACE=/path/to/file` to have the proxy append what it is doing --
+which `qmlls` it resolved and started, every read from the editor, every message
+parsed, every reply sent and forwarded. Each line carries the process id, since
+the proxy and the server behind it both write there. Unset, it costs one
+environment lookup.
+
 The proxy discovers the nearest `loom.json` for every open QML file. It watches
 that manifest and its `design` file, recomputes diagnostics when either changes,
 and retains the last valid token vocabulary while a design file is temporarily

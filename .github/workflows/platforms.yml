@@ -69,6 +69,11 @@ jobs:
       # ctest captures nothing from the Qt test binaries on Windows -- it logs
       # "<end of output>" even for the ones that pass -- so ask QTest for a file
       # instead, which does not go through the stdout that is coming up empty.
+      # ctest captures nothing from the Qt test binaries on Windows -- it logs
+      # "<end of output>" even for the ones that pass -- so ask QTest for a file
+      # instead, which does not go through the stdout that comes up empty. Run
+      # whichever tests the log above recorded as failed, and turn the server
+      # trace on in case an LSP one is among them.
       - name: Qt test output
         if: failure() && runner.os == 'Windows'
         shell: bash
@@ -76,45 +81,20 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           QSG_RHI_BACKEND: software
         run: |
-          for name in tst_states tst_lsp; do
+          log=build/Testing/Temporary/LastTest.log
+          [ -f "$log" ] || exit 0
+          awk '/^[0-9]+\/[0-9]+ Test: /{name=$3} /^Test Failed\./{print name}' "$log" \
+          | while read -r name; do
             [ -x "build/$name.exe" ] || continue
             echo "===== $name ====="
-            LOOM_LSP_TRACE="$PWD/$name-lsp-trace.txt" \
+            LOOM_LSP_TRACE="$PWD/$name-trace.txt" \
               "./build/$name.exe" -o "$name.txt,txt" || true
             cat "$name.txt" || true
-            if [ -f "$name-lsp-trace.txt" ]; then
+            if [ -f "$name-trace.txt" ]; then
               echo "----- server trace -----"
-              cat "$name-lsp-trace.txt"
+              cat "$name-trace.txt"
             fi
           done
-      # tst_lsp only reports that nothing came back, and the proxy's own
-      # diagnostics go to a stderr the test discards. Drive both ends over a
-      # pipe that stays open and keep everything they say.
-      - name: LSP transport probe
-        if: failure() && runner.os == 'Windows'
-        shell: bash
-        run: |
-          body='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}'
-          frame() { printf 'Content-Length: %d\r\n\r\n%s' "${#body}" "$body"; }
-
-          echo "===== fake_qmlls alone ====="
-          { frame; sleep 3; } | ./build/fake_qmlls.exe > fake.bin 2> fake.err || true
-          echo "--- stdout ---"; od -c fake.bin | head -20 || true
-          echo "--- stderr ---"; cat fake.err || true
-
-          echo "===== loom lsp, stdout to a file ====="
-          { frame; sleep 8; } | ./build/loom.exe lsp --qmlls "$PWD/build/fake_qmlls.exe" \
-            > proxy.bin 2> proxy.err || true
-          echo "--- stdout ---"; od -c proxy.bin | head -30 || true
-          echo "--- stderr ---"; cat proxy.err || true
-
-          # The test reads the reply through a pipe rather than a file, and
-          # ctest sees nothing from any Qt binary here either. If a file
-          # answers and a pipe does not, the transport was never the problem.
-          echo "===== loom lsp, stdout to a pipe ====="
-          { frame; sleep 8; } | ./build/loom.exe lsp --qmlls "$PWD/build/fake_qmlls.exe" \
-            2> proxy2.err | od -c | head -30 || true
-          echo "--- stderr ---"; cat proxy2.err || true
 
   android-emulator:
     name: Android emulator
