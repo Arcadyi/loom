@@ -61,7 +61,11 @@ QList<QJsonObject> readUntil(
     QList<QJsonObject> all;
     QElapsedTimer timer;
     timer.start();
-    while (timer.elapsed() < 5000) {
+    // Generous because answering costs two process starts, not one: the proxy
+    // only replies once the qmlls behind it has started and answered, and it
+    // spends up to five seconds of its own waiting for that. A budget that
+    // matches the proxy's leaves a slow host looking exactly like a silent one.
+    while (timer.elapsed() < 30000) {
         if (process->bytesAvailable() == 0 && !process->waitForReadyRead(250))
             continue;
         const QByteArray chunk = process->readAllStandardOutput();
