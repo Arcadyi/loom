@@ -12,9 +12,8 @@
 #include <QTextStream>
 #include <QUrl>
 #ifdef Q_OS_WIN
-#include <QWinEventNotifier>
-#include <fcntl.h>
-#include <io.h>
+#include <QThread>
+#include <functional>
 #include <windows.h>
 #else
 #include <unistd.h>
@@ -23,6 +22,55 @@
 namespace lsp {
 
 namespace {
+
+#ifdef Q_OS_WIN
+// Nothing on Windows lets an event loop watch the pipe an editor hands a
+// language server for readability: QWinEventNotifier reports handles the
+// Windows wait functions can signal, and a pipe is not one of them. Read on a
+// thread that is allowed to block instead, and hand each chunk to the proxy's
+// own thread. Reading the handle also sidesteps the C runtime, so the bytes
+// arrive exactly as they were written.
+class StdinReader final : public QThread {
+public:
+    StdinReader(
+        QObject *receiver, std::function<void(const QByteArray &)> onBytes,
+        std::function<void()> onClosed)
+        : QThread(receiver)
+        , m_receiver(receiver)
+        , m_onBytes(std::move(onBytes))
+        , m_onClosed(std::move(onClosed))
+    {
+    }
+
+protected:
+    void run() override
+    {
+        const HANDLE handle = GetStdHandle(STD_INPUT_HANDLE);
+        QByteArray buffer(64 * 1024, Qt::Uninitialized);
+        for (;;) {
+            DWORD read = 0;
+            const bool ok = ReadFile(
+                handle, buffer.data(), static_cast<DWORD>(buffer.size()), &read, nullptr);
+            if (!ok || read == 0) {
+                QMetaObject::invokeMethod(m_receiver, m_onClosed, Qt::QueuedConnection);
+                return;
+            }
+            QMetaObject::invokeMethod(
+                m_receiver,
+                [callback = m_onBytes,
+                 chunk = QByteArray(buffer.constData(), static_cast<qsizetype>(read))] {
+                    callback(chunk);
+                },
+                Qt::QueuedConnection);
+        }
+    }
+
+private:
+    QObject *m_receiver;
+    std::function<void(const QByteArray &)> m_onBytes;
+    std::function<void()> m_onClosed;
+};
+#endif
 
 QJsonObject responseFor(const QJsonObject &request, const QJsonValue &result)
 {
@@ -212,11 +260,10 @@ int LanguageServerProxy::run(const QString &qmllsPath, const QStringList &qmllsA
     }
 
 #ifdef Q_OS_WIN
-    const auto handle = reinterpret_cast<HANDLE>(_get_osfhandle(_fileno(stdin)));
-    m_winInputNotifier = new QWinEventNotifier(handle, this);
-    connect(m_winInputNotifier, &QWinEventNotifier::activated, this, [this]() {
-        readEditor();
-    });
+    m_editorReader = new StdinReader(
+        this, [this](const QByteArray &bytes) { handleEditorBytes(bytes); },
+        [this] { stop(0); });
+    m_editorReader->start();
 #else
     m_inputNotifier = new QSocketNotifier(fileno(stdin), QSocketNotifier::Read, this);
     connect(
@@ -224,6 +271,18 @@ int LanguageServerProxy::run(const QString &qmllsPath, const QStringList &qmllsA
 #endif
 
     QCoreApplication::exec();
+
+#ifdef Q_OS_WIN
+    // The reader is parked inside ReadFile and only that call returning ends
+    // it, so cancel the read rather than wait on one that will not come back.
+    if (m_editorReader) {
+        CancelIoEx(GetStdHandle(STD_INPUT_HANDLE), nullptr);
+        if (!m_editorReader->wait(2000)) {
+            m_editorReader->terminate();
+            m_editorReader->wait(1000);
+        }
+    }
+#endif
     return m_exitStatus;
 }
 
@@ -235,6 +294,11 @@ void LanguageServerProxy::readEditor()
             stop(0);
         return;
     }
+    handleEditorBytes(bytes);
+}
+
+void LanguageServerProxy::handleEditorBytes(const QByteArray &bytes)
+{
     QString error;
     const auto messages = m_editorFramer.push(bytes, &error);
     if (!error.isEmpty())

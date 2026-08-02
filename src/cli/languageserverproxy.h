@@ -14,7 +14,7 @@
 
 class QSocketNotifier;
 #ifdef Q_OS_WIN
-class QWinEventNotifier;
+class QThread;
 #endif
 
 namespace lsp {
@@ -42,6 +42,7 @@ private:
     };
 
     void readEditor();
+    void handleEditorBytes(const QByteArray &bytes);
     void readChild();
     void readChildError();
     void handleEditorMessage(const QJsonObject &message);
@@ -71,7 +72,9 @@ private:
     QFile m_output;
     QSocketNotifier *m_inputNotifier = nullptr;
 #ifdef Q_OS_WIN
-    QWinEventNotifier *m_winInputNotifier = nullptr;
+    // Held as the base type because the reader itself is a detail of the
+    // implementation file.
+    QThread *m_editorReader = nullptr;
 #endif
     QProcess m_qmlls;
     JsonRpcFramer m_editorFramer;

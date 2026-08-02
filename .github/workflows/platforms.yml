@@ -158,14 +158,17 @@ jobs:
           loom="$RUNNER_TEMP/loom/bin/loom"
           "$loom" build --target android --config Debug --prefix "$RUNNER_TEMP/loom-android"
           "$loom" deploy --target android --config Debug --prefix "$RUNNER_TEMP/loom-android"
-          # Resolve the launcher activity rather than naming a class: Qt has
-          # more than one QtActivity, and the installed package picked one that
-          # is not org.qtproject.qt.android.bindings.QtActivity.
+          # Ask the device what went on rather than naming a package and an
+          # activity. loom does not set QT_ANDROID_PACKAGE_NAME, so the APK
+          # keeps Qt's default identity instead of the manifest's organization,
+          # and Qt has more than one QtActivity to choose between.
+          package=$(adb shell pm list packages -3 | tr -d '\r' | sed 's/^package://' | head -n 1)
+          [ -n "$package" ] || { echo "the APK installed no third-party package" >&2; exit 1; }
           activity=$(adb shell cmd package resolve-activity --brief \
-            -c android.intent.category.LAUNCHER dev.example.loomandroid | tail -n 1 | tr -d '\r')
+            -c android.intent.category.LAUNCHER "$package" | tail -n 1 | tr -d '\r')
           case "$activity" in
-            dev.example.loomandroid/*) ;;
-            *) echo "no launcher activity for dev.example.loomandroid: $activity" >&2; exit 1 ;;
+            "$package"/*) ;;
+            *) echo "no launcher activity for $package: $activity" >&2; exit 1 ;;
           esac
           adb shell am start -W -n "$activity"
           SCRIPT
