@@ -36,6 +36,9 @@ private slots:
     void rowHonoursPaddingWrittenAfterConstruction();
     void colAlignsChildrenOnTheCrossAxis();
     void gapUtilityReachesPositionerSpacing();
+    void buttonStylesThroughItsBackgroundAndLabel();
+    void fieldInvalidStateNeedsNoConfiguration();
+    void listRowSelectionReachesItsLabel();
 };
 
 // Box exists because `p-4` needs `topPadding`, and the Rectangle everyone
@@ -284,6 +287,97 @@ void ControlsTests::gapUtilityReachesPositionerSpacing()
     // to `spacing` on anything that has it -- so this pins that down for the
     // shipped containers.
     QTRY_COMPARE(item->property("spacing").toReal(), 24.0);
+}
+
+void ControlsTests::buttonStylesThroughItsBackgroundAndLabel()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Button {\n"
+        "    text: \"Save\"\n"
+        "    Lo.style: \"px-4 py-2 rounded-lg bg-blue-500 text-white\"\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    // Replaces the Rectangle + Text + MouseArea triple the gallery writes out
+    // three times: appearance on the background, text colour on the label.
+    QQuickItem *const background = itemProperty(item.data(), "background");
+    QVERIFY(background);
+    QTRY_COMPARE(background->property("color").value<QColor>(), QColor(0x3b, 0x82, 0xf6));
+    QCOMPARE(item->property("leftPadding").toReal(), 16.0);
+
+    QQuickItem *const label = itemProperty(item.data(), "contentItem");
+    QVERIFY(label);
+    QTRY_COMPARE(label->property("color").value<QColor>(), QColor(Qt::white));
+    QCOMPARE(label->property("text").toString(), QStringLiteral("Save"));
+}
+
+// `invalid` is a built-in state rather than an application-declared one
+// precisely so this works with no design file: a shipped component cannot
+// require the application to have configured something before it renders
+// correctly. This test runs against the default registry.
+void ControlsTests::fieldInvalidStateNeedsNoConfiguration()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Field {\n"
+        "    label: \"Email\"\n"
+        "    width: 300\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    // The cookbook had to write this as
+    //     + (field.invalid ? " border-danger" : " border-outline")
+    // duplicated across the items that needed it. It is a variant now.
+    QQuickItem *const field = item.data();
+    QTRY_VERIFY(field->property("invalid").isValid());
+    QCOMPARE(field->property("invalid").toBool(), false);
+
+    field->setProperty("invalid", true);
+    QTRY_COMPARE(field->property("invalid").toBool(), true);
+    // The message line is bound to the same property, so it appears with it.
+    bool sawMessage = false;
+    for (QQuickItem *child : field->childItems()) {
+        for (QQuickItem *inner : child->childItems()) {
+            if (inner->property("text").toString().contains(
+                    QStringLiteral("does not look right")))
+                sawMessage = inner->isVisible();
+        }
+        if (child->property("text").toString().contains(
+                QStringLiteral("does not look right")))
+            sawMessage = child->isVisible();
+    }
+    QVERIFY2(sawMessage, "Field's error line did not follow its invalid property");
+}
+
+void ControlsTests::listRowSelectionReachesItsLabel()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "ListRow {\n"
+        "    width: 200\n"
+        "    text: \"Inbox\"\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    // The cookbook's delegate spelled selection as a ternary written twice --
+    // once on the row and once on its label, because the two cannot share a
+    // string. The label reads the row's state through group-selected/row.
+    QQuickItem *const background = itemProperty(item.data(), "background");
+    QVERIFY(background);
+    const QColor unselected = background->property("color").value<QColor>();
+
+    item->setProperty("selected", true);
+    QTRY_VERIFY(background->property("color").value<QColor>() != unselected);
 }
 
 QTEST_MAIN(ControlsTests)

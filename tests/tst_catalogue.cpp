@@ -124,14 +124,14 @@ void CatalogueTests::catalogueWidensWithConfig()
     // knows they exist. everyVariantCombines() above then round-trips the new
     // names through the parser without being told about them either.
     const QString withStates =
-        writeConfig(R"({"schemaVersion":2,"states":{"invalid":"failed validation"}})");
+        writeConfig(R"({"schemaVersion":2,"states":{"syncing":"has unsaved changes"}})");
     QVERIFY(loom::loadConfig(withStates));
 
     const loom::StyleCatalogue states = loom::styleCatalogue();
-    QVERIFY(states.variants.contains(QStringLiteral("invalid")));
-    QVERIFY(states.variants.contains(QStringLiteral("not-invalid")));
-    QVERIFY(states.variants.contains(QStringLiteral("group-invalid")));
-    QVERIFY(loom::unknownStyleClasses(QStringLiteral("invalid:border-danger")).isEmpty());
+    QVERIFY(states.variants.contains(QStringLiteral("syncing")));
+    QVERIFY(states.variants.contains(QStringLiteral("not-syncing")));
+    QVERIFY(states.variants.contains(QStringLiteral("group-syncing")));
+    QVERIFY(loom::unknownStyleClasses(QStringLiteral("syncing:border-warning")).isEmpty());
 }
 
 void CatalogueTests::jsonShape()

@@ -76,6 +76,7 @@ const QHash<QString, quint32> &stateVariants()
         {QStringLiteral("only"), LoomOnlyState},
         {QStringLiteral("odd"), LoomOddState},
         {QStringLiteral("even"), LoomEvenState},
+        {QStringLiteral("invalid"), LoomInvalidState},
     };
     return table;
 }

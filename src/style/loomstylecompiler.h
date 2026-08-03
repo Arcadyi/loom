@@ -136,6 +136,13 @@ enum LoomState : quint32 {
     LoomOnlyState = 1u << 23,
     LoomOddState = 1u << 24,
     LoomEvenState = 1u << 25,
+    // Built-in rather than application-declared, because Loom.Controls.Field
+    // ships using it: a component cannot require the application to have
+    // configured a state before it renders correctly. Sourced from a `bool
+    // invalid` property on the target, the same duck-typing `checked` and
+    // `readOnly` use -- Qt has no such property of its own, but every
+    // validating input grows one.
+    LoomInvalidState = 1u << 26,
 };
 
 // Which rule wins when two of them set the same property. Responsive and state

@@ -618,10 +618,10 @@ void CompilerTests::specificityDepthSaturatesRatherThanWrapping()
 void CompilerTests::declaredStatesCompileAndRankAsStates()
 {
     auto *registry = LoomTokenRegistry::instance();
-    QVERIFY(registry->setCustomState(QStringLiteral("invalid"), QString()));
+    QVERIFY(registry->setCustomState(QStringLiteral("syncing"), QString()));
     LoomStyleCompiler::clearCache();
 
-    const auto style = compile(QStringLiteral("bg-blue-500 invalid:bg-red-500"));
+    const auto style = compile(QStringLiteral("bg-blue-500 syncing:bg-red-500"));
     QCOMPARE(style->rules.size(), 2);
     QCOMPARE(style->usedCustomStates, 1u);
     // Sits in its own channel rather than in spare LoomState bits, so the
@@ -634,9 +634,9 @@ void CompilerTests::declaredStatesCompileAndRankAsStates()
     // The catalogue advertises all three forms, and tst_catalogue's round-trip
     // then covers them without knowing they exist.
     const QStringList variants = LoomStyleCompiler::variantNames();
-    QVERIFY(variants.contains(QStringLiteral("invalid")));
-    QVERIFY(variants.contains(QStringLiteral("not-invalid")));
-    QVERIFY(variants.contains(QStringLiteral("group-invalid")));
+    QVERIFY(variants.contains(QStringLiteral("syncing")));
+    QVERIFY(variants.contains(QStringLiteral("not-syncing")));
+    QVERIFY(variants.contains(QStringLiteral("group-syncing")));
 
     registry->resetToDefaults();
     LoomStyleCompiler::clearCache();

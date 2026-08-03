@@ -23,7 +23,7 @@
     "card": "bg-surface border border-outline rounded-lg shadow-sm"
   },
   "states": {
-    "invalid": "A field's value failed the application's own validation"
+    "syncing": "This item has local changes not yet saved to the server"
   },
   "lint": { "arbitraryValues": "warn" }
 }

@@ -589,7 +589,7 @@ void LoomStyleAttached::updateSubscriptions()
         {LoomCheckedState, "checked"},         {LoomDownState, "down"},
         {LoomHighlightedState, "highlighted"}, {LoomSelectedState, "selected"},
         {LoomEditableState, "editable"},       {LoomReadOnlyState, "readOnly"},
-        {LoomActiveState, "active"},
+        {LoomActiveState, "active"},           {LoomInvalidState, "invalid"},
     };
     for (const auto &entry : propertyStates) {
         if (states & entry.state)
@@ -809,6 +809,8 @@ quint32 LoomStyleAttached::activeStates() const
         states |= LoomReadOnlyState;
     if (boolProperty("active"))
         states |= LoomActiveState;
+    if (boolProperty("invalid"))
+        states |= LoomInvalidState;
     if (boolProperty("visualFocus")
         || (m_target->metaObject()->indexOfProperty("visualFocus") < 0
             && m_target->hasActiveFocus()
@@ -1010,6 +1012,39 @@ QVariant LoomStyleAttached::parentAnchorLine(const QString &edge) const
 // on Controls and cannot name its types. Resolved per instance rather than
 // folded into the cached per-type profile, because the delegate is replaceable
 // per instance and differs between Controls styles.
+// The mirror of backgroundPath() for the label half of a Control. A Control
+// carries `font`, so text-sm and font-bold already land on it and Qt propagates
+// them down; `color` is the gap, because a Control is not a Text and the target
+// profile is duck-typed on the property, not on intent. Without this,
+// `text-white` on a Button warns as unsupported and the label keeps the
+// platform style's colour against whatever background bg-* just wrote.
+QString LoomStyleAttached::contentPath(LoomUtility utility) const
+{
+    switch (utility) {
+    case LoomUtility::TextColor:
+    case LoomUtility::TextAlignment:
+    case LoomUtility::TextElide:
+    case LoomUtility::LineHeight:
+        break;
+    default:
+        // Everything else either lands on the Control (padding, spacing, the
+        // whole font group) or is already delegated to its background.
+        return {};
+    }
+
+    const QVariant value = m_target->property("contentItem");
+    if (!value.isValid())
+        return {};
+    const auto *content = value.value<QQuickItem *>();
+    if (!content)
+        return {};
+    const QString path =
+        LoomTargetProfile::forType(content->metaObject())->propertyPath(utility);
+    if (path.isEmpty())
+        return {};
+    return QStringLiteral("contentItem.") + path;
+}
+
 QString LoomStyleAttached::backgroundPath(LoomUtility utility) const
 {
     switch (utility) {
@@ -1319,6 +1354,8 @@ void LoomStyleAttached::applyNow()
             QString path = profile->propertyPath(rule.utility);
             if (path.isEmpty())
                 path = backgroundPath(rule.utility);
+            if (path.isEmpty())
+                path = contentPath(rule.utility);
             if (path.isEmpty()) {
                 warnUnsupportedOnce(m_target->metaObject(), rule.utility, rule.key);
                 continue;

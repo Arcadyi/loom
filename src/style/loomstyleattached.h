@@ -108,6 +108,7 @@ private:
     quint32 activeStates() const;
     QString marginPath(LoomUtility utility) const;
     QString backgroundPath(LoomUtility utility) const;
+    QString contentPath(LoomUtility utility) const;
     // Where a layout utility lands on *this* item right now: the Layout.*
     // attached properties when the parent is a QtQuick.Layouts layout, anchors
     // otherwise. Empty means the utility does not apply in this context --

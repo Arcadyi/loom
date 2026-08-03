@@ -67,12 +67,12 @@ void StateTests::cleanup()
     loom::setTheme(QStringLiteral("light"));
 }
 
-// The friction this removes: "invalid" is the application's concept, so before
-// this it could only be a whole-string ternary -- and one duplicated onto both
-// a container and its label, because a class string cannot be shared.
+// The friction this removes: an application-owned condition like "syncing" had
+// no variant, so it could only be a whole-string ternary -- and one duplicated
+// onto both a container and its label, because a class string cannot be shared.
 void StateTests::declaredStateViaLoStates()
 {
-    declareStates(R"({"schemaVersion": 2, "states": {"invalid": "failed validation"}})");
+    declareStates(R"({"schemaVersion": 2, "states": {"syncing": "has unsaved changes"}})");
 
     QQmlEngine engine;
     QQmlComponent component(&engine);
@@ -81,8 +81,8 @@ void StateTests::declaredStateViaLoStates()
             "import QtQuick\nimport Loom\n"
             "Rectangle {\n"
             "    property bool broken: false\n"
-            "    Lo.states: ({ invalid: broken })\n"
-            "    Lo.style: \"bg-blue-500 invalid:bg-red-500\"\n"
+            "    Lo.states: ({ syncing: broken })\n"
+            "    Lo.style: \"bg-blue-500 syncing:bg-red-500\"\n"
             "}\n",
             QUrl());
         return component.create();
@@ -98,11 +98,11 @@ void StateTests::declaredStateViaLoStates()
     QTRY_COMPARE(item->property("color").value<QColor>(), QColor(0x3b, 0x82, 0xf6));
 }
 
-// The form a component uses: declaring `property bool invalid` is enough, so a
-// Field lights up `invalid:` with nothing at the call site.
+// The form a component uses: declaring a bool property of the same name is
+// enough, which is how Field lights up `invalid:` with nothing at the call site.
 void StateTests::declaredStateViaTargetProperty()
 {
-    declareStates(R"({"schemaVersion": 2, "states": {"invalid": ""}})");
+    declareStates(R"({"schemaVersion": 2, "states": {"syncing": ""}})");
 
     QQmlEngine engine;
     QQmlComponent component(&engine);
@@ -110,8 +110,8 @@ void StateTests::declaredStateViaTargetProperty()
         component.setData(
             "import QtQuick\nimport Loom\n"
             "Rectangle {\n"
-            "    property bool invalid: false\n"
-            "    Lo.style: \"bg-blue-500 invalid:bg-red-500\"\n"
+            "    property bool syncing: false\n"
+            "    Lo.style: \"bg-blue-500 syncing:bg-red-500\"\n"
             "}\n",
             QUrl());
         return component.create();
@@ -119,17 +119,17 @@ void StateTests::declaredStateViaTargetProperty()
     QVERIFY2(item, qPrintable(component.errorString()));
 
     QTRY_COMPARE(item->property("color").value<QColor>(), QColor(0x3b, 0x82, 0xf6));
-    item->setProperty("invalid", true);
+    item->setProperty("syncing", true);
     QTRY_COMPARE(item->property("color").value<QColor>(), QColor(0xef, 0x44, 0x44));
 }
 
 // Declared states rank exactly like built-in ones. There is no reading under
-// which `invalid:` is inherently weaker or stronger than `hover:`, so at equal
+// which a declared state is inherently weaker or stronger than `hover:`, so at equal
 // depth the later class wins -- the existing rule -- and combining them beats
 // either alone.
 void StateTests::declaredStateRanksWithBuiltinStates()
 {
-    declareStates(R"({"schemaVersion": 2, "states": {"invalid": ""}})");
+    declareStates(R"({"schemaVersion": 2, "states": {"syncing": ""}})");
 
     QQmlEngine engine;
     QQmlComponent component(&engine);
@@ -137,8 +137,8 @@ void StateTests::declaredStateRanksWithBuiltinStates()
         component.setData(
             "import QtQuick\nimport Loom\n"
             "Rectangle {\n"
-            "    property bool invalid: true\n"
-            "    Lo.style: \"bg-blue-500 md:bg-green-500 invalid:bg-red-500\"\n"
+            "    property bool syncing: true\n"
+            "    Lo.style: \"bg-blue-500 md:bg-green-500 syncing:bg-red-500\"\n"
             "}\n",
             QUrl());
         return component.create();
@@ -151,11 +151,11 @@ void StateTests::declaredStateRanksWithBuiltinStates()
 
 void StateTests::undeclaredStateInLoStatesWarns()
 {
-    declareStates(R"({"schemaVersion": 2, "states": {"invalid": ""}})");
+    declareStates(R"({"schemaVersion": 2, "states": {"syncing": ""}})");
 
     QQmlEngine engine;
     QQmlComponent component(&engine);
-    // Silently accepting it would leave `dragging:` compiling to nothing and
+    // Silently accepting it would leave `undeclared:` compiling to nothing and
     // Lo.states supplying a value nothing reads, with no way to tell from the
     // outside which half was wrong.
     QTest::ignoreMessage(
@@ -163,7 +163,7 @@ void StateTests::undeclaredStateInLoStatesWarns()
     QScopedPointer<QQuickItem> item(qobject_cast<QQuickItem *>([&] {
         component.setData(
             "import QtQuick\nimport Loom\n"
-            "Rectangle { Lo.states: ({ dragging: true }) }\n",
+            "Rectangle { Lo.states: ({ undeclared: true }) }\n",
             QUrl());
         return component.create();
     }()));
