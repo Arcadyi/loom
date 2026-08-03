@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import "../components"
 import Loom
+import Loom.Controls
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -72,18 +73,21 @@ Item {
                 }
             }
 
-            Rectangle {
+            // A Box rather than a Rectangle with an inset child: `p-6` is real
+            // padding here, and the height follows the content on its own. The
+            // Rectangle form needed an inner item anchored with margins plus
+            // `implicitHeight: heroContent.implicitHeight + 2 * Loom.space.s6`
+            // restated at every call site.
+            Box {
                 id: hero
 
-                Lo.style: "@card"
+                Lo.style: "@card p-6"
                 Layout.fillWidth: true
-                implicitHeight: heroContent.implicitHeight + 2 * Loom.space.s6
 
                 ColumnLayout {
                     id: heroContent
 
-                    anchors.fill: parent
-                    anchors.margins: Loom.space.s6
+                    width: hero.availableWidth
                     spacing: Loom.space.s3
 
                     Text {
@@ -153,16 +157,16 @@ Item {
                 }
             }
 
-            Rectangle {
-                Lo.style: "bg-surface-alt border border-outline rounded-lg"
+            Box {
+                id: nextStepsCard
+
+                Lo.style: "bg-surface-alt border border-outline rounded-lg p-5"
                 Layout.fillWidth: true
-                implicitHeight: nextSteps.implicitHeight + 2 * Loom.space.s5
 
                 ColumnLayout {
                     id: nextSteps
 
-                    anchors.fill: parent
-                    anchors.margins: Loom.space.s5
+                    width: nextStepsCard.availableWidth
                     spacing: Loom.space.s2
 
                     Text {

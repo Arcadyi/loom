@@ -1,8 +1,12 @@
 pragma ComponentBehavior: Bound
 import Loom
+import Loom.Controls
 import QtQuick
 
-Rectangle {
+// A Box rather than a Rectangle: `p-5` is real padding, and the height comes
+// from the content instead of the hardcoded `implicitHeight: 176` this used to
+// carry -- a number that was only ever right for the text it shipped with.
+Box {
     id: card
 
     required property string description
@@ -10,13 +14,11 @@ Rectangle {
     required property string heading
     property color accent: Loom.color.accent
 
-    Lo.style: "@card hover:bg-surface-alt transition-colors"
-    implicitHeight: 176
+    Lo.style: "@card p-5 hover:bg-surface-alt transition-colors"
 
-    Column {
-        anchors.fill: parent
-        anchors.margins: Loom.space.s5
-        spacing: Loom.space.s3
+    Col {
+        width: card.availableWidth
+        Lo.style: "gap-3"
 
         Rectangle {
             color: card.accent
@@ -37,7 +39,7 @@ Rectangle {
 
         Text {
             Lo.style: "text-muted text-sm"
-            width: parent.width
+            width: card.availableWidth
             wrapMode: Text.WordWrap
             text: card.description
         }
