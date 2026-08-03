@@ -8,6 +8,8 @@
 #include <functional>
 #include <memory>
 
+class QQuickWindow;
+
 namespace loom {
 
 class ReloadController;
@@ -84,11 +86,20 @@ private:
     // resources, when the project declared a DESIGN file.
     void loadCompiledDesign();
     void installInspector();
+    // Puts a scene whose root is an Item into a window this owns, and puts each
+    // reloaded scene into the same one. A scene rooted at a Window brings its
+    // own and is left alone.
+    void hostScene();
+    void fitHostedScene();
 
     QGuiApplication m_application;
     QQmlApplicationEngine m_engine;
     EngineInitializer m_initializer;
     std::unique_ptr<ReloadController> m_reloadController;
+    // Outlives every reload, which is the point of it: the window an Item-rooted
+    // scene is shown in survives edits to the document that defines the scene.
+    // Held by pointer so this header need not include QQuickWindow.
+    std::unique_ptr<QQuickWindow> m_hostWindow;
     QPointer<QObject> m_inspector;
     bool m_developmentRuntimeEnabled = false;
 };

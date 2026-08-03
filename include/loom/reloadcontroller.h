@@ -106,6 +106,11 @@ private:
     bool
     reloadBoundaries(const Bundle &bundle, const QString &destination, QString *error);
     QStringList changedFiles(const Bundle &bundle) const;
+    // Removes staged bundles nothing is reading any more. A seam reload leaves
+    // the scene spanning two directories -- the rebuilt part in the new one,
+    // everything else still in the old -- so neither can be swept on a rule as
+    // simple as "the previous one is finished with".
+    void reclaimStagedBundles();
     void openConnection();
     void scheduleReconnect(const QString &reason);
     void handleServerSilence();
@@ -135,6 +140,9 @@ private:
     QString m_activeBundleId;
     QString m_activeBundleDirectory;
     QString m_previousBundleDirectory;
+    // Every bundle staged this session, so the ones nothing reads can be found
+    // again and removed.
+    QStringList m_stagedDirectories;
     // What the running scene was built from, so the next bundle can be reduced
     // to the files that actually differ rather than reloaded wholesale.
     QHash<QString, QByteArray> m_activeFileHashes;

@@ -11,6 +11,8 @@
 #include <QEventLoop>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QQuickItem>
+#include <QQuickWindow>
 #include <QStandardPaths>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -717,6 +719,112 @@ private slots:
         QVERIFY2(!root, "the scene survived a change to the document holding it");
         QVERIFY(controller.rootObject());
         QCOMPARE(controller.rootObject()->property("visits").toInt(), 1);
+    }
+
+    // What loom::Application relies on to give an Item-rooted scene a window
+    // that outlives it. The Application itself cannot be built here -- it owns
+    // a QGuiApplication and this process already has one -- so the mechanism is
+    // exercised directly: the window is not part of what a reload destroys, and
+    // the scene that replaces the old one goes into the same one.
+    void anItemRootedSceneCanOutliveTheDocumentThatDefinesIt()
+    {
+        const auto scene = [](const char *name) {
+            return QByteArray("import QtQuick\nItem { objectName: \"") + name + "\" }\n";
+        };
+
+        QQuickWindow window;
+        QQmlApplicationEngine engine;
+        loom::ReloadController controller(engine);
+        QVERIFY(
+            controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")));
+
+        QString error;
+        QVERIFY2(
+            controller.applyBundle(
+                loom::encodeBundle(bundleWithMain(QStringLiteral("first"), scene("one"))),
+                &error),
+            qPrintable(error));
+
+        QPointer<QQuickItem> hosted = qobject_cast<QQuickItem *>(controller.rootObject());
+        QVERIFY(hosted);
+        hosted->setParentItem(window.contentItem());
+        QCOMPARE(hosted->parentItem(), window.contentItem());
+
+        // The document that defines the whole scene changed, so this is the
+        // reload that has nothing smaller to rebuild.
+        QVERIFY2(
+            controller.applyBundle(
+                loom::encodeBundle(
+                    bundleWithMain(QStringLiteral("second"), scene("two"))),
+                &error),
+            qPrintable(error));
+
+        QVERIFY2(!hosted, "the scene was not rebuilt");
+        auto *replacement = qobject_cast<QQuickItem *>(controller.rootObject());
+        QVERIFY(replacement);
+        QCOMPARE(replacement->objectName(), QStringLiteral("two"));
+        // The window is untouched by any of it, and takes the new scene.
+        replacement->setParentItem(window.contentItem());
+        QCOMPARE(replacement->parentItem(), window.contentItem());
+    }
+
+    // A seam reload leaves the scene reading from two bundles at once, so the
+    // rule that the previous one is finished with does not hold and every edit
+    // used to leave its staging behind for the rest of the session.
+    void seamReloadsDoNotPileUpStagedBundles()
+    {
+        ScopedCacheHome cacheHome;
+        QVERIFY(cacheHome.isValid());
+
+        const QByteArray shell = R"(
+            import QtQuick
+            Item {
+                Loader { objectName: "boundary"; source: "Panel.qml" }
+            }
+        )";
+        const auto panel = [](int generation) {
+            return QByteArray("import QtQuick\nItem { objectName: \"panel")
+                + QByteArray::number(generation) + "\" }\n";
+        };
+        const auto bundleFor = [&](int generation) {
+            return loom::encodeBundle(bundleWithFiles(
+                QStringLiteral("gen%1").arg(generation),
+                {{QStringLiteral("Main.qml"), shell},
+                 {QStringLiteral("Panel.qml"), panel(generation)}}));
+        };
+
+        QQmlApplicationEngine engine;
+        loom::ReloadController controller(engine);
+        QVERIFY(
+            controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")));
+
+        QString error;
+        for (int generation = 1; generation <= 5; ++generation)
+            QVERIFY2(
+                controller.applyBundle(bundleFor(generation), &error), qPrintable(error));
+
+        const auto roots = bundleCacheRoots();
+        QCOMPARE(roots.size(), 1);
+        const QDir root(bundleCacheBase() + QLatin1Char('/') + roots.constFirst());
+        const auto staged = [&root] {
+            return root.entryList(QDir::Dirs | QDir::NoDotAndDotDot).size();
+        };
+        // The shell is still the one built from the first bundle and the panel
+        // comes from the newest; the three in between are read by nothing.
+        QCOMPARE(staged(), 2);
+
+        // Rebuilding the scene leaves it reading from one bundle again.
+        QVERIFY2(
+            controller.applyBundle(
+                loom::encodeBundle(bundleWithFiles(
+                    QStringLiteral("rebuilt"),
+                    {{QStringLiteral("Main.qml"),
+                      QByteArray(shell).replace(
+                          "Item {", "Item { property int mark: 1;")},
+                     {QStringLiteral("Panel.qml"), panel(5)}})),
+                &error),
+            qPrintable(error));
+        QCOMPARE(staged(), 1);
     }
 
     void unmarkedBundleDirectoryIsRestagedRatherThanTrusted()

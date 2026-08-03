@@ -88,6 +88,27 @@ The scene is rebuilt whole when the change cannot be confined: a file used outsi
 rather than a URL, or a file appearing or disappearing from the project. Editing the window
 itself is the ordinary case of the first.
 
+### Keeping the window across every edit
+
+A scene rooted at a `Window` **is** that window, so the one reload it cannot survive is a
+change to its own document. Root the scene at an `Item` instead and `loom::Application` puts
+it in a window of its own, which belongs to the process rather than to the document and so
+outlives every reload — the scene is rebuilt inside a window that keeps its position, size
+and focus.
+
+```qml
+// Main.qml — no Window, so the window is loom's and survives editing this file
+Item {
+    Loader { anchors.fill: parent; source: "pages/HomePage.qml" }
+}
+```
+
+The cost is the window itself: an `Item` root cannot be an `ApplicationWindow`, so there is
+no `menuBar`, `header`, `footer` or window-level Controls styling to declare. The scaffolded
+application keeps its `ApplicationWindow` for that reason — with a seam in place, the window
+already survives everything except edits to the shell. Take the `Item` root when reloading
+the shell without losing the window matters more than authoring the window.
+
 This is why a seam is a `Loader` and not any component boundary. An inline `HomePage { }` is
 created by the document around it: its `id` lives in that document's context and that
 document's bindings point at that instance, so replacing it would leave both dangling. There

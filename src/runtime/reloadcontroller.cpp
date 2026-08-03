@@ -452,25 +452,66 @@ void mapBoundaries(QObject *object, QObject *boundary, QHash<QObject *, QObject 
         return;
     into.insert(object, boundary);
 
-    QObject *loaded = nullptr;
-    if (object->inherits("QQuickLoader")) {
-        loaded = object->property("item").value<QObject *>();
-        if (loaded)
-            mapBoundaries(loaded, object, into);
-    }
-    for (QObject *child : object->children()) {
-        if (child != loaded)
-            mapBoundaries(child, boundary, into);
-    }
+    // Everything below a Loader is behind it, not just the item it currently
+    // holds: the one it is replacing lingers as a child until the event loop
+    // deletes it, and attributing that to the surrounding scene reads as a file
+    // used outside any seam -- which is exactly the thing that forces a whole
+    // reload, so a seam reload could not happen twice in a row.
+    QObject *const inner = object->inherits("QQuickLoader") ? object : boundary;
+    for (QObject *child : object->children())
+        mapBoundaries(child, inner, into);
     if (auto *item = qobject_cast<QQuickItem *>(object)) {
-        for (QQuickItem *child : item->childItems()) {
-            if (child != loaded)
-                mapBoundaries(child, boundary, into);
-        }
+        for (QQuickItem *child : item->childItems())
+            mapBoundaries(child, inner, into);
     }
+    if (inner == object)
+        mapBoundaries(object->property("item").value<QObject *>(), object, into);
 }
 
 } // namespace
+
+void ReloadController::reclaimStagedBundles()
+{
+    if (m_stagedDirectories.isEmpty())
+        return;
+
+    // A Loader hands the item it replaced to deleteLater, so until the event
+    // loop gets to it the old scene is still hanging off the tree, still naming
+    // the bundle it was read from. Settle those first or every intermediate
+    // staging looks like something is reading it.
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+
+    QHash<QObject *, QObject *> live;
+    mapBoundaries(m_rootObject, nullptr, live);
+    QStringList reading;
+    for (auto entry = live.cbegin(); entry != live.cend(); ++entry) {
+        QQmlContext *context = qmlContext(entry.key());
+        if (!context)
+            continue;
+        const QString file = context->baseUrl().toLocalFile();
+        if (!file.isEmpty())
+            reading.append(file);
+    }
+
+    QStringList retained;
+    for (const QString &staged : std::as_const(m_stagedDirectories)) {
+        // The active directory is what a failed reload rolls back to, so it
+        // stays whether or not anything is reading it at this moment.
+        bool needed = staged == m_activeBundleDirectory;
+        const QString prefix = staged + QLatin1Char('/');
+        for (const QString &file : std::as_const(reading)) {
+            if (file.startsWith(prefix)) {
+                needed = true;
+                break;
+            }
+        }
+        if (needed)
+            retained.append(staged);
+        else
+            removePath(staged);
+    }
+    m_stagedDirectories = retained;
+}
 
 // Reloads the Loaders that contain the changed files and nothing else. Bails out
 // -- leaving the scene untouched -- whenever the change cannot be confined,
@@ -589,15 +630,24 @@ bool ReloadController::applyBundle(const QByteArray &payload, QString *error)
         }
     }
 
+    if (!m_stagedDirectories.contains(destination))
+        m_stagedDirectories.append(destination);
+
     // Confined changes rebuild their own Loader and stop there: the window, the
     // scene around it and everything the engine has already compiled stay as
-    // they are. The directory the scene was rooted in has to stay too -- the
-    // untouched parts of the tree still resolve their files out of it -- so
-    // this deliberately does not sweep the superseded bundle.
+    // they are. The scene now spans two directories -- what was rebuilt reads
+    // from this one, everything untouched still reads from the one before --
+    // and reclaiming works that out from what the objects hold rather than
+    // assuming the previous bundle is finished with.
     if (reloadBoundaries(bundle, destination, error)) {
         for (const auto &file : bundle.files)
             m_activeFileHashes.insert(file.path, file.sha256);
         m_activeBundleId = bundle.id;
+        // Every staged bundle carries the whole project, so this one is a
+        // complete scene on its own and the better thing to roll back to.
+        m_previousBundleDirectory = m_activeBundleDirectory;
+        m_activeBundleDirectory = destination;
+        reclaimStagedBundles();
         emit sceneReloaded(bundle.id);
         return true;
     }
@@ -633,15 +683,16 @@ bool ReloadController::applyBundle(const QByteArray &payload, QString *error)
         return false;
     }
 
-    const auto superseded = m_activeBundleDirectory;
-    m_previousBundleDirectory = superseded;
+    m_previousBundleDirectory = m_activeBundleDirectory;
     m_activeBundleDirectory = destination;
     m_activeBundleId = bundle.id;
     m_activeFileHashes.clear();
     for (const auto &file : bundle.files)
         m_activeFileHashes.insert(file.path, file.sha256);
-    if (!superseded.isEmpty() && superseded != destination)
-        removePath(superseded);
+    // The scene was rebuilt whole, so anything staged that it does not read is
+    // finished with -- including the directories a run of seam reloads left the
+    // old parts of the tree pointing at.
+    reclaimStagedBundles();
     emit sceneReloaded(bundle.id);
     return true;
 }

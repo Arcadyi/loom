@@ -10,6 +10,12 @@
 
 namespace loom {
 
+namespace {
+// Only ever used by a scene that asked for no size at all.
+constexpr int DefaultWindowWidth = 1100;
+constexpr int DefaultWindowHeight = 720;
+} // namespace
+
 void Application::connectDevelopmentRuntime()
 {
     auto host = qEnvironmentVariable("LOOM_DEV_HOST", QStringLiteral("127.0.0.1"));
@@ -229,6 +235,52 @@ void Application::enableDevelopmentRuntime(const bool enabled)
     m_developmentRuntimeEnabled = enabled;
 }
 
+// A scene rooted at a Window is that window, so every reload of the document
+// takes the window with it -- position, size, focus and all. A scene rooted at
+// an Item has nothing to show it in at all, which used to mean it simply never
+// appeared. Giving that case a window here answers both: the window belongs to
+// the process rather than to the document, so it outlives every reload.
+void Application::hostScene()
+{
+    QObject *root = m_reloadController ? m_reloadController->rootObject() : nullptr;
+    auto *item = qobject_cast<QQuickItem *>(root);
+    if (!item || qobject_cast<QQuickWindow *>(root))
+        return;
+
+    if (!m_hostWindow) {
+        m_hostWindow = std::make_unique<QQuickWindow>();
+        m_hostWindow->setTitle(QCoreApplication::applicationName());
+        // Whatever size the scene asked for, once; after that the window's size
+        // is the user's and a reload does not get to reset it.
+        const qreal wide = item->width() > 0 ? item->width() : item->implicitWidth();
+        const qreal high = item->height() > 0 ? item->height() : item->implicitHeight();
+        m_hostWindow->resize(
+            wide > 0 ? int(wide) : DefaultWindowWidth,
+            high > 0 ? int(high) : DefaultWindowHeight);
+        QObject::connect(m_hostWindow.get(), &QQuickWindow::widthChanged, [this] {
+            fitHostedScene();
+        });
+        QObject::connect(m_hostWindow.get(), &QQuickWindow::heightChanged, [this] {
+            fitHostedScene();
+        });
+        m_hostWindow->show();
+    }
+    // The visual parent only. The controller still owns the scene and deletes it
+    // on the next reload, which is what has to keep working.
+    item->setParentItem(m_hostWindow->contentItem());
+    fitHostedScene();
+}
+
+void Application::fitHostedScene()
+{
+    if (!m_hostWindow || !m_reloadController)
+        return;
+    if (auto *item = qobject_cast<QQuickItem *>(m_reloadController->rootObject())) {
+        item->setWidth(m_hostWindow->width());
+        item->setHeight(m_hostWindow->height());
+    }
+}
+
 int Application::run(const QString &moduleUri, const QString &entryType)
 {
     // Before the initializer and before the scene: tokens resolved during the
@@ -241,6 +293,7 @@ int Application::run(const QString &moduleUri, const QString &entryType)
 
     m_reloadController = std::make_unique<ReloadController>(m_engine);
     QObject::connect(m_reloadController.get(), &ReloadController::sceneReloaded, [this] {
+        hostScene();
         installInspector();
     });
     if (!m_reloadController->load(moduleUri, entryType)) {
@@ -253,6 +306,7 @@ int Application::run(const QString &moduleUri, const QString &entryType)
         return 1;
     }
 
+    hostScene();
     if (m_developmentRuntimeEnabled)
         connectDevelopmentRuntime();
     installInspector();
