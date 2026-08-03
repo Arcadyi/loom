@@ -201,6 +201,7 @@ if(TARGET loom_cli)
             "-DLOOM_EXE=$<TARGET_FILE:loom_cli>"
             "-DDOCS_DIR=${CMAKE_SOURCE_DIR}/docs"
             "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/docs-style"
+            "-DDOCS_DESIGN=${CMAKE_CURRENT_SOURCE_DIR}/data/docs-design.json"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/docs_style_test.cmake"
     )
     # The gallery is the framework's own showcase; it ships 61 Lo.style

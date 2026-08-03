@@ -490,6 +490,7 @@ bool validateConfigShape(const QJsonObject &root, const QString &label)
         QStringLiteral("tokens"),  QStringLiteral("themes"),
         QStringLiteral("theme"),   QStringLiteral("styles"),
         QStringLiteral("lint"),    QStringLiteral("iconRoot"),
+        QStringLiteral("states"),
     };
     for (auto it = root.constBegin(); it != root.constEnd(); ++it) {
         if (!rootKeys.contains(it.key()))
@@ -500,7 +501,7 @@ bool validateConfigShape(const QJsonObject &root, const QString &label)
         && !root.value(QLatin1String("$schema")).isString())
         return invalidConfig(
             label, QStringLiteral("$schema"), QStringLiteral("must be a string"));
-    for (const auto &key : {"tokens", "themes", "theme", "styles", "lint"}) {
+    for (const auto &key : {"tokens", "themes", "theme", "styles", "lint", "states"}) {
         const QJsonValue value = root.value(QLatin1String(key));
         if (!value.isUndefined() && !value.isObject())
             return invalidConfig(
@@ -569,6 +570,45 @@ bool validateConfigShape(const QJsonObject &root, const QString &label)
                 label, QStringLiteral("styles.") + it.key(),
                 QStringLiteral("must be a named string recipe"));
     }
+    const QJsonObject states = root.value(QLatin1String("states")).toObject();
+    if (states.size() > LoomTokenRegistry::MaxCustomStates)
+        return invalidConfig(
+            label, QStringLiteral("states"),
+            QStringLiteral("declares more than %1 states")
+                .arg(LoomTokenRegistry::MaxCustomStates));
+    for (auto it = states.constBegin(); it != states.constEnd(); ++it) {
+        const QString name = it.key();
+        if (!it->isString())
+            return invalidConfig(
+                label, QStringLiteral("states.") + name,
+                QStringLiteral("must be a description string"));
+        // The same shape as the variant vocabulary it joins: lower-case,
+        // digits and dashes. Anything else could not be written as a prefix.
+        static const QRegularExpression shape(QStringLiteral("\\A[a-z][a-z0-9-]*\\z"));
+        if (!shape.match(name).hasMatch())
+            return invalidConfig(
+                label, QStringLiteral("states.") + name,
+                QStringLiteral("must be lower-case letters, digits and dashes, "
+                               "starting with a letter"));
+        // A hard error rather than a precedence rule. parseVariant() asks the
+        // built-in table first, so a state named `hover` would compile to the
+        // built-in and never match the application's value -- the config would
+        // be quietly meaningless, which is worse than being rejected.
+        if (LoomStyleCompiler::isBuiltinVariant(name))
+            return invalidConfig(
+                label, QStringLiteral("states.") + name,
+                QStringLiteral("collides with a built-in variant"));
+        // These spell a *composed* variant. Declaring `not-found` would make
+        // `not-found:` ambiguous with the negation of a state called `found`.
+        for (const auto &reserved : {"not-", "group-", "theme-", "max-", "min-"}) {
+            if (name.startsWith(QLatin1String(reserved)))
+                return invalidConfig(
+                    label, QStringLiteral("states.") + name,
+                    QStringLiteral("must not start with the reserved prefix '%1'")
+                        .arg(QLatin1String(reserved)));
+        }
+    }
+
     const QJsonObject theme = root.value(QLatin1String("theme")).toObject();
     for (auto it = theme.constBegin(); it != theme.constEnd(); ++it) {
         if ((it.key() != QLatin1String("default") && it.key() != QLatin1String("light")
@@ -677,6 +717,17 @@ bool applyConfigDocument(const QJsonObject &root, const QString &baseFilePath, b
             continue;
         }
         registry->setStyleRecipe(it.key(), it->toString());
+    }
+    // Order matters: a state's bit is its index, so iterating the QJsonObject
+    // (which sorts keys) rather than the source order keeps the assignment
+    // stable across reloads. Nothing persists a bit, but a stable order makes
+    // the catalogue and the inspector read the same way twice.
+    const QJsonObject customStates = root.value(QLatin1String("states")).toObject();
+    for (auto it = customStates.constBegin(); it != customStates.constEnd(); ++it) {
+        if (!registry->setCustomState(it.key(), it->toString())) {
+            qCWarning(lcLoomConfig).noquote()
+                << "config: state" << it.key() << "was not registered";
+        }
     }
     registry->setArbitraryValuePolicy(root.value(QLatin1String("lint"))
                                           .toObject()

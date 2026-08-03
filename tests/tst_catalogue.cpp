@@ -118,6 +118,20 @@ void CatalogueTests::catalogueWidensWithConfig()
     const loom::StyleCatalogue after = loom::styleCatalogue();
     QVERIFY(after.classes.contains(QStringLiteral("bg-brand")));
     QVERIFY(loom::unknownStyleClasses(QStringLiteral("bg-brand")).isEmpty());
+
+    // Application-declared states widen the same way, and reach the catalogue
+    // through variantNames() alone -- no completion, checker or hover code
+    // knows they exist. everyVariantCombines() above then round-trips the new
+    // names through the parser without being told about them either.
+    const QString withStates =
+        writeConfig(R"({"schemaVersion":2,"states":{"invalid":"failed validation"}})");
+    QVERIFY(loom::loadConfig(withStates));
+
+    const loom::StyleCatalogue states = loom::styleCatalogue();
+    QVERIFY(states.variants.contains(QStringLiteral("invalid")));
+    QVERIFY(states.variants.contains(QStringLiteral("not-invalid")));
+    QVERIFY(states.variants.contains(QStringLiteral("group-invalid")));
+    QVERIFY(loom::unknownStyleClasses(QStringLiteral("invalid:border-danger")).isEmpty());
 }
 
 void CatalogueTests::jsonShape()

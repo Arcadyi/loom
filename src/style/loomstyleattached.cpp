@@ -29,6 +29,27 @@ namespace {
 // `bg-surface/70`. Scales the token's own alpha rather than replacing it, so a
 // colour that is already translucent composes with the modifier instead of
 // being overridden by it.
+// The property a declared state duck-types onto. State names are kebab-case,
+// matching the variant vocabulary (`not-found:`); QML properties are camelCase
+// (`notFound`). Doing the conversion in one place keeps the two spellings from
+// drifting into a mismatch nothing would report.
+QByteArray loomStatePropertyName(const QString &state)
+{
+    QByteArray name;
+    name.reserve(state.size());
+    bool capitalise = false;
+    for (const QChar character : state) {
+        if (character == QLatin1Char('-')) {
+            capitalise = true;
+            continue;
+        }
+        name.append(
+            (capitalise ? character.toUpper() : character).toLatin1());
+        capitalise = false;
+    }
+    return name;
+}
+
 QColor withAlpha(QColor color, quint8 alphaPercent)
 {
     if (alphaPercent == 100 || !color.isValid())
@@ -331,13 +352,74 @@ void LoomStyleAttached::setEffects(bool enabled)
     scheduleApply();
 }
 
+QVariantMap LoomStyleAttached::states() const
+{
+    return m_stateMap;
+}
+
+void LoomStyleAttached::setStates(const QVariantMap &states)
+{
+    m_stateMap = states;
+    quint32 resolved = 0;
+    auto *registry = LoomTokenRegistry::instance();
+    for (auto it = states.constBegin(); it != states.constEnd(); ++it) {
+        const int bit = registry->customStateBit(it.key());
+        if (bit < 0) {
+            // Warn rather than ignore: a state that was never declared can
+            // never match a variant either, so silently accepting it would
+            // leave `invalid:border-danger` compiling and doing nothing, with
+            // no way to tell from the outside which half is wrong.
+            qCWarning(lcLoomApply).noquote()
+                << "Lo.states: undeclared state" << it.key()
+                << "-- add it to the design file's \"states\" block";
+            continue;
+        }
+        if (it.value().toBool())
+            resolved |= quint32(1) << bit;
+    }
+    emit statesChanged();
+    // Only on a real change. The map is typically a binding that re-evaluates
+    // whenever any of its expressions do, so most writes resolve to the same
+    // mask and must not cost an apply.
+    if (resolved == m_declaredStates)
+        return;
+    m_declaredStates = resolved;
+    updateSubscriptions();
+    scheduleApply();
+}
+
+// Declared states have two sources, and a component can use either. The map is
+// the explicit one; a plain `property bool invalid` on the target is picked up
+// the same way `checked` and `readOnly` already are, which is what lets a
+// component light up its own states without every call site restating them.
+quint32 LoomStyleAttached::activeCustomStates() const
+{
+    quint32 states = m_declaredStates;
+    if (!m_target)
+        return states;
+    const QStringList names = LoomTokenRegistry::instance()->customStateNames();
+    for (qsizetype bit = 0; bit < names.size(); ++bit) {
+        const quint32 mask = quint32(1) << bit;
+        if (states & mask)
+            continue;
+        const QVariant value = m_target->property(loomStatePropertyName(names.at(bit)));
+        if (value.isValid() && value.toBool())
+            states |= mask;
+    }
+    return states;
+}
+
 bool LoomStyleAttached::matchesGroup(
-    const QString &name, quint32 required, quint32 forbidden) const
+    const QString &name, quint32 required, quint32 forbidden, quint32 customRequired,
+    quint32 customForbidden) const
 {
     if ((!name.isEmpty() && m_group != name) || (name.isEmpty() && m_group.isEmpty()))
         return false;
     const quint32 states = activeStates();
-    return (states & required) == required && (states & forbidden) == 0;
+    if ((states & required) != required || (states & forbidden) != 0)
+        return false;
+    const quint32 custom = activeCustomStates();
+    return (custom & customRequired) == customRequired && (custom & customForbidden) == 0;
 }
 
 void LoomStyleAttached::subscribeExternalStates(quint32 states)
@@ -346,6 +428,20 @@ void LoomStyleAttached::subscribeExternalStates(quint32 states)
     if (combined == m_externalStates)
         return;
     m_externalStates = combined;
+    updateSubscriptions();
+}
+
+// A group host whose own style never mentions a declared state still has to
+// watch it, because a descendant's `group-invalid:` reads it from here. Only
+// matters for the duck-typed source: a host supplying values through Lo.states
+// already schedules an apply on every change, and scheduleApply() emits
+// contextChanged, which is what descendants are connected to.
+void LoomStyleAttached::subscribeExternalCustomStates(quint32 states)
+{
+    const quint32 combined = m_externalCustomStates | states;
+    if (combined == m_externalCustomStates)
+        return;
+    m_externalCustomStates = combined;
     updateSubscriptions();
 }
 
@@ -499,6 +595,21 @@ void LoomStyleAttached::updateSubscriptions()
         if (states & entry.state)
             connectPropertyNotify(m_target, entry.property);
     }
+
+    // Declared states the style actually asks about, sourced from a property on
+    // the target. connectPropertyNotify is a no-op when the target has no such
+    // property, which is the common case: most call sites supply the values
+    // through Lo.states instead, and that needs no subscription because the map
+    // is already a QML binding.
+    if (const quint32 customStates =
+            (m_compiled ? m_compiled->usedCustomStates : quint32(0))
+            | m_externalCustomStates) {
+        const QStringList names = LoomTokenRegistry::instance()->customStateNames();
+        for (qsizetype bit = 0; bit < names.size(); ++bit) {
+            if (customStates & (quint32(1) << bit))
+                connectPropertyNotify(m_target, loomStatePropertyName(names.at(bit)));
+        }
+    }
     if (states & LoomFocusVisibleState) {
         InputModalityTracker::instance()->subscribe(this);
         if (!connectPropertyNotify(m_target, "visualFocus"))
@@ -603,7 +714,8 @@ void LoomStyleAttached::updateSubscriptions()
             if (rule.containerMinWidth > 0
                 || rule.containerMaxWidth != std::numeric_limits<int>::max())
                 containerNames.insert(rule.containerName);
-            if (rule.groupStateMask || rule.groupStateNotMask)
+            if (rule.groupStateMask || rule.groupStateNotMask || rule.groupCustomMask
+                || rule.groupCustomNotMask)
                 groupNames.insert(rule.groupName);
         }
         for (const QString &name : containerNames) {
@@ -616,11 +728,15 @@ void LoomStyleAttached::updateSubscriptions()
         for (const QString &name : groupNames) {
             if (auto *attached = groupContext(name)) {
                 quint32 required = 0;
+                quint32 customRequired = 0;
                 for (const auto &rule : m_compiled->rules) {
-                    if (rule.groupName == name)
-                        required |= rule.groupStateMask | rule.groupStateNotMask;
+                    if (rule.groupName != name)
+                        continue;
+                    required |= rule.groupStateMask | rule.groupStateNotMask;
+                    customRequired |= rule.groupCustomMask | rule.groupCustomNotMask;
                 }
                 attached->subscribeExternalStates(required);
+                attached->subscribeExternalCustomStates(customRequired);
             }
         }
     }
@@ -1024,6 +1140,7 @@ void LoomStyleAttached::applyNow()
         const LoomTargetProfile *profile =
             LoomTargetProfile::forType(m_target->metaObject());
         const quint32 states = activeStates();
+        const quint32 customStates = activeCustomStates();
         const int viewportWidth = m_target->window() ? m_target->window()->width() : 0;
 
         for (const LoomStyleRule &rule : m_compiled->rules) {
@@ -1040,13 +1157,19 @@ void LoomStyleAttached::applyNow()
                 continue;
             if ((rule.stateNotMask & states) != 0)
                 continue;
+            if ((rule.customMask & customStates) != rule.customMask)
+                continue;
+            if ((rule.customNotMask & customStates) != 0)
+                continue;
             if (!rule.themeName.isEmpty() && registry->theme() != rule.themeName)
                 continue;
-            if (rule.groupStateMask || rule.groupStateNotMask) {
+            if (rule.groupStateMask || rule.groupStateNotMask || rule.groupCustomMask
+                || rule.groupCustomNotMask) {
                 const auto *group = groupContext(rule.groupName);
                 if (!group
                     || !group->matchesGroup(
-                        rule.groupName, rule.groupStateMask, rule.groupStateNotMask))
+                        rule.groupName, rule.groupStateMask, rule.groupStateNotMask,
+                        rule.groupCustomMask, rule.groupCustomNotMask))
                     continue;
             }
             if (!activeThemeHasToken(rule, registry))

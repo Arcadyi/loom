@@ -36,6 +36,10 @@ private slots:
     void nonMonotonicBreakpointsWarn();
     void schemaV2LoadsEveryTokenFamilyAndRecipes();
     void schemaV1RequiresMigration();
+    void declaredStatesBecomeVariants();
+    void stateCollidingWithABuiltinIsRejected();
+    void malformedStateNamesAreRejected();
+    void reloadDropsStatesTheFileNoLongerDeclares();
 
 private:
     QString writeConfig(const char *json);
@@ -565,6 +569,100 @@ void ConfigTests::schemaV1RequiresMigration()
         QtWarningMsg, QRegularExpression(QStringLiteral("schemaVersion.*must be 2")));
     QVERIFY(!loom::loadConfig(path));
     QVERIFY(!LoomTokenRegistry::instance()->hasColor(QStringLiteral("brand")));
+}
+
+// Declaring states in the design file rather than accepting arbitrary names at
+// the call site is what makes them free for tooling: parseVariant() is shared
+// by compile() and unknownClasses(), and both read the registry, so `loom
+// style`, `loom lint` and the LSP learn a new state with no code of their own.
+void ConfigTests::declaredStatesBecomeVariants()
+{
+    const QString path = writeConfig(R"({
+        "schemaVersion": 2,
+        "states": {
+            "invalid": "Field failed validation",
+            "dragging": ""
+        }
+    })");
+    QVERIFY(loom::loadConfig(path));
+
+    auto *registry = LoomTokenRegistry::instance();
+    QCOMPARE(registry->customStateNames(), QStringList({"dragging", "invalid"}));
+    QCOMPARE(
+        registry->customStateDescription(QStringLiteral("invalid")),
+        QStringLiteral("Field failed validation"));
+
+    // The whole point: it now parses, so the checker stops reporting it.
+    QVERIFY(LoomStyleCompiler::unknownClasses(QStringLiteral("invalid:border-danger"))
+                .isEmpty());
+    QVERIFY(LoomStyleCompiler::unknownClasses(QStringLiteral("not-invalid:opacity-50"))
+                .isEmpty());
+    QVERIFY(LoomStyleCompiler::unknownClasses(QStringLiteral("group-dragging:bg-surface"))
+                .isEmpty());
+    // And an undeclared one is still an error, which is the property that makes
+    // the checker worth running at all.
+    QCOMPARE(
+        LoomStyleCompiler::unknownClasses(QStringLiteral("invlaid:border-danger")).size(),
+        1);
+}
+
+void ConfigTests::stateCollidingWithABuiltinIsRejected()
+{
+    // A hard error rather than a precedence rule. parseVariant() asks the
+    // built-in table first, so a state named `hover` would compile to the
+    // built-in and never see the application's value -- accepting it would
+    // produce a config that is quietly meaningless.
+    const QString path = writeConfig(R"({
+        "schemaVersion": 2,
+        "states": {"hover": "shadows a built-in"}
+    })");
+    QTest::ignoreMessage(
+        QtWarningMsg, QRegularExpression(QStringLiteral("collides with a built-in")));
+    QVERIFY(!loom::loadConfig(path));
+}
+
+void ConfigTests::malformedStateNamesAreRejected()
+{
+    const QString capitals = writeConfig(R"({
+        "schemaVersion": 2,
+        "states": {"Invalid": "wrong case"}
+    })");
+    QTest::ignoreMessage(
+        QtWarningMsg, QRegularExpression(QStringLiteral("must be lower-case")));
+    QVERIFY(!loom::loadConfig(capitals));
+
+    // `not-found` would make `not-found:` ambiguous with the negation of a
+    // state called `found`.
+    const QString reserved = writeConfig(R"({
+        "schemaVersion": 2,
+        "states": {"not-found": "ambiguous with a negation"}
+    })");
+    QTest::ignoreMessage(
+        QtWarningMsg, QRegularExpression(QStringLiteral("reserved prefix")));
+    QVERIFY(!loom::loadConfig(reserved));
+}
+
+void ConfigTests::reloadDropsStatesTheFileNoLongerDeclares()
+{
+    const QString declaring = writeConfig(R"({
+        "schemaVersion": 2,
+        "states": {"invalid": ""}
+    })");
+    QVERIFY(loom::loadConfig(declaring));
+    QVERIFY(LoomStyleCompiler::unknownClasses(QStringLiteral("invalid:border-danger"))
+                .isEmpty());
+
+    // reloadConfig, not loadConfig: only the reload path resets, which is the
+    // same split every other token family has.
+    const QString silent = writeConfig(R"({"schemaVersion": 2})");
+    QVERIFY(loom::reloadConfig(silent));
+    // Same contract as every other vocabulary family: resetToDefaults() drops
+    // it, and the compile cache is cleared so a style compiled while the state
+    // existed does not keep matching.
+    QCOMPARE(LoomTokenRegistry::instance()->customStateNames(), QStringList());
+    QCOMPARE(
+        LoomStyleCompiler::unknownClasses(QStringLiteral("invalid:border-danger")).size(),
+        1);
 }
 
 QTEST_GUILESS_MAIN(ConfigTests)

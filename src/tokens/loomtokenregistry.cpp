@@ -70,6 +70,8 @@ void LoomTokenRegistry::resetToDefaults()
     m_breakpoints.clear();
     m_containers.clear();
     m_styleRecipes.clear();
+    m_customStateNames.clear();
+    m_customStateDescriptions.clear();
     m_arbitraryValuePolicy = QStringLiteral("warn");
     m_themeMode = ThemeMode::Explicit;
     m_systemLightTheme = QStringLiteral("light");
@@ -617,6 +619,36 @@ void LoomTokenRegistry::setStyleRecipe(const QString &name, const QString &style
 {
     if (!name.isEmpty())
         m_styleRecipes.insert(name, style);
+}
+
+bool LoomTokenRegistry::setCustomState(const QString &name, const QString &description)
+{
+    // A state's bit is its index, and the mask is a quint32, so the 33rd has
+    // nowhere to go. Rejecting is the only honest answer: silently dropping it
+    // would make `invalid:border-danger` compile and never match.
+    if (name.isEmpty() || m_customStateNames.size() >= MaxCustomStates)
+        return false;
+    if (m_customStateNames.contains(name))
+        return false;
+    m_customStateNames.append(name);
+    m_customStateDescriptions.insert(name, description);
+    return true;
+}
+
+int LoomTokenRegistry::customStateBit(const QString &name) const
+{
+    const qsizetype index = m_customStateNames.indexOf(name);
+    return index < 0 ? -1 : int(index);
+}
+
+QStringList LoomTokenRegistry::customStateNames() const
+{
+    return m_customStateNames;
+}
+
+QString LoomTokenRegistry::customStateDescription(const QString &name) const
+{
+    return m_customStateDescriptions.value(name);
 }
 
 void LoomTokenRegistry::setArbitraryValuePolicy(const QString &policy)

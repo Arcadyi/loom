@@ -27,9 +27,25 @@ struct VariantSpec {
     QString containerName;
     quint32 groupStateMask = 0;
     quint32 groupStateNotMask = 0;
+    quint32 customMask = 0;
+    quint32 customNotMask = 0;
+    quint32 groupCustomMask = 0;
+    quint32 groupCustomNotMask = 0;
     QString groupName;
     QString themeName;
 };
+
+// A declared application state, as a mask bit. Looked up only after the
+// built-in table has been asked, so a config can never shadow `hover` -- the
+// loader rejects such a name outright, and this ordering means even a registry
+// that somehow held one could not change what `hover:` compiles to.
+std::optional<quint32> customStateMask(const QString &name)
+{
+    const int bit = LoomTokenRegistry::instance()->customStateBit(name);
+    if (bit < 0)
+        return std::nullopt;
+    return quint32(1) << bit;
+}
 
 const QHash<QString, quint32> &stateVariants()
 {
@@ -116,14 +132,22 @@ bool parseVariant(QStringView name, VariantSpec *spec)
             stateName = stateName.left(slash);
         }
         if (stateName.startsWith(QLatin1String("not-"))) {
-            const auto state = states.constFind(stateName.mid(qstrlen("not-")));
+            const QString positive = stateName.mid(qstrlen("not-"));
+            const auto state = states.constFind(positive);
             if (state != states.constEnd()) {
                 spec->groupStateNotMask |= *state;
+                return true;
+            }
+            if (const auto custom = customStateMask(positive)) {
+                spec->groupCustomNotMask |= *custom;
                 return true;
             }
         } else if (
             const auto state = states.constFind(stateName); state != states.constEnd()) {
             spec->groupStateMask |= *state;
+            return true;
+        } else if (const auto custom = customStateMask(stateName)) {
+            spec->groupCustomMask |= *custom;
             return true;
         }
         return false;
@@ -163,10 +187,18 @@ bool parseVariant(QStringView name, VariantSpec *spec)
         spec->stateMask |= *state;
         return true;
     }
+    if (const auto custom = customStateMask(key)) {
+        spec->customMask |= *custom;
+        return true;
+    }
     if (key.startsWith(QLatin1String("not-"))) {
         const QString positive = key.mid(qstrlen("not-"));
         if (const auto state = states.constFind(positive); state != states.constEnd()) {
             spec->stateNotMask |= *state;
+            return true;
+        }
+        if (const auto custom = customStateMask(positive)) {
+            spec->customNotMask |= *custom;
             return true;
         }
     }
@@ -1340,8 +1372,17 @@ std::shared_ptr<const LoomCompiledStyle> compile(const QString &style)
             rule.containerName = parse.variant.containerName;
             rule.groupStateMask = parse.variant.groupStateMask;
             rule.groupStateNotMask = parse.variant.groupStateNotMask;
+            rule.customMask = parse.variant.customMask;
+            rule.customNotMask = parse.variant.customNotMask;
+            rule.groupCustomMask = parse.variant.groupCustomMask;
+            rule.groupCustomNotMask = parse.variant.groupCustomNotMask;
             rule.groupName = parse.variant.groupName;
             rule.themeName = parse.variant.themeName;
+            // Custom states rank exactly like built-in ones: both are transient
+            // conditions that should override the static appearance, and there
+            // is no reading under which `invalid:` is inherently weaker or
+            // stronger than `hover:`. At equal depth the later class wins,
+            // which is the existing rule, and `hover:invalid:` beats both.
             rule.specificity = loomSpecificity(
                 rule.minWidth, rule.maxWidth, rule.containerMinWidth,
                 rule.containerMaxWidth,
@@ -1350,14 +1391,20 @@ std::shared_ptr<const LoomCompiledStyle> compile(const QString &style)
                 quint8(
                     std::popcount(
                         parse.variant.groupStateMask | parse.variant.groupStateNotMask))
+                    + quint8(std::popcount(
+                        parse.variant.customMask | parse.variant.customNotMask))
+                    + quint8(std::popcount(
+                        parse.variant.groupCustomMask | parse.variant.groupCustomNotMask))
                     + quint8(!parse.variant.themeName.isEmpty()));
             compiled->usedStates |= rule.stateMask | rule.stateNotMask;
+            compiled->usedCustomStates |= rule.customMask | rule.customNotMask;
             if (rule.minWidth > 0 || rule.maxWidth != std::numeric_limits<int>::max())
                 compiled->usesBreakpoints = true;
             if (rule.containerMinWidth > 0
                 || rule.containerMaxWidth != std::numeric_limits<int>::max())
                 compiled->usesContainers = true;
-            if (rule.groupStateMask || rule.groupStateNotMask)
+            if (rule.groupStateMask || rule.groupStateNotMask || rule.groupCustomMask
+                || rule.groupCustomNotMask)
                 compiled->usesGroups = true;
             if (rule.utility == LoomUtility::WidthFull
                 || rule.utility == LoomUtility::HeightFull || rule.fraction > 0)
@@ -1414,6 +1461,15 @@ QStringList unknownClasses(const QString &style)
     return unknown;
 }
 
+bool isBuiltinVariant(const QString &name)
+{
+    // Used by the config loader to reject a declared state that would be
+    // shadowed by the built-in table parseVariant() consults first.
+    auto *registry = LoomTokenRegistry::instance();
+    return stateVariants().contains(name) || registry->hasBreakpoint(name)
+        || registry->hasContainer(name) || registry->themeNames().contains(name);
+}
+
 QStringList variantNames()
 {
     QStringList names = LoomTokenRegistry::instance()->breakpointKeys();
@@ -1421,6 +1477,15 @@ QStringList variantNames()
         names.append(QStringLiteral("max-") + breakpoint);
     names.append(stateVariants().keys());
     for (const QString &state : stateVariants().keys()) {
+        names.append(QStringLiteral("not-") + state);
+        names.append(QStringLiteral("group-") + state);
+    }
+    // Declared application states advertise the same three forms. Everything
+    // downstream -- `loom style --catalogue`, LSP completion, the typo
+    // suggester -- reads this list, so they need no knowledge of their own, and
+    // tst_catalogue's round-trip check covers the new names automatically.
+    for (const QString &state : LoomTokenRegistry::instance()->customStateNames()) {
+        names.append(state);
         names.append(QStringLiteral("not-") + state);
         names.append(QStringLiteral("group-") + state);
     }

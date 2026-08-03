@@ -32,6 +32,17 @@ class LoomStyleAttached : public QObject {
         QString containerName READ containerName WRITE setContainerName NOTIFY
             contextChanged)
     Q_PROPERTY(QString group READ group WRITE setGroup NOTIFY contextChanged)
+    // Application-declared states, as `Lo.states: ({ invalid: !field.acceptable })`.
+    // Reactivity is QML's own binding engine rather than anything here: the map
+    // is a binding, so a change re-enters the setter, and the setter schedules
+    // an apply only when the resolved bitmask actually differs.
+    //
+    // A component that declares `property bool invalid` needs none of this --
+    // updateSubscriptions() duck-types the same way it already does for
+    // `checked` and `readOnly`, so the state is picked up from the target
+    // directly. That is what lets Field light up `invalid:` with nothing at the
+    // call site.
+    Q_PROPERTY(QVariantMap states READ states WRITE setStates NOTIFY statesChanged)
     // MultiEffect replaces Item.layer.effect. Requiring an explicit opt-in
     // prevents utility classes from silently taking over an effect component
     // the application owns itself.
@@ -50,14 +61,21 @@ public:
     void setGroup(const QString &name);
     bool effects() const;
     void setEffects(bool enabled);
-    bool matchesGroup(const QString &name, quint32 required, quint32 forbidden) const;
+    QVariantMap states() const;
+    void setStates(const QVariantMap &states);
+    bool matchesGroup(
+        const QString &name, quint32 required, quint32 forbidden, quint32 customRequired,
+        quint32 customForbidden) const;
     void subscribeExternalStates(quint32 states);
+    void subscribeExternalCustomStates(quint32 states);
+    quint32 activeCustomStates() const;
     QVariantMap debugInfo() const;
 
 signals:
     void styleChanged();
     void contextChanged();
     void effectsChanged();
+    void statesChanged();
 
 private slots:
     void scheduleApply();
@@ -151,6 +169,11 @@ private:
     bool m_filterManaged = false;
     QString m_filterSignature;
     quint32 m_externalStates = 0;
+    quint32 m_externalCustomStates = 0;
+    // The map is kept only to answer the property getter; everything that runs
+    // per-apply reads the resolved mask, so no string work happens there.
+    QVariantMap m_stateMap;
+    quint32 m_declaredStates = 0;
 };
 
 // The attaching type: `Lo.style: "p-4 bg-surface"` on any Item.

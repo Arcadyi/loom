@@ -36,6 +36,13 @@
         "dark": { "type": "string", "minLength": 1, "not": { "const": "system" } }
       }
     },
+    "states": {
+      "type": "object",
+      "description": "Application-declared states, usable as variant prefixes (\"invalid:border-danger\"). The value is a description shown in editor hovers. Supplied at runtime through Lo.states or a bool property of the same name on the target. At most 32.",
+      "maxProperties": 32,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+      "additionalProperties": { "type": "string" }
+    },
     "styles": { "type": "object", "propertyNames": { "minLength": 1 }, "additionalProperties": { "type": "string" } },
     "lint": { "type": "object", "additionalProperties": false, "properties": { "arbitraryValues": { "enum": ["allow", "warn", "deny"] } } },
     "iconRoot": { "type": "string" }

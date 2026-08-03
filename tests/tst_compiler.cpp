@@ -33,6 +33,8 @@ private slots:
     void transformsRingsGradientsAndFilters();
     void expandedVariants();
     void styleRecipes();
+    void specificityDepthSaturatesRatherThanWrapping();
+    void declaredStatesCompileAndRankAsStates();
 };
 
 void CompilerTests::init()
@@ -586,6 +588,55 @@ void CompilerTests::styleRecipes()
     QCOMPARE(
         LoomStyleCompiler::unknownClasses(QStringLiteral("@a")),
         QStringList{QStringLiteral("@a")});
+
+    registry->resetToDefaults();
+    LoomStyleCompiler::clearCache();
+}
+
+// loomSpecificity packs the state depth into bits 58-63 -- six bits, so 63 is
+// the largest value that survives the shift. Before application-declared
+// states the worst case was around 53 and the field could not overflow. A rule
+// combining many states with a group and a theme now can, and an unclamped
+// shift would not saturate: it would wrap, making the *most* specific rule sort
+// below an unqualified one. Nothing downstream would report that; the styling
+// would just silently come out wrong.
+void CompilerTests::specificityDepthSaturatesRatherThanWrapping()
+{
+    constexpr int unbounded = std::numeric_limits<int>::max();
+    const quint64 plain = loomSpecificity(0, unbounded, 0, unbounded, 0);
+    const quint64 oneState =
+        loomSpecificity(0, unbounded, 0, unbounded, LoomHoverState);
+    // Every state bit set, plus a group and a theme: 32 + 60 well past the cap.
+    const quint64 saturated =
+        loomSpecificity(0, unbounded, 0, unbounded, 0xFFFFFFFFu, false, 60);
+
+    QVERIFY(oneState > plain);
+    QVERIFY2(saturated > oneState, "deep specificity wrapped instead of saturating");
+    QVERIFY2(saturated > plain, "deep specificity wrapped below an unqualified rule");
+}
+
+void CompilerTests::declaredStatesCompileAndRankAsStates()
+{
+    auto *registry = LoomTokenRegistry::instance();
+    QVERIFY(registry->setCustomState(QStringLiteral("invalid"), QString()));
+    LoomStyleCompiler::clearCache();
+
+    const auto style = compile(QStringLiteral("bg-blue-500 invalid:bg-red-500"));
+    QCOMPARE(style->rules.size(), 2);
+    QCOMPARE(style->usedCustomStates, 1u);
+    // Sits in its own channel rather than in spare LoomState bits, so the
+    // built-in mask stays empty.
+    QCOMPARE(style->rules.constLast().customMask, 1u);
+    QCOMPARE(style->rules.constLast().stateMask, 0u);
+    // And ranks as a state: deeper than the unqualified rule it overrides.
+    QVERIFY(style->rules.constLast().specificity > style->rules.constFirst().specificity);
+
+    // The catalogue advertises all three forms, and tst_catalogue's round-trip
+    // then covers them without knowing they exist.
+    const QStringList variants = LoomStyleCompiler::variantNames();
+    QVERIFY(variants.contains(QStringLiteral("invalid")));
+    QVERIFY(variants.contains(QStringLiteral("not-invalid")));
+    QVERIFY(variants.contains(QStringLiteral("group-invalid")));
 
     registry->resetToDefaults();
     LoomStyleCompiler::clearCache();

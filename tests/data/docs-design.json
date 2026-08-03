@@ -1,0 +1,7 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Arcadyi/loom/master/schemas/design-v2.schema.json",
+  "schemaVersion": 2,
+  "states": {
+    "invalid": "A field's value failed the application's own validation"
+  }
+}
