@@ -32,7 +32,7 @@ jobs:
             arch: win64_msvc2022_64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.LOOM_QT_VERSION }}
@@ -49,7 +49,7 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - uses: seanmiddleditch/gha-setup-ninja@v6
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLOOM_WERROR=ON -DLOOM_BUILD_E2E_TESTS=OFF
       - name: Build
@@ -66,9 +66,6 @@ jobs:
         shell: bash
         # A failure before ctest ran leaves no log; that is not a second failure.
         run: cat build/Testing/Temporary/LastTest.log || true
-      # ctest captures nothing from the Qt test binaries on Windows -- it logs
-      # "<end of output>" even for the ones that pass -- so ask QTest for a file
-      # instead, which does not go through the stdout that is coming up empty.
       # ctest captures nothing from the Qt test binaries on Windows -- it logs
       # "<end of output>" even for the ones that pass -- so ask QTest for a file
       # instead, which does not go through the stdout that comes up empty. Run
@@ -100,7 +97,7 @@ jobs:
     name: Android emulator
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install host Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -109,7 +106,7 @@ jobs:
           cache: true
       - name: Remember host Qt
         run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
-      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - uses: seanmiddleditch/gha-setup-ninja@v6
       - name: Build and install host loom
         run: |
           cmake -S . -B build-host -G Ninja -DCMAKE_BUILD_TYPE=Release -DLOOM_BUILD_E2E_TESTS=OFF
@@ -205,7 +202,7 @@ jobs:
     name: iOS simulator
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install host Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -214,7 +211,7 @@ jobs:
           cache: true
       - name: Remember host Qt
         run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
-      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - uses: seanmiddleditch/gha-setup-ninja@v6
       - name: Build and install host loom
         run: |
           cmake -S . -B build-host -G Ninja -DCMAKE_BUILD_TYPE=Release -DLOOM_BUILD_E2E_TESTS=OFF

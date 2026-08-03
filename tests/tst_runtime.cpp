@@ -721,6 +721,70 @@ private slots:
         QCOMPARE(controller.rootObject()->property("visits").toInt(), 1);
     }
 
+    // The hook exists for what the generic capture cannot reach -- bound
+    // properties, objects with no id, state that is not a property at all --
+    // so a seam reload that only carried the captured half would drop exactly
+    // the state its author had to describe by hand.
+    void aSeamReloadCarriesTheDocumentsOwnStateHook()
+    {
+        const QByteArray shell = R"(
+            import QtQuick
+            Item { Loader { objectName: "boundary"; source: "Panel.qml" } }
+        )";
+        // Plain literals rather than a raw string: moc parses this file as text
+        // and a raw string carrying quotes leaves it unable to find the class.
+        const auto panel = [](const char *marker) {
+            return QByteArray(
+                       "import QtQuick\n"
+                       "Item {\n"
+                       "    property string carried: \"\"\n"
+                       "    property string marker: \"")
+                + marker
+                + "\"\n"
+                  "    function loomSaveState() { return { \"carried\": carried } }\n"
+                  "    function loomRestoreState(s) { carried = s.carried ?? \"\" }\n"
+                  "}\n";
+        };
+
+        QQmlApplicationEngine engine;
+        loom::ReloadController controller(engine);
+        QVERIFY(
+            controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")));
+
+        QString error;
+        QVERIFY2(
+            controller.applyBundle(
+                loom::encodeBundle(bundleWithFiles(
+                    QStringLiteral("before"),
+                    {{QStringLiteral("Main.qml"), shell},
+                     {QStringLiteral("Panel.qml"), panel("first")}})),
+                &error),
+            qPrintable(error));
+
+        QPointer<QObject> root = controller.rootObject();
+        auto *boundary = root->findChild<QObject *>(QStringLiteral("boundary"));
+        QVERIFY(boundary);
+        QObject *page = boundary->property("item").value<QObject *>();
+        QVERIFY(page);
+        QVERIFY(page->setProperty("carried", QStringLiteral("typed by hand")));
+
+        QVERIFY2(
+            controller.applyBundle(
+                loom::encodeBundle(bundleWithFiles(
+                    QStringLiteral("after"),
+                    {{QStringLiteral("Main.qml"), shell},
+                     {QStringLiteral("Panel.qml"), panel("second")}})),
+                &error),
+            qPrintable(error));
+
+        QVERIFY2(root, "the scene was rebuilt rather than the seam");
+        QObject *reloaded = boundary->property("item").value<QObject *>();
+        QVERIFY(reloaded);
+        QCOMPARE(reloaded->property("marker").toString(), QStringLiteral("second"));
+        QCOMPARE(
+            reloaded->property("carried").toString(), QStringLiteral("typed by hand"));
+    }
+
     // What loom::Application relies on to give an Item-rooted scene a window
     // that outlives it. The Application itself cannot be built here -- it owns
     // a QGuiApplication and this process already has one -- so the mechanism is

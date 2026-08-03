@@ -98,7 +98,7 @@ private:
     bool ensureCacheDirectory(QString *error);
     bool
     materializeBundle(const Bundle &bundle, const QString &destination, QString *error);
-    QVariant saveState() const;
+    QVariant saveState(QObject *root) const;
     void restoreState(QObject *root, const QVariant &state);
     // Rebuilds only the Loaders whose contents changed, leaving the window and
     // everything around them alive. Returns false when the change cannot be

@@ -565,8 +565,11 @@ bool ReloadController::reloadBoundaries(
             return false;
         const QUrl replacement = QUrl::fromLocalFile(destination + file.mid(cut));
 
-        const QVariantMap state =
-            captureSceneState(loader->property("item").value<QObject *>());
+        // The same envelope a whole reload uses, so a document behind a seam
+        // keeps its loomSaveState() hook rather than only the properties the
+        // generic capture can see. The hook exists for what capture cannot
+        // reach, which is exactly what would go missing here.
+        const QVariant state = saveState(loader->property("item").value<QObject *>());
         loader->setProperty("source", replacement);
         QObject *item = loader->property("item").value<QObject *>();
         if (!item) {
@@ -577,7 +580,7 @@ bool ReloadController::reloadBoundaries(
             }
             return false;
         }
-        applySceneState(item, state);
+        restoreState(item, state);
     }
     return true;
 }
@@ -652,7 +655,7 @@ bool ReloadController::applyBundle(const QByteArray &payload, QString *error)
         return true;
     }
 
-    const auto state = saveState();
+    const auto state = saveState(m_rootObject);
     const auto oldRoot = m_rootObject;
     m_rootObject.clear();
     delete oldRoot;
@@ -697,9 +700,9 @@ bool ReloadController::applyBundle(const QByteArray &payload, QString *error)
     return true;
 }
 
-QVariant ReloadController::saveState() const
+QVariant ReloadController::saveState(QObject *root) const
 {
-    if (!m_rootObject)
+    if (!root)
         return {};
 
     // Two halves in one envelope: every id-bearing object's declared
@@ -710,14 +713,14 @@ QVariant ReloadController::saveState() const
     // is not a property at all.
     QVariantMap envelope;
 
-    const QVariantMap properties = captureSceneState(m_rootObject);
+    const QVariantMap properties = captureSceneState(root);
     if (!properties.isEmpty())
         envelope.insert(QStringLiteral("properties"), properties);
 
-    if (m_rootObject->metaObject()->indexOfMethod("loomSaveState()") >= 0) {
+    if (root->metaObject()->indexOfMethod("loomSaveState()") >= 0) {
         QVariant hookState;
         if (QMetaObject::invokeMethod(
-                m_rootObject, "loomSaveState", Qt::DirectConnection,
+                root, "loomSaveState", Qt::DirectConnection,
                 Q_RETURN_ARG(QVariant, hookState))) {
             if (hookState.metaType() == QMetaType::fromType<QJSValue>())
                 hookState = hookState.value<QJSValue>().toVariant();

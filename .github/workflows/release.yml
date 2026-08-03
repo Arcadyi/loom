@@ -1,8 +1,15 @@
-name: Release packages
+name: Packages
 
+# Packaging runs on every change, not only on a tag. A generator that has
+# stopped working is invisible until someone cuts a release otherwise, which is
+# the worst moment to find out -- the macOS install was broken for exactly that
+# reason and nothing noticed until an unrelated job happened to run it. Only the
+# upload is tag-only; everything that can break is exercised each time.
 on:
   push:
+    branches: [master]
     tags: ['v*']
+  pull_request:
   workflow_dispatch:
 
 # See .github/workflows/platforms.yml for why Windows needs an unreleased
@@ -30,7 +37,7 @@ jobs:
             artifact: build/*.msi
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.LOOM_QT_VERSION }}
@@ -44,14 +51,25 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - uses: seanmiddleditch/gha-setup-ninja@v6
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLOOM_BUILD_TESTS=OFF -DLOOM_BUILD_E2E_TESTS=OFF
       - name: Build
         run: cmake --build build
       - name: Package
         run: cpack --config build/CPackConfig.cmake -C Release -B build
-      - uses: actions/upload-artifact@v4
+      # if-no-files-found: error is what makes the check above meaningful, so
+      # keep the same assertion when there is no tag to upload for.
+      - name: Check the package was produced
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          found=(${{ matrix.artifact }})
+          [ ${#found[@]} -gt 0 ] || { echo "cpack produced no ${{ matrix.artifact }}" >&2; exit 1; }
+          printf 'packaged %s\n' "${found[@]}"
+      - uses: actions/upload-artifact@v7
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
           name: loom-${{ runner.os }}
           path: ${{ matrix.artifact }}
