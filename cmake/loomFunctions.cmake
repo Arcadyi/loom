@@ -223,23 +223,28 @@ endfunction()
 # Installs an application built with loom_add_application into a prefix that
 # can be packaged or shipped.
 #
-# Qt is not bundled, and there is currently no option to bundle it. Both routes
-# were measured on Linux with Qt 6.11 against a distribution Qt rooted at /usr:
+# Qt is not bundled, and there is currently no option to bundle it. Measured
+# again on Linux with Qt 6.11 against a distribution Qt rooted at /usr:
 #
-#   * qt_generate_deploy_qml_app_script produces a 247 MB tree that includes
-#     ld-linux-x86-64.so.2 itself, and the resulting binary core-dumps.
-#   * qt_deploy_runtime_dependencies with the system directories excluded and
-#     the Qt libraries named back in -- the approach that successfully ships
-#     loom's own CLI -- fails for a GUI QML application inside
-#     file(GET_RUNTIME_DEPENDENCIES) with "file unknown error", with and
-#     without ADDITIONAL_MODULES for the QML plugins.
+#   * qt_generate_deploy_qml_app_script produces a 278 MB tree carrying
+#     libc.so.6 and ld-linux-x86-64.so.2, which is what makes the result
+#     core-dump rather than merely be large: an application cannot bring its
+#     own loader and libc to someone else's kernel.
+#   * Excluding the loader and the C++/C runtimes by name still leaves 258 MB,
+#     because what remains is the graphics and desktop stack -- X11, GL, glib,
+#     ICU. Bundling libGL in particular is how an application stops working on
+#     hardware whose driver it did not ship with.
+#   * Both routes then fail outright without patchelf installed. Qt's deploy
+#     support shells out to it and otherwise falls back to file(RPATH_SET),
+#     which can only rewrite an RPATH that already exists -- so it dies on the
+#     first plugin that has none ("could not write new RPATH ... kimg_ani.so").
 #
-# The difference appears to be console application versus GUI application with
-# plugins, not the distribution Qt: loom's own bin/loom does bundle Qt this
-# way and resolves it from its own lib/. Until that is understood, use a
-# dedicated packaging tool (linuxdeploy, appimage-builder) over the installed
-# prefix. What this function produces is a correct, ordinary install that runs
-# against the Qt the host already has.
+# Deciding what to bundle and what to leave to the host is the whole job of
+# linuxdeploy and appimage-builder, and reimplementing their exclusion policy
+# here would be a worse copy of it. Run one of them over the installed prefix.
+# What this function produces is a correct, ordinary install that runs against
+# the Qt the host already has. loom's own CLI does bundle Qt, and can, because
+# a console application needs Core and Network rather than a graphics stack.
 function(loom_install_application)
     set(oneValueArgs TARGET)
     cmake_parse_arguments(LOOM_ARG "" "${oneValueArgs}" "" ${ARGN})

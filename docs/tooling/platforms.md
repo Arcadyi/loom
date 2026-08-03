@@ -52,9 +52,20 @@ CPack and deliberately supports native desktop packages only:
 - Windows: WiX MSI.
 
 The generated application enables the appropriate CPack generator. Packaging
-requires its host tool (`dpkg`, platform disk-image tools, or WiX). Qt runtime
-deployment remains governed by `loom_install_application`; inspect and sign the
-result as required by the destination platform.
+requires its host tool (`dpkg`, platform disk-image tools, or WiX). Inspect and
+sign the result as required by the destination platform.
+
+**The package carries the application, not Qt.** It runs where a compatible Qt
+is installed, which covers development machines and distribution packaging but
+not handing a single file to someone who has none. `loom_install_application`
+explains what was measured; the short version is that Qt's turnkey deployment
+brings the C runtime and the graphics stack along with it, and an application
+that ships its own `libGL` stops working on hardware whose driver it was not
+built against. Deciding what to bundle is what `linuxdeploy`, `appimage-builder`
+and their equivalents are for — run one over the installed prefix.
+
+The loom CLI itself *is* shipped with Qt bundled, which is not a contradiction:
+a console application needs Core and Network, not a graphics stack.
 
 ## Android
 
