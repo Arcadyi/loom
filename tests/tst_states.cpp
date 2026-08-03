@@ -395,6 +395,11 @@ void StateTests::variantComposition()
     QVERIFY2(item, qPrintable(component.errorString()));
     QTRY_COMPARE(item->property("color").value<QColor>(), QColor(Qt::white));
 
+    // Nudged away first, deliberately. Hover is synthesised from mouse *moves*,
+    // and an earlier test in this process leaves the cursor at (50, 50) --
+    // moving it there again is not a move, delivers no hover, and made this
+    // test fail on roughly half of runs while passing in isolation.
+    QTest::mouseMove(&window, QPoint(5, 5));
     QTest::mouseMove(&window, QPoint(50, 50));
     QTRY_COMPARE(item->property("color").value<QColor>(), QColor(Qt::black));
 
