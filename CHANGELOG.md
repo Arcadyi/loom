@@ -63,8 +63,29 @@ ignores and a newer runtime requires before offering the field. Bumping the
 version instead would have stranded every already-built application, because
 `loom::Runtime` is statically linked.
 
+**`loom add`.** `loom new` was one-shot: after it, adding a page or a component
+meant creating the file by hand and remembering the conventions -- the pragma,
+the import order, where it belongs. `loom add page Settings` and
+`loom add component Badge` write one file each, into the layout the scaffold
+already uses.
+
+Nothing is registered anywhere, and the command says so: loom_add_application
+globs QML_ROOT with CONFIGURE_DEPENDS, so a new file is compiled in on the next
+configure. The generated sources use only built-in utility classes, so they lint
+clean in a project whose design file defines no recipes. An existing file is
+never overwritten, and a name QML cannot resolve as a type -- anything not
+starting upper-case -- is refused rather than written out as a file nothing can
+refer to.
+
 **Fixes.**
 
+- The scaffolded design file declared a `syncing` state that nothing in the
+  generated project used. The hero card now supplies it and outlines itself on
+  unsaved changes, and the label beside the button reads the same state through
+  `group-syncing/hero:` rather than restating the condition.
+- `tst_states::variantComposition` failed on roughly half of runs: hover is
+  synthesised from mouse *moves*, and an earlier test left the cursor on the
+  point it moved to, so no hover was delivered. Pre-existing.
 - `loomSpecificity()` packs the state depth into six bits. The old worst case
   was around 53 and could not overflow; combining declared states with a group
   and a theme passes 63, where the shift would have wrapped rather than

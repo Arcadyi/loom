@@ -280,3 +280,85 @@ bool ProjectScaffolder::create(
     }
     return manifest.save(QDir(destination).filePath(QStringLiteral("loom.json")), error);
 }
+
+bool ProjectScaffolder::isValidTypeName(const QString &name, QString *error)
+{
+    const auto fail = [error](const QString &message) {
+        if (error)
+            *error = message;
+        return false;
+    };
+    if (name.isEmpty())
+        return fail(QStringLiteral("name must not be empty"));
+    // QML resolves a component from its file name, so a name that is not a
+    // valid type name produces a file nothing can refer to.
+    static const QRegularExpression shape(QStringLiteral("\\A[A-Z][A-Za-z0-9_]*\\z"));
+    if (!shape.match(name).hasMatch()) {
+        return fail(
+            QStringLiteral("'%1' is not a QML type name: start with an upper-case "
+                           "letter and use only letters, digits and underscores")
+                .arg(name));
+    }
+    return true;
+}
+
+bool ProjectScaffolder::addSource(
+    const SourceKind kind, const QString &typeName, const QString &qmlRoot,
+    QString *createdPath, QString *error)
+{
+    if (!isValidTypeName(typeName, error))
+        return false;
+
+    const bool page = kind == SourceKind::Page;
+    // The layout `loom new` generates, so a generated file lands where the rest
+    // of the project already keeps its own.
+    const QString subdirectory =
+        page ? QStringLiteral("pages") : QStringLiteral("components");
+    const QString templatePath = page
+        ? QStringLiteral(LOOM_ADD_TEMPLATE_DIR "/page.qml.in")
+        : QStringLiteral(LOOM_ADD_TEMPLATE_DIR "/component.qml.in");
+
+    const QDir directory(QDir(qmlRoot).filePath(subdirectory));
+    const QString destination = directory.filePath(typeName + QStringLiteral(".qml"));
+    if (QFileInfo::exists(destination)) {
+        if (error)
+            *error = QStringLiteral("%1 already exists").arg(destination);
+        return false;
+    }
+    if (!QDir().mkpath(directory.absolutePath())) {
+        if (error)
+            *error = QStringLiteral("Could not create %1").arg(directory.absolutePath());
+        return false;
+    }
+
+    QFile source(templatePath);
+    if (!source.open(QIODevice::ReadOnly)) {
+        // The templates are Qt resources compiled into this binary, so this
+        // means the resource initializer was dropped at link time rather than
+        // anything about the user's project.
+        if (error) {
+            *error = QStringLiteral("Could not read the %1 template").arg(
+                page ? QStringLiteral("page") : QStringLiteral("component"));
+        }
+        return false;
+    }
+    QByteArray contents = source.readAll();
+    source.close();
+    contents.replace("@LOOM_TYPE_NAME@", typeName.toUtf8());
+
+    QSaveFile output(destination);
+    if (!output.open(QIODevice::WriteOnly)) {
+        if (error)
+            *error = QStringLiteral("Could not write %1").arg(destination);
+        return false;
+    }
+    output.write(contents);
+    if (!output.commit()) {
+        if (error)
+            *error = QStringLiteral("Could not save %1").arg(destination);
+        return false;
+    }
+    if (createdPath)
+        *createdPath = destination;
+    return true;
+}
