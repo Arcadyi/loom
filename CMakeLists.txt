@@ -608,9 +608,23 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Utility-first styling and live reload for
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/Arcadyi/loom")
 set(CPACK_PACKAGE_CONTACT "loom contributors")
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+# Copied rather than named where it lies, because WiX decides how to render the
+# licence from the file extension and refuses one it does not recognise: "
+# unsupported WiX License file extension ''" is the whole of an MSI build
+# failing over a file called LICENSE. The copy costs nothing on the generators
+# that do not care.
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE" "${CMAKE_CURRENT_BINARY_DIR}/LICENSE.txt"
+    COPYONLY
+)
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_BINARY_DIR}/LICENSE.txt")
 if(WIN32)
     set(CPACK_GENERATOR "WIX")
+    # Pinned to the value CPack has been deriving on its own. An installer
+    # identifies the product it upgrades by this, so letting it be implicit
+    # means it changes the day something it is derived from changes, and the
+    # next MSI installs alongside the old one instead of replacing it.
+    set(CPACK_WIX_UPGRADE_GUID "6F928CC1-81DC-442A-92E5-BEA5F2D9AF44")
 elseif(APPLE)
     set(CPACK_GENERATOR "DragNDrop")
 else()
