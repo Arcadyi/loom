@@ -19,6 +19,7 @@ bool isKnownMessageType(const quint8 value)
     case MessageType::Error:
     case MessageType::Ping:
     case MessageType::Design:
+    case MessageType::StyleEdit:
         return true;
     }
     return false;
@@ -91,6 +92,12 @@ QByteArray encodeBundle(const Bundle &bundle)
         files.append(encoded);
     }
     root.insert(QStringLiteral("files"), files);
+    if (!bundle.capabilities.isEmpty()) {
+        QCborArray capabilities;
+        for (const auto &capability : bundle.capabilities)
+            capabilities.append(capability);
+        root.insert(QStringLiteral("capabilities"), capabilities);
+    }
     return QCborValue(root).toCbor();
 }
 
@@ -224,7 +231,79 @@ bool decodeBundle(const QByteArray &payload, Bundle &bundle, QString *error)
         decoded.files.append(std::move(file));
     }
 
+    // Absent from every server that predates the field, which is exactly what
+    // an empty list means to the runtime: do not offer the feature.
+    const auto capabilities = root.value(QStringLiteral("capabilities"));
+    if (capabilities.isArray()) {
+        for (const auto &capability : capabilities.toArray()) {
+            if (capability.isString())
+                decoded.capabilities.append(capability.toString());
+        }
+    }
+
     bundle = std::move(decoded);
+    return true;
+}
+
+QByteArray encodeStyleEdit(const StyleEdit &edit)
+{
+    QCborMap root;
+    root.insert(QStringLiteral("version"), ProtocolVersion);
+    root.insert(QStringLiteral("path"), edit.path);
+    root.insert(QStringLiteral("line"), edit.line);
+    root.insert(QStringLiteral("column"), edit.column);
+    root.insert(QStringLiteral("oldStyle"), edit.oldStyle);
+    root.insert(QStringLiteral("newStyle"), edit.newStyle);
+    return QCborValue(root).toCbor();
+}
+
+bool decodeStyleEdit(const QByteArray &payload, StyleEdit &edit, QString *error)
+{
+    QCborParserError parserError;
+    const auto value = QCborValue::fromCbor(payload, &parserError);
+    if (parserError.error != QCborError::NoError || !value.isMap()) {
+        if (error)
+            *error = QStringLiteral("Malformed style edit payload");
+        return false;
+    }
+
+    const auto root = value.toMap();
+    if (root.value(QStringLiteral("version")).toInteger() != ProtocolVersion) {
+        if (error)
+            *error = QStringLiteral("Unsupported style edit protocol version");
+        return false;
+    }
+
+    StyleEdit decoded;
+    decoded.path = root.value(QStringLiteral("path")).toString();
+    decoded.line = int(root.value(QStringLiteral("line")).toInteger());
+    decoded.column = int(root.value(QStringLiteral("column")).toInteger());
+    decoded.oldStyle = root.value(QStringLiteral("oldStyle")).toString();
+    decoded.newStyle = root.value(QStringLiteral("newStyle")).toString();
+
+    // The path is used to look up a project file, so it gets the same treatment
+    // as a bundle path: no absolute roots, no traversal out of the tree.
+    if (decoded.path.isEmpty() || !isSafeBundlePath(decoded.path)) {
+        if (error)
+            *error = QStringLiteral("Style edit names an unusable path");
+        return false;
+    }
+    // QQmlData reports 1-based positions and reserves 0 for "not created from a
+    // document", which is not an item any source edit can reach.
+    if (decoded.line <= 0 || decoded.column <= 0) {
+        if (error)
+            *error = QStringLiteral("Style edit has no source position");
+        return false;
+    }
+    if (decoded.newStyle.size() > MaximumStyleEditSize
+        || decoded.oldStyle.size() > MaximumStyleEditSize) {
+        if (error)
+            *error = QStringLiteral("Style edit exceeds the %1 byte limit")
+                         .arg(MaximumStyleEditSize);
+        return false;
+    }
+
+    edit = std::move(decoded);
     return true;
 }
 

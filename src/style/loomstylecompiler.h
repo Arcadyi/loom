@@ -136,6 +136,13 @@ enum LoomState : quint32 {
     LoomOnlyState = 1u << 23,
     LoomOddState = 1u << 24,
     LoomEvenState = 1u << 25,
+    // Built-in rather than application-declared, because Loom.Controls.Field
+    // ships using it: a component cannot require the application to have
+    // configured a state before it renders correctly. Sourced from a `bool
+    // invalid` property on the target, the same duck-typing `checked` and
+    // `readOnly` use -- Qt has no such property of its own, but every
+    // validating input grows one.
+    LoomInvalidState = 1u << 26,
 };
 
 // Which rule wins when two of them set the same property. Responsive and state
@@ -165,6 +172,16 @@ struct LoomStyleRule {
     QString containerName;
     quint32 groupStateMask = 0;
     quint32 groupStateNotMask = 0;
+    // Application-declared states, in a channel of their own rather than in
+    // spare LoomState bits. LoomState means "Loom knows how to observe this
+    // from Qt"; these mean "the application tells us". Keeping them apart also
+    // leaves the six remaining LoomState bits for future built-ins, and avoids
+    // widening stateMask -- a change that would reach every state site across
+    // the apply engine to buy nothing this does not.
+    quint32 customMask = 0;
+    quint32 customNotMask = 0;
+    quint32 groupCustomMask = 0;
+    quint32 groupCustomNotMask = 0;
     QString groupName;
     QString themeName;
 };
@@ -189,7 +206,15 @@ constexpr quint64 loomSpecificity(
         + quint64(maxWidth != std::numeric_limits<int>::max())
         + quint64(containerMinWidth > 0)
         + quint64(containerMaxWidth != std::numeric_limits<int>::max());
-    const quint64 stateDepth = quint64(std::popcount(stateMask)) + additionalStateDepth;
+    // Bits 58-63 hold the depth: six bits, so 63 is the largest value that
+    // survives the shift. The clamp is not theoretical. Before custom states
+    // the worst case was around 53 and the field could not overflow; a rule
+    // combining several declared states with a group and a theme reaches past
+    // 63, and without this the shift would silently truncate and reorder every
+    // rule in the style -- a miscompare no one would think to look for here.
+    constexpr quint64 stateDepthLimit = 63;
+    const quint64 stateDepth = std::min<quint64>(
+        quint64(std::popcount(stateMask)) + additionalStateDepth, stateDepthLimit);
     return (stateDepth << 58) | (conditionCount << 54) | (lowerRank(minWidth) << 41)
         | (upperRank(maxWidth) << 28) | (lowerRank(containerMinWidth) << 15)
         | (upperRank(containerMaxWidth) << 2) | (quint64(namedContainer) << 1);
@@ -209,7 +234,8 @@ constexpr quint64 loomSpecificity(quint8 minBreakpoint, quint32 stateMask)
 class LoomCompiledStyle {
 public:
     QVector<LoomStyleRule> rules;
-    quint32 usedStates = 0; // OR of every rule's positive and negative states
+    quint32 usedStates = 0;       // OR of every rule's positive and negative states
+    quint32 usedCustomStates = 0; // the same, for application-declared states
     bool usesBreakpoints = false;
     bool usesParentSize = false; // w-full / h-full
     bool usesMargins = false;    // m-* re-routes between anchors and Layout
@@ -246,9 +272,16 @@ void clearCache();
 QStringList unknownClasses(const QString &style);
 
 // The enumerable variant prefixes the parser accepts, sorted. Includes live
-// breakpoint/container names plus state, theme, structural, and group forms;
-// typed arbitrary viewport/container queries are recognized but not enumerable.
+// breakpoint/container names plus state, theme, structural, group, and
+// application-declared forms; typed arbitrary viewport/container queries are
+// recognized but not enumerable.
 QStringList variantNames();
+
+// True when the name already means something to parseVariant() before any
+// application state is consulted. The config loader rejects a declared state
+// that would collide, because parseVariant() asks the built-in table first and
+// the declaration would otherwise be silently unreachable.
+bool isBuiltinVariant(const QString &name);
 
 // Every utility class that takes no value (`italic`, `w-full`, `transition-*`,
 // …), sorted. Value-taking families are enumerated by the catalogue, which

@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Loom
+import Loom.Controls
 
 Window {
     id: window
@@ -13,6 +14,14 @@ Window {
         qsTr("Responsive"),
         qsTr("Theming"),
         qsTr("Modern")
+    ]
+    readonly property var pageSources: [
+        "TokensPage.qml",
+        "UtilitiesPage.qml",
+        "StatesPage.qml",
+        "ResponsivePage.qml",
+        "ThemingPage.qml",
+        "FeaturesPage.qml"
     ]
 
     color: Loom.color.background
@@ -28,7 +37,7 @@ Window {
         width: 200
         height: parent.height
 
-        Column {
+        Col {
             Lo.style: "gap-1 mt-4"
             anchors.top: parent.top
             width: parent.width
@@ -36,51 +45,31 @@ Window {
             Repeater {
                 model: window.pageNames
 
-                Rectangle {
-                    id: navEntry
-
+                // Was a Rectangle + Text + MouseArea, with the selected style
+                // written as a ternary over the whole class string and repeated
+                // on both the chip and its label, because two items cannot
+                // share one string. `selected:` is a variant now, and the label
+                // reads the row's state through group-selected/row.
+                ListRow {
                     required property int index
                     required property string modelData
 
-                    Lo.style: index === window.currentPage
-                        ? "bg-accent rounded-md mx-2 h-9"
-                        : "bg-surface hover:bg-surface-alt rounded-md mx-2 h-9"
-                    anchors.left: parent === null ? undefined : parent.left
-                    anchors.right: parent === null ? undefined : parent.right
-
-                    Text {
-                        Lo.style: navEntry.index === window.currentPage
-                            ? "text-on-accent text-sm font-medium ml-3"
-                            : "text-foreground text-sm ml-3"
-                        anchors.left: parent.left
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: navEntry.modelData
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: window.currentPage = navEntry.index
-                    }
+                    Lo.style: "mx-2"
+                    width: parent.width
+                    selected: index === window.currentPage
+                    text: modelData
+                    onClicked: window.currentPage = index
                 }
             }
         }
 
-        Rectangle {
-            Lo.style: "bg-surface-alt rounded-md mx-2 mb-4 h-9"
+        ListRow {
+            Lo.style: "mx-2 mb-4"
             anchors.bottom: parent.bottom
             anchors.left: parent.left
             anchors.right: parent.right
-
-            Text {
-                Lo.style: "text-foreground text-sm"
-                anchors.centerIn: parent
-                text: Loom.dark ? qsTr("Switch to light") : qsTr("Switch to dark")
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                onClicked: Loom.theme = Loom.dark ? "light" : "dark"
-            }
+            text: Loom.dark ? qsTr("Switch to light") : qsTr("Switch to dark")
+            onClicked: Loom.theme = Loom.dark ? "light" : "dark"
         }
     }
 
@@ -100,14 +89,18 @@ Window {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            source: [
-                "TokensPage.qml",
-                "UtilitiesPage.qml",
-                "StatesPage.qml",
-                "ResponsivePage.qml",
-                "ThemingPage.qml",
-                "FeaturesPage.qml"
-            ][window.currentPage]
         }
     }
+
+    // Assigned imperatively, never bound. This Loader is a hot-reload seam, and
+    // ReloadController::reloadBoundaries() repoints a seam's `source` with
+    // setProperty() to swap in the rebuilt file -- which destroys any binding on
+    // it. As a binding, navigation worked until the first seam reload and then
+    // silently stopped for the rest of the session.
+    function showPage(index: int): void {
+        pageLoader.source = window.pageSources[index] ?? "";
+    }
+
+    onCurrentPageChanged: window.showPage(window.currentPage)
+    Component.onCompleted: window.showPage(window.currentPage)
 }

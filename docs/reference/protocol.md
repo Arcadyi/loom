@@ -41,6 +41,27 @@ connection: the only correct response is to drop it. Both sides do. Discarding b
 | `Error` | 4 | either | JSON |
 | `Ping` | 5 | either | empty |
 | `Design` | 6 | server → client | CBOR |
+| `StyleEdit` | 7 | client → server | CBOR |
+
+### Capability negotiation
+
+`ProtocolVersion` did not move for `StyleEdit`, because it does not have to: the frame is
+client → server only, so a server that predates it never sends one and an older *client*
+never receives one. The reverse direction is the problem. An unrecognised type is a framing
+error and framing errors are fatal, so a **newer runtime** that sent `StyleEdit` to an older
+server would have its connection dropped and lose hot reload for the rest of the session —
+and that pairing is ordinary, not exotic: the `loom` CLI from a package and an application
+built against a checkout declare the same `ProtocolVersion` and are different builds.
+
+So the server states what it accepts, in an optional `capabilities` array on every `Bundle`:
+
+```
+{ "version": 2, "id": "…", "files": [ … ], "capabilities": ["styleEdit"] }
+```
+
+A decoder that predates the field reads by key and ignores it. A runtime that finds no
+capabilities offers no source editing. Bumping the version instead would have stranded every
+already-built application until it was rebuilt, because `loom::Runtime` is statically linked.
 
 ### `Hello`
 
@@ -108,6 +129,49 @@ wherever the bytes were staged pointed every icon at a directory nothing can ope
 
 A document that is not valid JSON changes nothing and leaves the previous tokens live —
 which matters, because a file is malformed for most of the time someone is typing in it.
+
+### `StyleEdit`
+
+Sent by the runtime's development inspector to rewrite one `Lo.style` literal in the
+project's source. The only frame that flows client → server carrying a change.
+
+```
+{ "version": 2, "path": "qt/qml/com/example/App/Main.qml",
+  "line": 12, "column": 5,
+  "oldStyle": "bg-surface", "newStyle": "bg-accent rounded-lg" }
+```
+
+`path` is the file's bundle resource path, byte-identical to a `Bundle` entry's `path`, so
+the server resolves it by looking up what it put in the bundle rather than by reconstructing
+a filesystem path. That is also the containment: a path the server never bundled resolves to
+nothing, so an edit cannot name a file outside the project's QML roots however it is spelled.
+
+`line` and `column` address the **item's declaration**, not the object, taken from `QQmlData`.
+That works for the items with no `id` — most styled items — and maps directly onto an AST
+node. Several instances of one delegate share a declaration site, which is the correct
+semantics: there is one place in the source, and rewriting it once is what the user means.
+
+`oldStyle` is what the running scene believes the literal says. The server refuses the edit
+when the file no longer matches, rather than overwriting a change made in an editor
+meanwhile.
+
+**There is no success frame.** A successful edit changes a file the server is already
+watching, so the ordinary rebuild produces a `Bundle` and the scene updates through the
+normal reload path — exactly as if the change had been typed in an editor. A refusal comes
+back as `Error`, and does *not* drop the connection.
+
+The server refuses, rather than guesses, when:
+
+- the binding is not a single string literal. A ternary or a concatenation cannot be
+  rewritten, because the inspector reports the *evaluated* result and cannot say which branch
+  produced it. Guessing would write a silent bug into the user's source;
+- `newStyle` contains a class the compiler does not recognise, checked with the same
+  `unknownStyleClasses()` the linter uses, so the inspector can never write a file that
+  `loom lint` would then reject;
+- the literal no longer says `oldStyle`;
+- nothing is declared at that position, or what is there has no `Lo.style`.
+
+The write itself is atomic (`QSaveFile`), so a crash mid-edit cannot leave half a document.
 
 ### `ReloadResult`
 

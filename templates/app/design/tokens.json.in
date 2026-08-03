@@ -22,5 +22,8 @@
   "styles": {
     "card": "bg-surface border border-outline rounded-lg shadow-sm"
   },
+  "states": {
+    "syncing": "This item has local changes not yet saved to the server"
+  },
   "lint": { "arbitraryValues": "warn" }
 }

@@ -229,6 +229,38 @@ design-system policy.
 
 Full theme detail is in [theming.md](theming.md#custom-themes).
 
+### `states`
+
+Conditions your application owns, made available as variant prefixes. Each
+value is a description, shown in editor hovers.
+
+```json
+"states": {
+  "syncing": "Has local changes not yet saved to the server",
+  "stale": "Backing data is older than the refresh interval"
+}
+```
+
+`syncing:border-warning`, `not-syncing:opacity-60` and `group-syncing/row:` all
+work from there, ranking exactly like the built-in state variants. Supply the
+values with `Lo.states` or a bool property of the same name — see
+[states.md](states.md#states-your-application-owns).
+
+They are declared here rather than invented at the call site because the style
+compiler caches by exact class string, process-wide, so a variant name has to
+resolve when the string is parsed. Putting them in the design file is also what
+makes them free for tooling: `loom style`, `loom lint` and `loom lsp` read the
+same registry the runtime does, so completion, typo suggestions and hovers work
+on your states with nothing else to configure.
+
+At most 32 per project. A name that collides with a built-in variant is
+rejected rather than silently shadowed, as are the `not-`, `group-`, `theme-`,
+`min-` and `max-` prefixes, which already spell composed variants. Names are
+lower-case letters, digits and dashes, starting with a letter.
+
+**Version note:** a design file using `states` is rejected outright by loom
+0.4 and earlier, which refuse unknown top-level keys.
+
 ### `theme`
 
 `theme.default` is a theme name or `"system"`. System mode listens to the

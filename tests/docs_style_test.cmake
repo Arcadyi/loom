@@ -6,8 +6,9 @@
 # docs/tooling/ is excluded: cli.md documents the checker itself, and its
 # examples are deliberately *invalid* input chosen to show what gets reported.
 
-if(NOT LOOM_EXE OR NOT DOCS_DIR OR NOT WORK_DIR)
-    message(FATAL_ERROR "LOOM_EXE, DOCS_DIR and WORK_DIR are required")
+if(NOT LOOM_EXE OR NOT DOCS_DIR OR NOT WORK_DIR OR NOT DOCS_DESIGN)
+    message(FATAL_ERROR
+        "LOOM_EXE, DOCS_DIR, WORK_DIR and DOCS_DESIGN are required")
 endif()
 
 file(REMOVE_RECURSE "${WORK_DIR}")
@@ -46,8 +47,14 @@ if(blocks EQUAL 0)
         "The extraction is broken, not the documentation.")
 endif()
 
+# --design, because application-declared states are by definition absent from
+# the built-in vocabulary: without a design file naming them, every `invalid:`
+# in the documentation would be reported as an unknown class and this test would
+# forbid documenting the feature at all. tests/data/docs-design.json declares
+# the states the docs use, and nothing else -- the rest of the vocabulary is
+# still checked against the built-ins, which is the point of the test.
 execute_process(
-    COMMAND "${LOOM_EXE}" style --check "${WORK_DIR}"
+    COMMAND "${LOOM_EXE}" style --check --design "${DOCS_DESIGN}" "${WORK_DIR}"
     RESULT_VARIABLE status
     OUTPUT_VARIABLE output
     ERROR_VARIABLE output

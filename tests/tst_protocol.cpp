@@ -98,6 +98,7 @@ private slots:
                             contents, QCryptographicHash::Sha256),
                     },
                 },
+            .capabilities = {},
         };
         loom::Bundle decoded;
         QString error;
@@ -182,6 +183,7 @@ private slots:
                             contents, QCryptographicHash::Sha256),
                     },
                 },
+            .capabilities = {},
         };
         loom::Bundle decoded;
         QString error;
@@ -204,9 +206,90 @@ private slots:
                 loom::Bundle{
                     .id = QStringLiteral("duplicate"),
                     .files = {file, file},
+                    .capabilities = {},
                 }),
             decoded, &error));
         QVERIFY(error.contains(QStringLiteral("duplicate")));
+    }
+
+    void styleEditRoundTrips()
+    {
+        const loom::StyleEdit sent{
+            .path = QStringLiteral("qt/qml/com/example/App/Main.qml"),
+            .line = 12,
+            .column = 5,
+            .oldStyle = QStringLiteral("bg-surface"),
+            .newStyle = QStringLiteral("bg-accent rounded-lg"),
+        };
+        loom::StyleEdit received;
+        QString error;
+        QVERIFY2(
+            loom::decodeStyleEdit(loom::encodeStyleEdit(sent), received, &error),
+            qPrintable(error));
+        QCOMPARE(received.path, sent.path);
+        QCOMPARE(received.line, sent.line);
+        QCOMPARE(received.column, sent.column);
+        QCOMPARE(received.oldStyle, sent.oldStyle);
+        QCOMPARE(received.newStyle, sent.newStyle);
+    }
+
+    void styleEditRefusesUnusablePositionsAndPaths()
+    {
+        loom::StyleEdit decoded;
+        QString error;
+
+        // QQmlData reports 0 for an object no document created, which no source
+        // edit can reach.
+        loom::StyleEdit noPosition{
+            .path = QStringLiteral("qt/qml/App/Main.qml"),
+            .line = 0,
+            .column = 0,
+            .oldStyle = {},
+            .newStyle = {}};
+        QVERIFY(!loom::decodeStyleEdit(loom::encodeStyleEdit(noPosition), decoded, &error));
+        QVERIFY(error.contains(QStringLiteral("no source position")));
+
+        // The path names a project file, so it gets the same treatment a bundle
+        // path does: no traversal out of the tree.
+        loom::StyleEdit escaping{
+            .path = QStringLiteral("../../etc/passwd"),
+            .line = 1,
+            .column = 1,
+            .oldStyle = {},
+            .newStyle = {}};
+        QVERIFY(!loom::decodeStyleEdit(loom::encodeStyleEdit(escaping), decoded, &error));
+        QVERIFY(error.contains(QStringLiteral("unusable path")));
+    }
+
+    // Capability negotiation exists because takeFrame() treats an unknown type
+    // as a *fatal* framing error: a new runtime meeting an older server must be
+    // able to tell, or it drops hot reload for the rest of the session by
+    // sending one frame. Both halves of that matter, so both are pinned.
+    void bundleCapabilitiesAreAdditive()
+    {
+        loom::Bundle sent{
+            .id = QStringLiteral("abc"),
+            .files = {loom::BundleFile{QStringLiteral("qt/qml/App/Main.qml"), "x", {}}},
+            .capabilities = {QString::fromLatin1(loom::CapabilityStyleEdit)},
+        };
+        loom::Bundle received;
+        QString error;
+        QVERIFY2(
+            loom::decodeBundle(loom::encodeBundle(sent), received, &error),
+            qPrintable(error));
+        QCOMPARE(received.capabilities, sent.capabilities);
+
+        // A bundle from a server that predates the field decodes to no
+        // capabilities, which is exactly "do not offer the feature".
+        sent.capabilities.clear();
+        QVERIFY(loom::decodeBundle(loom::encodeBundle(sent), received, &error));
+        QVERIFY(received.capabilities.isEmpty());
+    }
+
+    void anUnknownMessageTypeIsStillFatal()
+    {
+        QVERIFY(loom::isKnownMessageType(quint8(loom::MessageType::StyleEdit)));
+        QVERIFY(!loom::isKnownMessageType(200));
     }
 };
 

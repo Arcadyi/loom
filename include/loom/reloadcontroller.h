@@ -67,6 +67,24 @@ public:
     /// \return false on failure, with the reason in \a error.
     bool applyDesign(const QByteArray &payload, QString *error = nullptr);
 
+    /// True when the connected development server accepts source edits, which
+    /// is what gates the inspector's editable style field. False when there is
+    /// no server, or when it predates capability negotiation -- in which case
+    /// sending the frame anyway would be a fatal framing error at the far end
+    /// and would drop hot reload for the rest of the session.
+    bool canEditSource() const;
+
+    /// Asks the development server to rewrite one `Lo.style` literal in the
+    /// project's source, addressed by the declaration site of \a item. Returns
+    /// false without sending anything when the edit cannot be addressed or the
+    /// server does not accept edits; a server-side refusal arrives later as an
+    /// Error frame, and a success arrives as the ordinary rebuilt bundle.
+    ///
+    /// Nothing is applied locally. Doing so would hide every server-side
+    /// refusal and let the running scene disagree with the file on disk, which
+    /// is the failure this exists to prevent.
+    bool editStyle(QObject *item, const QString &oldStyle, const QString &newStyle);
+
     /// The live root scene, or null if none could be constructed.
     QObject *rootObject() const;
 
@@ -129,6 +147,10 @@ private:
     QPointer<QObject> m_rootObject;
     QTcpSocket *m_socket = nullptr;
     QByteArray m_readBuffer;
+    // Advertised by the server on every Bundle. Empty against a server that
+    // predates capability negotiation, which is exactly the signal not to offer
+    // source editing: an unknown message type is a fatal framing error there.
+    QStringList m_serverCapabilities;
     QString m_moduleUri;
     QString m_entryType;
     QString m_token;

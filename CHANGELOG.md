@@ -1,5 +1,101 @@
 # Changelog
 
+## Unreleased
+
+**Components.** `Loom.Controls` is a new QML module: `Box`, `Row`, `Col`,
+`Grid`, `Button`, `Field` and `ListRow`. Loom styled items and placed them but
+shipped nothing to place, so the shapes every project needs lived in the
+cookbook as recipes you copied and then owned. The keystone is `Box`: `p-*`
+resolves to `topPadding` and a Rectangle has none, so a padded card meant an
+inner item inset by `anchors.margins` plus `implicitHeight: child.implicitHeight
++ 2 * space` restated at every call site — three times in this repository
+alone. `Box` derives from `Control`, which already has the padding properties
+the target profile duck-types on, so it needed no engine change at all.
+
+Types whose names collide with QtQuick ones derive from what they shadow, so
+importing the module is always additive; `tst_controls` enforces it.
+Applications built with `loom_add_application` get the module with no change to
+their own CMakeLists.txt, which matters because every project `loom new` has
+generated has its link line frozen in a file loom will never edit again.
+
+**Application state variants.** A design file can declare states —
+`"states": { "syncing": "..." }` — and use them as variant prefixes:
+`syncing:border-warning`, `not-syncing:`, `group-syncing/row:`. Values come
+from `Lo.states` or a bool property of the same name. Previously an
+application-owned condition could only be a ternary concatenated into the class
+string, repeated on every item that cared because two items cannot share one
+string.
+
+They are declared rather than invented at the call site because the compiler
+caches by exact class string, process-wide. That also makes them free for
+tooling: `parseVariant()` is shared by `compile()` and `unknownClasses()`, so
+`loom style`, `loom lint` and `loom lsp` learn a project's states with no code
+of their own — and a typo is still reported, which accepting arbitrary names
+would have cost.
+
+`invalid` joins the built-in states rather than being declared, because
+`Field` ships using it and a component cannot require the application to have
+configured something before it renders correctly.
+
+**The inspector edits source.** The Ctrl+Shift+I overlay's `Lo.style` line is
+a text field: type a class string, press Return, and the development server
+rewrites the literal in the project's file. Nothing is applied in the running
+scene -- the edit goes to disk, the file watcher rebuilds, and the scene
+updates through the ordinary reload path, so what is on screen always agrees
+with what is in the file. Applying locally first would have hidden every
+refusal below.
+
+Refusals matter more than the feature. The server will not rewrite a binding
+that is not a single string literal, because the inspector reports the
+*evaluated* result and cannot say which branch of a ternary produced it;
+will not write a class the compiler does not recognise, checked with the same
+`unknownStyleClasses()` the linter uses; will not write when the literal no
+longer says what the scene believes, meaning the file moved underneath; and
+cannot name a file outside the project, because only paths the server itself
+put in the bundle resolve. The write is atomic.
+
+`ProtocolVersion` stays at 2. The frame is client-to-server only, so the
+hazard is the other direction: an unknown message type is a *fatal* framing
+error, so a newer runtime meeting an older server would lose hot reload for
+the session by sending one frame. The server therefore advertises
+`"capabilities": ["styleEdit"]` on every `Bundle`, which an older decoder
+ignores and a newer runtime requires before offering the field. Bumping the
+version instead would have stranded every already-built application, because
+`loom::Runtime` is statically linked.
+
+**Fixes.**
+
+- `loomSpecificity()` packs the state depth into six bits. The old worst case
+  was around 53 and could not overflow; combining declared states with a group
+  and a theme passes 63, where the shift would have wrapped rather than
+  saturated and sorted the *most* specific rule below an unqualified one.
+- `text-*` on a Control reaches its `contentItem`, mirroring the background
+  delegation `bg-*` already had. `text-white` on a Button previously warned as
+  unsupported and left the label the platform colour against whatever `bg-*`
+  had just written.
+- `Row` and `Col` force a layout when padding changes. `QQuickBasePositioner`
+  ignores padding assigned after construction, and `Lo.style` only ever writes
+  after construction — so `p-4` on a positioner set the property and rendered
+  no differently.
+- The gallery no longer binds a seam `Loader`'s `source`, and the hazard around
+  seams is now documented and pinned by tests. A seam reload leaves the
+  document holding the Loader in the *previous* staging directory, so any URL
+  that document re-resolves points at the pre-edit copy: edit the page you are
+  looking at, navigate away and back, and the change silently reverts.
+  Assigning rather than binding does not cure that — both resolve against the
+  same stale base — but it stops the re-resolve happening spontaneously on any
+  dependency change. Curing it properly needs a way to resolve a
+  bundle-relative path against the active staging directory, which the runtime
+  knows and QML cannot yet ask for.
+
+**Shared state.** `Store` is a property map whose contents live in a
+process-wide C++ registry rather than in the QML singleton, so they survive the
+`clearSingletons()` a full reload performs — the answer to "where does state
+two documents share live", which the seam rule otherwise leaves open. `Router`
+is a thin facade over the same registry, so the current route and its history
+survive a reload too, instead of the application snapping back to its first
+page on every file save.
+
 ## 0.4.0
 
 - Introduced clean project/design schema v2 documents and `loom migrate --to 2`.

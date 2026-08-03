@@ -85,10 +85,21 @@ target_include_directories(tst_config PRIVATE
 # The build and hot-reload half.
 # ---------------------------------------------------------------------------
 
+# loomcontrols rather than the default loom/loomplugin: the component module is
+# its own QML module with its own static plugin, and it PUBLIC-links loom, so
+# this pulls in both. `loom` deliberately does not link back -- see the cycle
+# note in the top-level CMakeLists.
+if(TARGET loomcontrols)
+    loom_add_test(tst_controls LINK loomcontrols loomcontrolsplugin)
+endif()
+
 loom_add_test(tst_protocol LINK loom::Protocol)
 
 loom_add_test(tst_runtime
-    LINK loom::Runtime
+    # loomplugin as well as the runtime: loom_runtime links the styling library
+    # but not its static plugin, and the plugin's initializer is what registers
+    # the QML types -- so `import Loom` only resolves here with it named.
+    LINK loom::Runtime loomplugin
     # The design reload tests assert on the token registry, which is internal.
     INCLUDE "${CMAKE_SOURCE_DIR}/src"
     # A private cache root, so a reload test never sweeps or reuses bundle
@@ -193,6 +204,7 @@ if(TARGET loom_cli)
             "-DLOOM_EXE=$<TARGET_FILE:loom_cli>"
             "-DDOCS_DIR=${CMAKE_SOURCE_DIR}/docs"
             "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/docs-style"
+            "-DDOCS_DESIGN=${CMAKE_CURRENT_SOURCE_DIR}/data/docs-design.json"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/docs_style_test.cmake"
     )
     # The gallery is the framework's own showcase; it ships 61 Lo.style
@@ -289,3 +301,14 @@ add_test(NAME loom_qmltypes_completeness
         "-DQMLTYPES=${CMAKE_BINARY_DIR}/qml/Loom/loom.qmltypes"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/qmltypes_test.cmake"
 )
+
+# The same guarantee one level up, for the component module: that every file in
+# src/controls/ actually reached the built module.
+if(TARGET loomcontrols)
+    add_test(NAME loom_controls_qmldir
+        COMMAND "${CMAKE_COMMAND}"
+            "-DQMLDIR=${CMAKE_BINARY_DIR}/qml/Loom/Controls/qmldir"
+            "-DCONTROLS_DIR=${CMAKE_SOURCE_DIR}/src/controls"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/controls_qmldir_test.cmake"
+    )
+endif()

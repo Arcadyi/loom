@@ -27,6 +27,11 @@
 #include <QTemporaryDir>
 #include <QTimer>
 
+// QQmlData carries the line and column an object was declared at, which is how
+// a live item is mapped back to the place in the source that produced it.
+// loom_runtime already links Qt6::QmlPrivate for statecapture.cpp.
+#include <private/qqmldata_p.h>
+
 #if defined(Q_OS_UNIX)
 #include <cerrno>
 // <signal.h>, not <csignal>: kill() is POSIX and is not declared by the C++ header.
@@ -590,6 +595,9 @@ bool ReloadController::applyBundle(const QByteArray &payload, QString *error)
     Bundle bundle;
     if (!decodeBundle(payload, bundle, error))
         return false;
+    // Recorded before any early return: a bundle whose id already matches is
+    // still the server telling us what it supports.
+    m_serverCapabilities = bundle.capabilities;
 
     // Bundle ids are content hashes, so a matching id is the scene already
     // running. Re-applying it used to delete the live bundle directory while
@@ -877,6 +885,50 @@ bool ReloadController::applyDesign(const QByteArray &payload, QString *error)
             *error = QStringLiteral("Design tokens could not be applied");
         return false;
     }
+    return true;
+}
+
+bool ReloadController::canEditSource() const
+{
+    return m_socket && m_socket->state() == QAbstractSocket::ConnectedState
+        && m_serverCapabilities.contains(QLatin1String(CapabilityStyleEdit));
+}
+
+bool ReloadController::editStyle(
+    QObject *item, const QString &oldStyle, const QString &newStyle)
+{
+    if (!item || !canEditSource())
+        return false;
+
+    // The declaration site, from QQmlData. This addresses the *source* rather
+    // than the object, which is what makes it work for the items that have no
+    // `id` -- most styled items -- and what makes the several instances of one
+    // delegate all name the single place in the file that produced them.
+    const QQmlData *const data = QQmlData::get(item);
+    if (!data || data->lineNumber == 0)
+        return false;
+
+    QQmlContext *const context = qmlContext(item);
+    if (!context)
+        return false;
+    const QString local = context->baseUrl().toLocalFile();
+    // The tail after /qt/qml/ is byte-identical to the BundleFile::path the
+    // server built, so it can resolve the file by lookup rather than by
+    // reconstructing a path -- which is also why an edit cannot name a file the
+    // server never bundled.
+    const qsizetype marker = local.indexOf(QLatin1String("/qt/qml/"));
+    if (marker < 0)
+        return false;
+    const QString bundlePath = local.mid(marker + 1);
+
+    const StyleEdit edit{
+        .path = bundlePath,
+        .line = int(data->lineNumber),
+        .column = int(data->columnNumber),
+        .oldStyle = oldStyle,
+        .newStyle = newStyle,
+    };
+    m_socket->write(encodeFrame(MessageType::StyleEdit, encodeStyleEdit(edit)));
     return true;
 }
 

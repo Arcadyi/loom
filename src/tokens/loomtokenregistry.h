@@ -90,6 +90,26 @@ public:
     QString styleRecipe(const QString &name) const;
     bool hasStyleRecipe(const QString &name) const;
     QStringList styleRecipeKeys() const;
+
+    // Application-declared states, in declaration order. Declaring them in the
+    // design file rather than accepting arbitrary names at the call site is
+    // what makes the whole feature free for tooling: the compile cache is keyed
+    // on the exact style string process-wide, so a name has to resolve at parse
+    // time from a process-wide source, and parseVariant() is shared by
+    // compile() and unknownClasses(). Because the registry is that source,
+    // `loom style`, `loom lint`, LSP completion, diagnostics and quickfixes all
+    // learn the new states with no code of their own.
+    //
+    // Accepting undeclared names would also destroy unknownClasses()' contract:
+    // every typo would become "maybe that is a custom state", which is exactly
+    // the class of bug the checker exists to catch.
+    static constexpr int MaxCustomStates = 32;
+    //! The bit for a declared state, or -1 if the name was never declared.
+    int customStateBit(const QString &name) const;
+    QStringList customStateNames() const;
+    QString customStateDescription(const QString &name) const;
+    //! False when the name is malformed, already declared, or the 33rd.
+    bool setCustomState(const QString &name, const QString &description);
     QString arbitraryValuePolicy() const;
     MotionMode motionMode() const;
     void setMotionMode(MotionMode mode);
@@ -195,6 +215,10 @@ private:
     QHash<QString, int> m_breakpoints;
     QHash<QString, int> m_containers;
     QHash<QString, QString> m_styleRecipes;
+    // Order matters and QHash does not preserve it: the bit a state gets is its
+    // index here, and the catalogue advertises them in this order.
+    QStringList m_customStateNames;
+    QHash<QString, QString> m_customStateDescriptions;
     QString m_arbitraryValuePolicy = QStringLiteral("warn");
     MotionMode m_motionMode = MotionMode::System;
 };

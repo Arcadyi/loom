@@ -1,5 +1,7 @@
 #include "devserver.h"
 
+#include "styleedit.h"
+
 #include <loom/protocol.h>
 
 #include <QCryptographicHash>
@@ -320,6 +322,8 @@ void DevServer::readClient(QTcpSocket *socket)
                     QStringLiteral("reloaded bundle %1")
                         .arg(result.value(QStringLiteral("bundleId")).toString()));
             }
+        } else if (frame.type == loom::MessageType::StyleEdit) {
+            handleStyleEdit(socket, frame.payload);
         } else if (frame.type == loom::MessageType::Error) {
             const auto payload = QJsonDocument::fromJson(frame.payload).object();
             emit logMessage(
@@ -329,6 +333,13 @@ void DevServer::readClient(QTcpSocket *socket)
     }
 }
 
+// Rewrites the *application's* module qmldir for the bundle. Keyed on
+// m_application.uri, so framework modules -- Loom, Loom.Controls -- are never
+// touched: their `prefer` line survives and their types keep loading from the
+// compiled-in resources. That is deliberate and not an oversight to fix. Hot
+// reload replaces application QML; a framework component changing under a
+// running application would mean the framework and the binary it was compiled
+// against disagreeing, which the bundle has no way to reconcile.
 QByteArray DevServer::developmentQmldir() const
 {
     if (m_buildDirectory.isEmpty())
@@ -361,6 +372,13 @@ QByteArray DevServer::developmentQmldir() const
 void DevServer::rebuildBundle()
 {
     loom::Bundle bundle;
+    // Advertised on every bundle rather than at the handshake, so a runtime
+    // learns it without another round trip and an older runtime ignores an
+    // unknown key. This is the whole capability negotiation: takeFrame() treats
+    // an unrecognised message type as a fatal framing error, so a runtime must
+    // never send StyleEdit to a server that would not understand it.
+    bundle.capabilities = {QString::fromLatin1(loom::CapabilityStyleEdit)};
+    QHash<QString, QString> sources;
     QCryptographicHash aggregate(QCryptographicHash::Sha256);
     const auto uriPath =
         QString(m_application.uri).replace(QLatin1Char('.'), QLatin1Char('/'));
@@ -379,6 +397,7 @@ void DevServer::rebuildBundle()
             const auto hash =
                 QCryptographicHash::hash(contents, QCryptographicHash::Sha256);
             bundle.files.append(loom::BundleFile{resourcePath, contents, hash});
+            sources.insert(resourcePath, path);
             aggregate.addData(resourcePath.toUtf8());
             aggregate.addData(hash);
         }
@@ -406,6 +425,7 @@ void DevServer::rebuildBundle()
     // matches, so a collision loads the wrong scene; 64 bits was a needless
     // cliff when the field costs nothing.
     bundle.id = QString::fromLatin1(aggregate.result().toHex().left(32));
+    m_bundleSources = std::move(sources);
     if (bundle.id == m_bundleId) {
         resetWatchPaths();
         return;
@@ -588,6 +608,52 @@ void DevServer::sendHeartbeats()
     }
     for (auto *socket : alive)
         socket->write(loom::encodeFrame(loom::MessageType::Ping, {}));
+}
+
+// Rewrites one Lo.style literal in the project, on behalf of the in-application
+// inspector.
+//
+// There is deliberately no success frame: a successful edit changes a file the
+// QML watcher is already watching, so the ordinary rebuild-and-push path
+// reports it, and the scene the user is looking at updates the same way it
+// would if they had typed the change in their editor. Applying the edit
+// locally in the runtime first would have hidden every refusal below and let
+// the running scene disagree with the source -- which is the failure the
+// inspector exists to prevent.
+void DevServer::handleStyleEdit(QTcpSocket *socket, const QByteArray &payload)
+{
+    loom::StyleEdit edit;
+    QString error;
+    if (!loom::decodeStyleEdit(payload, edit, &error)) {
+        sendError(socket, error);
+        return;
+    }
+
+    // The only paths that resolve are ones this server put in the bundle, so an
+    // edit cannot name a file outside the project however the path is spelled.
+    const auto source = m_bundleSources.constFind(edit.path);
+    if (source == m_bundleSources.constEnd()) {
+        sendError(
+            socket,
+            QStringLiteral("%1 is not a file in this project's QML roots").arg(edit.path));
+        return;
+    }
+
+    const auto result = loom::styleedit::applyToFile(
+        *source, edit.line, edit.column, edit.oldStyle, edit.newStyle);
+    const auto relative = QDir(m_projectRoot).relativeFilePath(*source);
+    if (!result.ok) {
+        const auto message = QStringLiteral("%1:%2: %3")
+                                 .arg(relative)
+                                 .arg(edit.line)
+                                 .arg(result.error);
+        emit logMessage(QStringLiteral("style edit refused: ") + message);
+        sendError(socket, message);
+        return;
+    }
+    emit logMessage(QStringLiteral("style edit applied to %1:%2")
+                        .arg(relative)
+                        .arg(edit.line));
 }
 
 void DevServer::sendError(QTcpSocket *socket, const QString &message)

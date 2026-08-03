@@ -16,6 +16,7 @@ Rectangle {
 | `dark:` | the active theme is dark | the token registry — see [theming.md](theming.md) |
 | `checked:` `down:` `highlighted:` `selected:` | same-named boolean property | Quick Controls or a custom item |
 | `editable:` `read-only:` `active:` | same-named boolean property | target property |
+| `invalid:` | the item's own `bool invalid` property | target property — Qt has none, but every validating input grows one |
 | `focus-within:` | focused item is the target or a descendant | active-focus chain |
 | `focus-visible:` | visual focus, or active focus reached by keyboard | native `visualFocus` plus window input modality |
 | `rtl:` `ltr:` | application layout direction | `QGuiApplication` |
@@ -156,3 +157,89 @@ Negation is available for every state (`not-checked:`), and an ancestor can
 publish state to descendants with `Lo.group: "menu"` and
 `group-hover/menu:`/`group-not-disabled/menu:`. Group lookup uses the nearest
 matching attached ancestor and does not install duplicate input handlers.
+
+## States your application owns
+
+The table above is what Loom can observe from Qt. An application has conditions
+Qt knows nothing about — a row is syncing, a document is stale, a card is being
+dragged — and before these could be variants, the only way to reach them was to
+concatenate into the class string:
+
+```qml
+Lo.style: "rounded-md " + (row.syncing ? "border-warning" : "border-outline")
+```
+
+which had to be repeated on every item that cared, because two items cannot
+share one string.
+
+Declare the state in your design file instead:
+
+```json
+{
+  "states": {
+    "syncing": "Has local changes not yet saved to the server"
+  }
+}
+```
+
+and it behaves like any other variant — including `not-`, `group-`, negation,
+composition and specificity:
+
+```qml
+Box {
+    Lo.group: "row"
+    Lo.style: "border-outline syncing:border-warning hover:syncing:border-danger"
+
+    Text { Lo.style: "group-syncing/row:text-warning" }
+}
+```
+
+### Supplying the value
+
+Two ways, and components usually want the second.
+
+**`Lo.states`** — a map, at the call site:
+
+```qml
+Box {
+    Lo.states: ({ syncing: model.dirty, stale: model.age > 3600 })
+    Lo.style: "syncing:border-warning stale:opacity-60"
+}
+```
+
+The map is an ordinary QML binding, so that is the whole reactivity story. An
+apply is scheduled only when the resolved set of active states actually
+changes, not on every re-evaluation.
+
+**A bool property of the same name** — inside a component:
+
+```qml
+// MyRow.qml
+Box {
+    property bool syncing: false
+    Lo.style: "border-outline syncing:border-warning"
+}
+```
+
+Duck-typed exactly the way `checked` and `readOnly` are, so nothing at the call
+site has to restate it. State names are kebab-case and the property is
+camelCase: `not-found:` reads `notFound`.
+
+### Rules
+
+- **Declared states must be declared.** An undeclared name in `Lo.states` warns,
+  and an undeclared variant is reported by `loom lint` as an unknown class.
+  That is deliberate: accepting arbitrary names would mean every typo became
+  "maybe that is a state", which is the exact bug the checker exists to catch.
+  Because the design file is the source of truth, `loom style`, `loom lint` and
+  the LSP all learn your states with no extra configuration — completion, typo
+  suggestions and hovers included.
+- **They rank like built-in states.** There is no reading under which
+  `syncing:` is inherently weaker or stronger than `hover:`, so at equal depth
+  the later class wins and `hover:syncing:` beats either alone.
+- **A name that collides with a built-in variant is rejected** rather than
+  silently shadowed, as are the `not-`, `group-`, `theme-`, `min-` and `max-`
+  prefixes, which already spell composed variants.
+- **At most 32 per project.** The bit has to live somewhere.
+- Names are lower-case letters, digits and dashes, starting with a letter.
+

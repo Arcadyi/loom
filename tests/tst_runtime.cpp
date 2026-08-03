@@ -4,6 +4,9 @@
 
 // Design token reload lands in the process-wide registry, which has no public
 // membership query; the styling tests reach it the same way.
+#include "runtime/inspectorbridge.h"
+#include "state/loomrouter.h"
+#include "state/loomstore.h"
 #include "tokens/loomtokenregistry.h"
 
 #include <QCryptographicHash>
@@ -35,6 +38,7 @@ loom::Bundle bundleAt(const QString &id, const QString &path, const QByteArray &
                         QCryptographicHash::hash(contents, QCryptographicHash::Sha256),
                 },
             },
+        .capabilities = {},
     };
 }
 
@@ -48,7 +52,7 @@ QByteArray encodedDesign(const QByteArray &tokens, const QString &path = QString
 loom::Bundle
 bundleWithFiles(const QString &id, const QList<QPair<QString, QByteArray>> &files)
 {
-    loom::Bundle bundle{.id = id, .files = {}};
+    loom::Bundle bundle{.id = id, .files = {}, .capabilities = {}};
     for (const auto &[path, contents] : files) {
         bundle.files.append(
             loom::BundleFile{
@@ -933,6 +937,290 @@ private slots:
                 && controller.rootObject()->objectName() == QStringLiteral("restaged"),
             "the unmarked directory was loaded instead of being restaged");
         QVERIFY(isMarkedComplete(cacheRoot + QStringLiteral("/partial")));
+    }
+
+    // The reason Store is a C++ registry with a thin QML facade rather than a
+    // QML singleton: applyBundle() calls clearSingletons() on every full
+    // reload, so a QML singleton's contents die with the scene. statecapture
+    // cannot cover it either -- belongsToScene() excludes anything whose
+    // baseUrl is outside the scene directory, which a framework singleton
+    // always is. This is the answer to "where does shared state live", which
+    // the seam rule otherwise leaves open.
+    void storeSurvivesAFullReload()
+    {
+        LoomStoreRegistry::instance()->clear();
+
+        QQmlApplicationEngine engine;
+        loom::ReloadController controller(engine);
+        QVERIFY2(
+            controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")),
+            qPrintable(controller.lastError()));
+        const QByteArray writer = R"(
+            import QtQuick
+            import Loom
+            Item {
+                objectName: "writer"
+                Component.onCompleted: { Store.route = "settings"; Store.visits = 3 }
+            }
+        )";
+        QString error;
+        QVERIFY2(
+            controller.applyBundle(
+                loom::encodeBundle(bundleWithMain(QStringLiteral("writer"), writer)),
+                &error),
+            qPrintable(error));
+        QCoreApplication::processEvents();
+        QCOMPARE(controller.rootObject()->objectName(), QStringLiteral("writer"));
+        QCOMPARE(
+            LoomStoreRegistry::instance()->value(QStringLiteral("route")).toString(),
+            QStringLiteral("settings"));
+
+        // A full reload: different file contents, no Loader seam, so the whole
+        // scene is torn down and the engine's singletons with it.
+        const QByteArray reader = R"(
+            import QtQuick
+            import Loom
+            Item {
+                objectName: "reader"
+                property string seenRoute: Store.route ?? ""
+                property int seenVisits: Store.visits ?? 0
+            }
+        )";
+        QVERIFY2(
+            controller.applyBundle(
+                loom::encodeBundle(bundleWithMain(QStringLiteral("reader"), reader)),
+                &error),
+            qPrintable(error));
+        QCoreApplication::processEvents();
+        QCOMPARE(controller.rootObject()->objectName(), QStringLiteral("reader"));
+        QCOMPARE(
+            controller.rootObject()->property("seenRoute").toString(),
+            QStringLiteral("settings"));
+        QCOMPARE(controller.rootObject()->property("seenVisits").toInt(), 3);
+    }
+
+    // A QObject* would outlive the scene it points into and dangle on the next
+    // reload -- the exact failure the store exists to avoid -- so it is refused
+    // at the write rather than accepted and left to crash somewhere else.
+    void storeRefusesValuesThatCannotSurvive()
+    {
+        LoomStoreRegistry::instance()->clear();
+        QObject scratch;
+        QVERIFY(!LoomStoreRegistry::instance()->setValue(
+            QStringLiteral("item"), QVariant::fromValue(&scratch)));
+        QVERIFY(!LoomStoreRegistry::instance()->contains(QStringLiteral("item")));
+
+        QVERIFY(LoomStoreRegistry::instance()->setValue(
+            QStringLiteral("count"), QVariant(7)));
+        QCOMPARE(
+            LoomStoreRegistry::instance()->value(QStringLiteral("count")).toInt(), 7);
+    }
+
+    // Route state lives in the store rather than in the Router singleton, so it
+    // outlives clearSingletons(). Under `loom dev` the alternative is the
+    // application snapping back to its first page on every file save.
+    void routeSurvivesAFullReload()
+    {
+        LoomStoreRegistry::instance()->clear();
+        LoomRouter router;
+        router.push(QStringLiteral("home"));
+        router.push(QStringLiteral("settings"), {{QStringLiteral("tab"), "network"}});
+        QCOMPARE(router.route(), QStringLiteral("settings"));
+        QCOMPARE(router.stack(), QStringList({"home", "settings"}));
+        QVERIFY(router.canGoBack());
+
+        // A second Router is what the scene gets after a reload: the singleton
+        // is destroyed and rebuilt, and reads the same registry.
+        LoomRouter afterReload;
+        QCOMPARE(afterReload.route(), QStringLiteral("settings"));
+        QCOMPARE(
+            afterReload.params().value(QStringLiteral("tab")).toString(),
+            QStringLiteral("network"));
+        QVERIFY(afterReload.back());
+        QCOMPARE(afterReload.route(), QStringLiteral("home"));
+        QVERIFY(!afterReload.canGoBack());
+        QVERIFY(!afterReload.back());
+        // Both facades see it, because neither owns the state.
+        QCOMPARE(router.route(), QStringLiteral("home"));
+    }
+
+    // The regression test for the bug the gallery shipped with. A seam Loader's
+    // source is repointed by reloadBoundaries() with setProperty(), which
+    // destroys any binding on it -- so a view that *binds* source navigates
+    // correctly until the first seam reload and then silently stops. Assigning
+    // it, as RouteView does, keeps working.
+    void navigationStillWorksAfterASeamReload()
+    {
+        LoomStoreRegistry::instance()->clear();
+
+        QQmlApplicationEngine engine;
+        loom::ReloadController controller(engine);
+        QVERIFY2(
+            controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")),
+            qPrintable(controller.lastError()));
+        const QByteArray main = R"(
+            import QtQuick
+            import Loom
+            Item {
+                objectName: "shell"
+                property string shown: loader.item ? loader.item.objectName : ""
+                Loader { id: loader }
+                function show(name) { loader.source = Qt.resolvedUrl(name + ".qml") }
+                Component.onCompleted: show("First")
+            }
+        )";
+        const QByteArray first = "import QtQuick\nItem { objectName: \"first\" }\n";
+        const QByteArray second = "import QtQuick\nItem { objectName: \"second\" }\n";
+        QString error;
+        QVERIFY2(
+            controller.applyBundle(
+                loom::encodeBundle(bundleWithFiles(
+                    QStringLiteral("routes-1"),
+                    {{QStringLiteral("Main.qml"), main},
+                     {QStringLiteral("First.qml"), first},
+                     {QStringLiteral("Second.qml"), second}})),
+                &error),
+            qPrintable(error));
+        QCoreApplication::processEvents();
+        QObject *const shell = controller.rootObject();
+        QVERIFY(shell);
+        QTRY_COMPARE(shell->property("shown").toString(), QStringLiteral("first"));
+
+        // Edit only the page behind the seam, so reloadBoundaries() takes it and
+        // the shell object survives.
+        const QByteArray editedFirst =
+            "import QtQuick\nItem { objectName: \"first-edited\" }\n";
+        QVERIFY2(
+            controller.applyBundle(
+                loom::encodeBundle(bundleWithFiles(
+                    QStringLiteral("routes-2"),
+                    {{QStringLiteral("Main.qml"), main},
+                     {QStringLiteral("First.qml"), editedFirst},
+                     {QStringLiteral("Second.qml"), second}})),
+                &error),
+            qPrintable(error));
+        QCoreApplication::processEvents();
+        QCOMPARE(controller.rootObject(), shell); // the seam, not a full reload
+        QTRY_COMPARE(
+            shell->property("shown").toString(), QStringLiteral("first-edited"));
+
+        // And now navigate. This is the assertion that fails if source is bound.
+        QVERIFY(QMetaObject::invokeMethod(
+            shell, "show", Qt::DirectConnection, Q_ARG(QVariant, QStringLiteral("Second"))));
+        QTRY_COMPARE(shell->property("shown").toString(), QStringLiteral("second"));
+    }
+
+    // The development inspector is a QML document written as a C++ string
+    // literal, so nothing compiles it until someone presses Ctrl+Shift+I in a
+    // running application -- at which point a syntax error is a warning on
+    // stderr and an overlay that simply never appears.
+    void inspectorOverlayCompiles()
+    {
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        component.setData(loom::inspectorOverlayQml(), QUrl());
+        // The two properties Application supplies. `bridge` is stubbed rather
+        // than real: this is about the document, not the wiring.
+        loom::InspectorBridge bridge(nullptr);
+        QQuickItem host;
+        QScopedPointer<QObject> overlay(component.createWithInitialProperties(
+            {{QStringLiteral("targetRoot"), QVariant::fromValue(&host)},
+             {QStringLiteral("bridge"), QVariant::fromValue(&bridge)}}));
+        QVERIFY2(overlay, qPrintable(component.errorString()));
+
+        // With no development server there is nothing to write to, and the
+        // field says so instead of silently swallowing what is typed.
+        QCOMPARE(bridge.canEdit(), false);
+        QCOMPARE(bridge.applyStyleEdit(&host, QString(), QStringLiteral("bg-accent")), false);
+    }
+
+    // What actually goes wrong around a seam, established by measurement after
+    // an earlier guess turned out to be wrong.
+    //
+    // A property write does NOT destroy a classic QML binding on Loader.source,
+    // so navigation keeps working after a seam reload. The real hazard is the
+    // URL base: Qt.resolvedUrl() resolves against the *document's* base, and a
+    // document that was not itself rebuilt still lives in the previous staging
+    // directory. So re-resolving a route overwrites what reloadBoundaries() set
+    // and serves the pre-edit copy of the very file you just edited -- the
+    // change appears, then silently reverts the next time you navigate back.
+    //
+    // Assigning rather than binding does not cure this; it only stops the
+    // re-resolve happening spontaneously, on any dependency change, rather than
+    // only when the application navigates. Curing it needs a way to resolve a
+    // bundle-relative path against the *active* staging directory, which the
+    // runtime knows and QML currently has no way to ask for.
+    void aSeamReloadLeavesTheDocumentsUrlBaseStale()
+    {
+        QQmlApplicationEngine engine;
+        loom::ReloadController controller(engine);
+        QVERIFY2(
+            controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")),
+            qPrintable(controller.lastError()));
+        const QByteArray main = R"(
+            import QtQuick
+            Item {
+                id: shell
+                objectName: "shell"
+                property string page: "First"
+                property string shown: loader.item ? loader.item.objectName : ""
+                Loader {
+                    id: loader
+                    source: Qt.resolvedUrl(shell.page + ".qml")
+                }
+            }
+        )";
+        const QByteArray first = "import QtQuick\nItem { objectName: \"first\" }\n";
+        const QByteArray second = "import QtQuick\nItem { objectName: \"second\" }\n";
+        QString error;
+        QVERIFY2(
+            controller.applyBundle(
+                loom::encodeBundle(bundleWithFiles(
+                    QStringLiteral("bound-1"),
+                    {{QStringLiteral("Main.qml"), main},
+                     {QStringLiteral("First.qml"), first},
+                     {QStringLiteral("Second.qml"), second}})),
+                &error),
+            qPrintable(error));
+        QCoreApplication::processEvents();
+        QObject *const shell = controller.rootObject();
+        QVERIFY(shell);
+        QTRY_COMPARE(shell->property("shown").toString(), QStringLiteral("first"));
+
+        // Before the reload the binding works, so the failure below is caused by
+        // the reload and not by the fixture.
+        shell->setProperty("page", QStringLiteral("Second"));
+        QTRY_COMPARE(shell->property("shown").toString(), QStringLiteral("second"));
+        shell->setProperty("page", QStringLiteral("First"));
+        QTRY_COMPARE(shell->property("shown").toString(), QStringLiteral("first"));
+
+        const QByteArray editedFirst =
+            "import QtQuick\nItem { objectName: \"first-edited\" }\n";
+        QVERIFY2(
+            controller.applyBundle(
+                loom::encodeBundle(bundleWithFiles(
+                    QStringLiteral("bound-2"),
+                    {{QStringLiteral("Main.qml"), main},
+                     {QStringLiteral("First.qml"), editedFirst},
+                     {QStringLiteral("Second.qml"), second}})),
+                &error),
+            qPrintable(error));
+        QCoreApplication::processEvents();
+        QCOMPARE(controller.rootObject(), shell); // the seam was taken
+        QTRY_COMPARE(
+            shell->property("shown").toString(), QStringLiteral("first-edited"));
+
+        // Navigate away and back. The binding re-evaluates, and because
+        // Qt.resolvedUrl() resolves against *this document's* base URL -- still
+        // the previous staging directory, since Main.qml itself was not
+        // rebuilt -- it overwrites what reloadBoundaries() had set and serves
+        // the pre-edit copy of the file you are looking at.
+        shell->setProperty("page", QStringLiteral("Second"));
+        QTRY_COMPARE(shell->property("shown").toString(), QStringLiteral("second"));
+        shell->setProperty("page", QStringLiteral("First"));
+        QCoreApplication::processEvents();
+        QTest::qWait(50);
+        QCOMPARE(shell->property("shown").toString(), QStringLiteral("first"));
     }
 };
 

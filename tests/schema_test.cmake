@@ -105,6 +105,23 @@ if(NOT default_validation EQUAL 0)
         "${default_error}")
 endif()
 
+# Declared application states are constrained to the shape a variant prefix can
+# take. The scaffolded design file above already covers the accept direction --
+# it declares one -- so this is the refusal, without which that proves nothing.
+execute_process(
+    COMMAND "${PYTHON_EXE}" -c
+        "import json,sys,jsonschema; \
+         doc=json.load(open(sys.argv[2])); \
+         doc['states']={'Not A State': 'wrong shape'}; \
+         jsonschema.validate(doc, json.load(open(sys.argv[1])))"
+        "${DESIGN_SCHEMA}" "${TEST_DIR}/design/tokens.json"
+    RESULT_VARIABLE state_shape_validation
+    ERROR_QUIET
+)
+if(state_shape_validation EQUAL 0)
+    message(FATAL_ERROR "The design schema accepted a malformed state name")
+endif()
+
 # And an unknown key must still be refused, or the check above proves nothing.
 execute_process(
     COMMAND "${PYTHON_EXE}" -c

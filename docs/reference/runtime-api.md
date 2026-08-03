@@ -115,7 +115,80 @@ document's bindings point at that instance, so replacing it would leave both dan
 is no public way to rebind them, which is the reason a seam has to be declared rather than
 inferred. For the same reason, do not bind onto a loaded item from outside — the binding would
 address the instance that gets replaced. Give the loaded document its own state instead, as
-the scaffolded `HomePage.qml` does with its counter.
+the scaffolded `HomePage.qml` does with its counter, or put genuinely shared state in
+[`Store`](#store-state-that-outlives-the-scene).
+
+### `Store`: state that outlives the scene
+
+State that several documents share has nowhere good to live under the seam rule — it cannot
+be bound across the seam, and pushing it down into one page does not make it shared. `Store`
+is that place:
+
+```qml
+import Loom
+
+Store.route = "settings"
+
+Text { text: Store.route ?? "home" }
+```
+
+It is a `QQmlPropertyMap`, so ordinary bindings track individual keys. Its contents live in a
+process-wide C++ registry rather than in the QML singleton, which is what makes them survive:
+a full reload calls `QQmlEngine::clearSingletons()`, so anything held by a QML singleton dies
+with the scene. The singleton you see is a facade, rebuilt and reseeded from the registry
+after every reload — the same split `Loom` has over its token registry, which is why design
+tokens already survive reloading.
+
+Two consequences worth knowing:
+
+- **It does not participate in scene state capture, and does not need to.** `loomSaveState`
+  and the automatic capture exist to carry values across a teardown; `Store` is never torn
+  down. It also outlives a *failed* reload and a rollback.
+- **Only JSON-representable values are accepted.** A write of a `QObject*` or any other
+  pointer is refused with a warning on the `loom.store` category. It would otherwise outlive
+  the scene it points into and dangle on the next reload, which is exactly what this is for.
+  (Note that `QJsonValue::fromVariant` maps a `QObject*` to *null* rather than to undefined,
+  so a naive JSON check would accept one.)
+
+### A seam reload leaves the document's URL base behind
+
+Taking the seam rebuilds the page and leaves the document that holds the `Loader` alone — which
+is the point, and also the catch. That document was not rebuilt, so it still lives in the
+*previous* staging directory, and every URL it resolves still points there.
+
+So this happens:
+
+1. You edit `HomePage.qml`. The seam reload swaps it in and you see the change.
+2. You navigate to another page and back.
+3. `Qt.resolvedUrl("pages/HomePage.qml")` in `Main.qml` resolves against `Main.qml`'s base — the
+   old directory — and loads the **pre-edit** copy. Your change silently reverts.
+
+The consequence for navigation code is a preference rather than a rule:
+
+```qml
+// Re-resolves on any dependency change, so the revert can happen at any time.
+Loader { source: pages[currentPage] }
+
+// Re-resolves only when the application navigates. Prefer this.
+Loader { id: pageLoader }
+onCurrentPageChanged: pageLoader.source = pages[currentPage] ?? ""
+Component.onCompleted: pageLoader.source = pages[currentPage] ?? ""
+```
+
+Assigning does not cure the staleness — both forms resolve against the same stale base — it
+only stops it happening spontaneously. Curing it needs a way to resolve a bundle-relative path
+against the *active* staging directory, which the runtime knows and QML has no way to ask for
+yet.
+
+A note on what this is **not**: a property write does not destroy a classic QML binding on
+`Loader.source`, so navigation does not stop working after a seam reload. Only the
+[properties Loom styles](../styling/limitations.md#property-writes-vs-bindings) have that
+behaviour. `tst_runtime` pins both halves.
+
+Files you have not navigated to are unaffected, because a changed file that is not currently
+instantiated makes the controller fall back to a full reload rather than take the seam — after
+which everything is on the new directory again. It is the file you just edited and are looking
+at that can revert.
 
 ## Scene state across a reload
 

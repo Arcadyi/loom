@@ -4,7 +4,9 @@ include(CMakeFindDependencyMacro)
 # QmlPrivate is loom_runtime's own private dependency, but a STATIC library
 # records even PRIVATE links as $<LINK_ONLY:...> in its interface, so the
 # consumer still has to be able to resolve the imported target.
-find_dependency(Qt6 6.11 COMPONENTS Core Gui Network Qml QmlPrivate Quick)
+# QuickControls2 appears only when this install was built with Loom.Controls;
+# Box derives from Control, so the component module's archive links it.
+find_dependency(Qt6 6.11 COMPONENTS @LOOM_QT_COMPONENTS_STR@)
 
 include("${CMAKE_CURRENT_LIST_DIR}/loomTargets.cmake")
 # loom_add_application, loom_enable_hot_reload, loom_install_application.
