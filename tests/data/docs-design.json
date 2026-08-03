@@ -1,6 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/Arcadyi/loom/master/schemas/design-v2.schema.json",
   "schemaVersion": 2,
+  "styles": {
+    "card": "bg-surface border border-outline rounded-lg shadow-sm"
+  },
   "states": {
     "syncing": "Documented example of an application-declared state",
     "stale": "Documented example of an application-declared state"

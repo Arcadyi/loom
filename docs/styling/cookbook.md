@@ -118,6 +118,21 @@ Notes:
   the column to the card, and `m-4` supplies the 16 px inset the anchors then
   honour. This is the single most common surprise coming from Tailwind; see
   [limitations.md](limitations.md).
+
+  This is also exactly why [`Box`](components.md#box) exists. It derives from
+  `Control`, which *does* have the padding properties, so the same card is
+
+  ```qml
+  Box {
+      Lo.style: "@card p-4 gap-3"
+
+      Column { width: parent.availableWidth }
+  }
+  ```
+
+  with no inner item and no `implicitHeight` arithmetic. Keep reading this
+  recipe if you want to know what `Box` is doing for you, or reach for `Box`
+  if you do not.
 - **`gap-3` on the Column** sets `spacing`, which is the positioner's own
   property and works exactly as expected.
 - **`dark:shadow-2xl`** because the `shadow-md` alpha reads as almost nothing on
@@ -169,10 +184,18 @@ Column {
 
 - **`focus:border-accent`** uses `activeFocus`, which `TextField` sets when it is
   being typed into.
-- **The invalid state is a binding**, not a variant, because "invalid" is your
-  application's concept and loom has no variant for it. Concatenating into the
-  string is the normal way to reach application state; the compile cache means
-  each distinct result is compiled once.
+- **The invalid state used to be a binding.** It is a variant now: `invalid` is
+  a [built-in state](states.md#control-states), duck-typed from a `bool
+  invalid` property on the item, so the whole ternary collapses into
+  `border-outline invalid:border-danger` in the class string and no longer has
+  to be repeated on every item that cares. [`Loom.Controls.Field`](components.md#field)
+  is this recipe, shipped.
+
+  For a condition Loom has no built-in state for — `syncing`, `stale`,
+  `dragging` — [declare it in the design file](configuration.md#states) and it
+  becomes a variant too. Concatenating into the string still works, and is
+  still the escape hatch for anything genuinely dynamic; the compile cache
+  means each distinct result is compiled once.
 - **`placeholderTextColor` has no utility**, so it comes from the typed API.
   Reaching for `Loom.color.*` for properties the vocabulary does not cover is
   expected, not a workaround.

@@ -1,5 +1,61 @@
 # Changelog
 
+## Unreleased
+
+**Components.** `Loom.Controls` is a new QML module: `Box`, `Row`, `Col`,
+`Grid`, `Button`, `Field` and `ListRow`. Loom styled items and placed them but
+shipped nothing to place, so the shapes every project needs lived in the
+cookbook as recipes you copied and then owned. The keystone is `Box`: `p-*`
+resolves to `topPadding` and a Rectangle has none, so a padded card meant an
+inner item inset by `anchors.margins` plus `implicitHeight: child.implicitHeight
++ 2 * space` restated at every call site — three times in this repository
+alone. `Box` derives from `Control`, which already has the padding properties
+the target profile duck-types on, so it needed no engine change at all.
+
+Types whose names collide with QtQuick ones derive from what they shadow, so
+importing the module is always additive; `tst_controls` enforces it.
+Applications built with `loom_add_application` get the module with no change to
+their own CMakeLists.txt, which matters because every project `loom new` has
+generated has its link line frozen in a file loom will never edit again.
+
+**Application state variants.** A design file can declare states —
+`"states": { "syncing": "..." }` — and use them as variant prefixes:
+`syncing:border-warning`, `not-syncing:`, `group-syncing/row:`. Values come
+from `Lo.states` or a bool property of the same name. Previously an
+application-owned condition could only be a ternary concatenated into the class
+string, repeated on every item that cared because two items cannot share one
+string.
+
+They are declared rather than invented at the call site because the compiler
+caches by exact class string, process-wide. That also makes them free for
+tooling: `parseVariant()` is shared by `compile()` and `unknownClasses()`, so
+`loom style`, `loom lint` and `loom lsp` learn a project's states with no code
+of their own — and a typo is still reported, which accepting arbitrary names
+would have cost.
+
+`invalid` joins the built-in states rather than being declared, because
+`Field` ships using it and a component cannot require the application to have
+configured something before it renders correctly.
+
+**Fixes.**
+
+- `loomSpecificity()` packs the state depth into six bits. The old worst case
+  was around 53 and could not overflow; combining declared states with a group
+  and a theme passes 63, where the shift would have wrapped rather than
+  saturated and sorted the *most* specific rule below an unqualified one.
+- `text-*` on a Control reaches its `contentItem`, mirroring the background
+  delegation `bg-*` already had. `text-white` on a Button previously warned as
+  unsupported and left the label the platform colour against whatever `bg-*`
+  had just written.
+- `Row` and `Col` force a layout when padding changes. `QQuickBasePositioner`
+  ignores padding assigned after construction, and `Lo.style` only ever writes
+  after construction — so `p-4` on a positioner set the property and rendered
+  no differently.
+- The gallery no longer binds a seam `Loader`'s `source`. `reloadBoundaries()`
+  repoints a seam with `setProperty()`, which destroys the binding, so under
+  `loom dev` gallery navigation stopped working after the first seam reload —
+  in the example whose job is to demonstrate reloading.
+
 ## 0.4.0
 
 - Introduced clean project/design schema v2 documents and `loom migrate --to 2`.

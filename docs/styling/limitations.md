@@ -99,15 +99,21 @@ reported as unknown rather than approximated with surprising behavior.
 
 | Missing | Why / what to use |
 | --- | --- |
-| **Container-level alignment** — `items-*`, `justify-*` | Qt Quick Layouts expose alignment per child, through [`self-*`](utilities.md#layout-only), rather than as a container property |
+| **Container-level alignment** — `items-*`, `justify-*` | still not classes: Qt Quick Layouts expose alignment per child, through [`self-*`](utilities.md#layout-only). `Loom.Controls`' [`Row` and `Col`](components.md#row-col-and-grid) take an `align` property instead, and `Grid` has had `verticalItemAlignment` all along |
 | **Sibling anchors** — `anchors.left: sidebar.right` | a class cannot name another QML `id`; write the anchor in QML |
-| **Changing structure** — `flex`, `grid`, column counts | a class cannot change an item's QML type; use `RowLayout`, `ColumnLayout`, `GridLayout`, positioners, or views |
+| **Changing structure** — `flex`, `grid`, column counts | a class cannot change an item's QML type; use `RowLayout`, `ColumnLayout`, `GridLayout`, positioners, or views. How many columns is a structural decision, and stays a binding |
 | **Named sibling/peer selectors** | Loom groups walk ancestors. Qt ownership and visual stacking do not provide a stable CSS-like previous-sibling selector |
 | **Pseudo-elements and generated content** | declare the Item or Text explicitly |
 | **Multiple composed user effects** | filter utilities own the one `Item.layer.effect` slot and therefore require `Lo.effects: true`; compose a custom `MultiEffect` yourself when Loom should not own it |
 
-Loom covers appearance, state, responsive/container conditions, and placement;
-ordinary QML remains the structural language.
+Loom covers appearance, state, responsive/container conditions, and placement.
+Ordinary QML remains the structural language — a class still cannot change an
+item's type, name a sibling, or decide a grid's shape. What changed is that
+Loom now also ships [a small set of components](components.md) for the shapes
+that boundary made expensive to write by hand: a box with real padding, a row
+that aligns its children, a button, a field, a list row. They are ordinary QML
+too. They just come with the framework instead of being copied out of the
+[cookbook](cookbook.md) into every project.
 
 ## Tooling limitations
 

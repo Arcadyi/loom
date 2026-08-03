@@ -9,7 +9,8 @@ loom new hello && cd hello && loom dev
 
 ## Styling
 
-Two complementary layers over one shared set of design tokens:
+Two complementary layers over one shared set of design tokens, plus a small
+component module for the shapes they cannot express:
 
 ```qml
 import QtQuick
@@ -30,6 +31,23 @@ Rectangle {
 Both resolve from the same token registry, so system/custom themes, runtime
 theme switching, viewport and container queries, and the full state/group
 variant set work identically in both.
+
+```qml
+import Loom.Controls
+
+// Real padding, height from the content, no implicitHeight arithmetic.
+Box {
+    Lo.style: "@card p-6 gap-3"
+
+    Field { label: qsTr("Email"); invalid: !text.includes("@") }
+}
+```
+
+`Box`, `Row`, `Col`, `Grid`, `Button`, `Field` and `ListRow` — the shapes a
+class string cannot express, because a class cannot change an item's type.
+Applications can also declare their own state variants (`syncing:`,
+`stale:`) in the design file, and `loom lint` and `loom lsp` pick them up
+with no extra configuration.
 
 ## Tooling
 

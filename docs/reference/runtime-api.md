@@ -117,6 +117,28 @@ inferred. For the same reason, do not bind onto a loaded item from outside — t
 address the instance that gets replaced. Give the loaded document its own state instead, as
 the scaffolded `HomePage.qml` does with its counter.
 
+### A seam Loader's `source` must not be a binding
+
+Taking the seam means repointing the Loader, and the runtime does that with a plain property
+write. That **destroys any binding on `source`**, permanently — the same rule as
+[a property Loom styles](../styling/limitations.md#property-writes-vs-bindings), for the same
+reason. A router written the obvious way therefore navigates correctly until the first seam
+reload and then silently stops for the rest of the session:
+
+```qml
+// Wrong: works until the first seam reload, then never again.
+Loader { source: pages[currentPage] }
+
+// Right: assign it.
+Loader { id: pageLoader }
+onCurrentPageChanged: pageLoader.source = pages[currentPage] ?? ""
+Component.onCompleted: pageLoader.source = pages[currentPage] ?? ""
+```
+
+This is only a hazard for Loaders that are seams — that is, ones whose `source` is a URL and
+whose contents the reload controller may rebuild. A Loader you never edit behind is unaffected,
+but there is no cost to assigning either way.
+
 ## Scene state across a reload
 
 Whatever a reload rebuilds — the scene or one seam — is destroyed and created again, so the
