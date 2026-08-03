@@ -197,6 +197,25 @@ function(loom_add_application target)
         IMPORT_PATH ${loom_import_paths}
     )
     target_link_libraries("${target}" PRIVATE Qt6::Quick)
+
+    # Loom.Controls, when this loom was built with it. Linked here rather than
+    # left to the application's own target_link_libraries because this function
+    # ships with loom and the application's CMakeLists.txt does not: every
+    # project `loom new` has ever generated has `loom::loom loom::loomplugin`
+    # frozen into a file loom will never edit again. Adding the link here is
+    # what lets `import Loom.Controls` start working in those projects on a loom
+    # upgrade, with no change on their side.
+    #
+    # Guarded because LOOM_BUILD_CONTROLS=OFF is a supported build: a styling-
+    # only loom exports no such target, and the application simply has no
+    # Loom.Controls to import.
+    if(TARGET loom::loomcontrols)
+        target_link_libraries("${target}" PRIVATE
+            loom::loomcontrols
+            loom::loomcontrolsplugin
+        )
+    endif()
+
     loom_enable_hot_reload(
         TARGET "${target}"
         URI "${LOOM_ARG_URI}"

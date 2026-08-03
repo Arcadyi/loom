@@ -9,6 +9,10 @@ option(LOOM_BUILD_TESTS "Build loom tests" ON)
 option(LOOM_BUILD_E2E_TESTS "Build the scaffold-then-build end-to-end tests" ON)
 option(LOOM_BUILD_CLI "Build the loom command-line tool" ON)
 option(LOOM_BUILD_EXAMPLES "Build the loom gallery example" ON)
+# The Loom.Controls component module. Off leaves the styling library exactly as
+# it was -- Quick only, no Quick Controls dependency -- for consumers that want
+# the utility engine and nothing else.
+option(LOOM_BUILD_CONTROLS "Build the Loom.Controls QML component module" ON)
 option(LOOM_WERROR "Treat compiler warnings as errors" OFF)
 option(LOOM_SANITIZE "Build with the address and undefined-behavior sanitizers" OFF)
 # The schema test needs a Python JSON Schema validator and skips without one.
@@ -18,8 +22,19 @@ option(LOOM_STRICT_SCHEMA_TEST "Fail rather than skip when jsonschema is missing
 
 # Network carries the development server and reload transport; QmlPrivate is for
 # src/runtime/statecapture.cpp alone -- see the comment on the loom_runtime link
-# below for why the private API is unavoidable there.
-find_package(Qt6 6.11 REQUIRED COMPONENTS Core Gui Network Qml QmlPrivate Quick)
+# below for why the private API is unavoidable there. QuickControls2 joins only
+# when Loom.Controls is built, because Box derives from Control to inherit its
+# padding and content-sizing rather than reimplementing them.
+#
+# Collected in a variable because the two generated package configs must
+# find_dependency() exactly this set: a consumer resolving the exported targets
+# needs every component the archives were linked against.
+set(LOOM_QT_COMPONENTS Core Gui Network Qml QmlPrivate Quick)
+if(LOOM_BUILD_CONTROLS)
+    list(APPEND LOOM_QT_COMPONENTS QuickControls2)
+endif()
+string(JOIN " " LOOM_QT_COMPONENTS_STR ${LOOM_QT_COMPONENTS})
+find_package(Qt6 6.11 REQUIRED COMPONENTS ${LOOM_QT_COMPONENTS})
 
 qt_standard_project_setup(REQUIRES 6.11)
 
@@ -139,6 +154,78 @@ loom_set_target_defaults(loomplugin)
 # with add_subdirectory.
 add_library(loom::loom ALIAS loom)
 add_library(loom::loomplugin ALIAS loomplugin)
+
+# ---------------------------------------------------------------------------
+# Loom.Controls: the component module. Structure, where everything above is
+# appearance.
+#
+# A separate URI rather than QML_FILES on `Loom`, because QML resolves a type
+# name to the *last* import that provides it. `Row`, `Grid` and `Button` are
+# QtQuick and QtQuick.Controls names, so shipping them under `Loom` would
+# silently re-point every existing `Row { }` in every project that writes
+# `import QtQuick` followed by `import Loom` -- which is every project. A
+# separate URI makes the shadowing opt-in, and the invariant below makes it
+# harmless even then.
+#
+# INVARIANT: every type here whose name collides with a QtQuick or
+# QtQuick.Controls type must *derive* from that type, so the shadowing is always
+# a strict superset and can never take a property away. tst_controls asserts it.
+# ---------------------------------------------------------------------------
+
+if(LOOM_BUILD_CONTROLS)
+    set(loom_controls_qml_files
+        src/controls/Box.qml
+    )
+    # Without an alias the module resource path keeps the source subdirectory --
+    # `:/qt/qml/Loom/Controls/src/controls/Box.qml` -- and the generated qmldir
+    # says so too. Flatten it, the way examples/gallery does, so the resource
+    # path matches the type name.
+    foreach(loom_controls_file IN LISTS loom_controls_qml_files)
+        cmake_path(GET loom_controls_file FILENAME loom_controls_file_name)
+        set_source_files_properties("${loom_controls_file}" PROPERTIES
+            QT_RESOURCE_ALIAS "${loom_controls_file_name}"
+        )
+    endforeach()
+
+    qt_add_library(loomcontrols STATIC)
+    qt_add_qml_module(loomcontrols
+        URI Loom.Controls
+        VERSION 1.0
+        PLUGIN_TARGET loomcontrolsplugin
+        # Same reasoning as the `loom` module above: install(EXPORT) namespaces
+        # the target, so the bare default name does not exist in a consumer's
+        # scope and qt6_import_qml_plugins warns the plugin will not be linked.
+        INSTALLED_PLUGIN_TARGET loom::loomcontrolsplugin
+        CLASS_NAME LoomControlsQmlPlugin
+        # Loom rather than a link dependency on purpose: the components need the
+        # `Lo` attached type and the `Loom` singleton at QML resolution time, not
+        # at link time. Linking loomcontrols against loom would be a cycle, since
+        # loom PUBLIC-links loomcontrols below.
+        DEPENDENCIES QtQuick QtQuick.Controls Loom
+        QML_FILES ${loom_controls_qml_files}
+    )
+    # PUBLIC loom, and never the reverse. The components need `Lo` and the
+    # `Loom` singleton registered to work at all, so anything linking
+    # loomcontrols needs loom too -- and `DEPENDENCIES Loom` above already makes
+    # CMake order loomcontrols after loom. Linking loom against loomcontrols to
+    # get the module "for free" closes that into a cycle CMake rejects for
+    # non-static targets. loom_add_application in cmake/loomFunctions.cmake is
+    # what gets the module into applications instead; see the note there.
+    target_link_libraries(loomcontrols PUBLIC loom loomplugin Qt6::QuickControls2)
+    target_compile_features(loomcontrols PUBLIC cxx_std_20)
+    set_target_properties(loomcontrols PROPERTIES
+        EXPORT_NAME loomcontrols
+        POSITION_INDEPENDENT_CODE ON
+    )
+    set_target_properties(loomcontrolsplugin PROPERTIES
+        EXPORT_NAME loomcontrolsplugin
+        POSITION_INDEPENDENT_CODE ON
+    )
+    loom_set_target_defaults(loomcontrols)
+    loom_set_target_defaults(loomcontrolsplugin)
+    add_library(loom::loomcontrols ALIAS loomcontrols)
+    add_library(loom::loomcontrolsplugin ALIAS loomcontrolsplugin)
+endif()
 
 # ---------------------------------------------------------------------------
 # Development tooling: the framing protocol, the in-application runtime, and the
@@ -368,13 +455,26 @@ foreach(loom_helper IN ITEMS
     loom_resources_2
     loom_resources_3
     loom_qmlcache
+    # Loom.Controls generates the same family. It has QML_FILES where `loom`
+    # has none, so its resource targets are the ones actually carrying the
+    # component sources -- omitting them fails install(EXPORT) at configure
+    # time with an unexported-dependency error, not at build time.
+    loomcontrolsplugin_init
+    loomcontrols_resources_1
+    loomcontrols_resources_2
+    loomcontrols_resources_3
+    loomcontrols_qmlcache
 )
     if(TARGET "${loom_helper}")
         list(APPEND LOOM_GENERATED_HELPER_TARGETS "${loom_helper}")
     endif()
 endforeach()
 
-install(TARGETS loom loomplugin loom_protocol loom_runtime ${LOOM_GENERATED_HELPER_TARGETS}
+if(LOOM_BUILD_CONTROLS)
+    list(APPEND LOOM_EXPORTED_LIBRARIES loomcontrols loomcontrolsplugin)
+endif()
+install(TARGETS loom loomplugin loom_protocol loom_runtime
+    ${LOOM_EXPORTED_LIBRARIES} ${LOOM_GENERATED_HELPER_TARGETS}
     EXPORT loomTargets
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
@@ -579,7 +679,7 @@ configure_file(
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/loomConfig.cmake"
 "# Generated build-tree package for loom. Not installed.
 include(CMakeFindDependencyMacro)
-find_dependency(Qt6 6.11 COMPONENTS Core Gui Network Qml QmlPrivate Quick)
+find_dependency(Qt6 6.11 COMPONENTS ${LOOM_QT_COMPONENTS_STR})
 
 include(\"\${CMAKE_CURRENT_LIST_DIR}/loomTargets.cmake\")
 include(\"\${CMAKE_CURRENT_LIST_DIR}/loomFunctions.cmake\")

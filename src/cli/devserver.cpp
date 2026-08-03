@@ -329,6 +329,13 @@ void DevServer::readClient(QTcpSocket *socket)
     }
 }
 
+// Rewrites the *application's* module qmldir for the bundle. Keyed on
+// m_application.uri, so framework modules -- Loom, Loom.Controls -- are never
+// touched: their `prefer` line survives and their types keep loading from the
+// compiled-in resources. That is deliberate and not an oversight to fix. Hot
+// reload replaces application QML; a framework component changing under a
+// running application would mean the framework and the binary it was compiled
+// against disagreeing, which the bundle has no way to reconcile.
 QByteArray DevServer::developmentQmldir() const
 {
     if (m_buildDirectory.isEmpty())
