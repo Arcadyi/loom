@@ -593,16 +593,20 @@ void ConfigTests::declaredStatesBecomeVariants()
         QStringLiteral("Has unsaved local changes"));
 
     // The whole point: it now parses, so the checker stops reporting it.
-    QVERIFY(LoomStyleCompiler::unknownClasses(QStringLiteral("syncing:border-warning"))
-                .isEmpty());
-    QVERIFY(LoomStyleCompiler::unknownClasses(QStringLiteral("not-syncing:opacity-50"))
-                .isEmpty());
-    QVERIFY(LoomStyleCompiler::unknownClasses(QStringLiteral("group-syncing:bg-surface"))
-                .isEmpty());
+    QVERIFY(
+        LoomStyleCompiler::unknownClasses(QStringLiteral("syncing:border-warning"))
+            .isEmpty());
+    QVERIFY(
+        LoomStyleCompiler::unknownClasses(QStringLiteral("not-syncing:opacity-50"))
+            .isEmpty());
+    QVERIFY(
+        LoomStyleCompiler::unknownClasses(QStringLiteral("group-syncing:bg-surface"))
+            .isEmpty());
     // And an undeclared one is still an error, which is the property that makes
     // the checker worth running at all.
     QCOMPARE(
-        LoomStyleCompiler::unknownClasses(QStringLiteral("synicng:border-warning")).size(),
+        LoomStyleCompiler::unknownClasses(QStringLiteral("synicng:border-warning"))
+            .size(),
         1);
 }
 
@@ -649,8 +653,9 @@ void ConfigTests::reloadDropsStatesTheFileNoLongerDeclares()
         "states": {"syncing": ""}
     })");
     QVERIFY(loom::loadConfig(declaring));
-    QVERIFY(LoomStyleCompiler::unknownClasses(QStringLiteral("syncing:border-warning"))
-                .isEmpty());
+    QVERIFY(
+        LoomStyleCompiler::unknownClasses(QStringLiteral("syncing:border-warning"))
+            .isEmpty());
 
     // reloadConfig, not loadConfig: only the reload path resets, which is the
     // same split every other token family has.
@@ -661,7 +666,8 @@ void ConfigTests::reloadDropsStatesTheFileNoLongerDeclares()
     // existed does not keep matching.
     QCOMPARE(LoomTokenRegistry::instance()->customStateNames(), QStringList());
     QCOMPARE(
-        LoomStyleCompiler::unknownClasses(QStringLiteral("syncing:border-warning")).size(),
+        LoomStyleCompiler::unknownClasses(QStringLiteral("syncing:border-warning"))
+            .size(),
         1);
 }
 

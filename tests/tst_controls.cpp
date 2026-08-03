@@ -4,6 +4,7 @@
 #include <QQmlEngine>
 #include <QQmlProperty>
 #include <QQuickItem>
+#include <QQuickStyle>
 #include <QScopedPointer>
 #include <loom/loom.h>
 
@@ -26,6 +27,17 @@ class ControlsTests : public QObject {
     Q_OBJECT
 
 private slots:
+    // The same style loom::Application settles on for an application whose
+    // platform default cannot be customised, pinned here so these tests assert
+    // on what Loom does rather than on which style the machine running them
+    // happens to default to -- the native macOS and Windows styles replace
+    // neither `background` nor `contentItem`, so under them the two delegate
+    // tests below would be measuring Qt's refusal.
+    void initTestCase()
+    {
+        QQuickStyle::setStyle(QStringLiteral("Basic"));
+    }
+
     void boxTakesPaddingFromAUtility();
     void boxBackgroundTakesAppearanceUtilities();
     void boxImplicitHeightIsContentPlusPadding();
@@ -152,22 +164,27 @@ void ControlsTests::shadowingTypesDeriveFromWhatTheyShadow()
     for (const auto &entry : shadowed) {
         QQmlEngine engine;
         QQmlComponent component(&engine);
-        const QByteArray document = QByteArray("import QtQuick\nimport Loom.Controls\n")
-            + entry.type + " {\n}\n";
+        const QByteArray document =
+            QByteArray("import QtQuick\nimport Loom.Controls\n") + entry.type + " {\n}\n";
         QScopedPointer<QQuickItem> item(createItem(component, document));
         QVERIFY2(item, qPrintable(component.errorString()));
 
         bool derives = false;
-        for (const QMetaObject *meta = item->metaObject(); meta; meta = meta->superClass()) {
+        for (const QMetaObject *meta = item->metaObject(); meta;
+             meta = meta->superClass()) {
             if (qstrcmp(meta->className(), entry.base) == 0) {
                 derives = true;
                 break;
             }
         }
-        QVERIFY2(derives,
-            qPrintable(QStringLiteral("Loom.Controls.%1 shadows a QtQuick type without "
-                                      "deriving from %2")
-                    .arg(QString::fromLatin1(entry.type), QString::fromLatin1(entry.base))));
+        QVERIFY2(
+            derives,
+            qPrintable(QStringLiteral(
+                           "Loom.Controls.%1 shadows a QtQuick type without "
+                           "deriving from %2")
+                           .arg(
+                               QString::fromLatin1(entry.type),
+                               QString::fromLatin1(entry.base))));
     }
 }
 

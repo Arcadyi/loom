@@ -43,8 +43,7 @@ QByteArray loomStatePropertyName(const QString &state)
             capitalise = true;
             continue;
         }
-        name.append(
-            (capitalise ? character.toUpper() : character).toLatin1());
+        name.append((capitalise ? character.toUpper() : character).toLatin1());
         capitalise = false;
     }
     return name;

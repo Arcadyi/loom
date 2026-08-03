@@ -62,9 +62,10 @@ bool LoomStoreRegistry::setValue(const QString &key, const QVariant &value)
         return false;
     if (!isStorable(value)) {
         qCWarning(lcLoomStore).noquote()
-            << "Store:" << key << "was not stored -- only JSON-representable values "
-                                  "survive a reload, and an object reference would "
-                                  "dangle into the replaced scene";
+            << "Store:" << key
+            << "was not stored -- only JSON-representable values "
+               "survive a reload, and an object reference would "
+               "dangle into the replaced scene";
         return false;
     }
     if (m_values.value(key) == value)

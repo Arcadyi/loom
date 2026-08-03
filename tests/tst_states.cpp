@@ -73,7 +73,8 @@ void StateTests::cleanup()
 // onto both a container and its label, because a class string cannot be shared.
 void StateTests::declaredStateViaLoStates()
 {
-    declareStates(R"({"schemaVersion": 2, "states": {"syncing": "has unsaved changes"}})");
+    declareStates(
+        R"({"schemaVersion": 2, "states": {"syncing": "has unsaved changes"}})");
 
     QQmlEngine engine;
     QQmlComponent component(&engine);

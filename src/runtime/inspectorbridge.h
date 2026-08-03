@@ -46,8 +46,8 @@ public:
     }
 
     //! Returns false when the edit could not even be addressed and sent.
-    Q_INVOKABLE bool applyStyleEdit(
-        QObject *item, const QString &oldStyle, const QString &newStyle)
+    Q_INVOKABLE bool
+    applyStyleEdit(QObject *item, const QString &oldStyle, const QString &newStyle)
     {
         return m_controller && m_controller->editStyle(item, oldStyle, newStyle);
     }

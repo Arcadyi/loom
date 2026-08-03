@@ -1010,8 +1010,9 @@ private slots:
             QStringLiteral("item"), QVariant::fromValue(&scratch)));
         QVERIFY(!LoomStoreRegistry::instance()->contains(QStringLiteral("item")));
 
-        QVERIFY(LoomStoreRegistry::instance()->setValue(
-            QStringLiteral("count"), QVariant(7)));
+        QVERIFY(
+            LoomStoreRegistry::instance()->setValue(
+                QStringLiteral("count"), QVariant(7)));
         QCOMPARE(
             LoomStoreRegistry::instance()->value(QStringLiteral("count")).toInt(), 7);
     }
@@ -1101,12 +1102,13 @@ private slots:
             qPrintable(error));
         QCoreApplication::processEvents();
         QCOMPARE(controller.rootObject(), shell); // the seam, not a full reload
-        QTRY_COMPARE(
-            shell->property("shown").toString(), QStringLiteral("first-edited"));
+        QTRY_COMPARE(shell->property("shown").toString(), QStringLiteral("first-edited"));
 
         // And now navigate. This is the assertion that fails if source is bound.
-        QVERIFY(QMetaObject::invokeMethod(
-            shell, "show", Qt::DirectConnection, Q_ARG(QVariant, QStringLiteral("Second"))));
+        QVERIFY(
+            QMetaObject::invokeMethod(
+                shell, "show", Qt::DirectConnection,
+                Q_ARG(QVariant, QStringLiteral("Second"))));
         QTRY_COMPARE(shell->property("shown").toString(), QStringLiteral("second"));
     }
 
@@ -1131,7 +1133,8 @@ private slots:
         // With no development server there is nothing to write to, and the
         // field says so instead of silently swallowing what is typed.
         QCOMPARE(bridge.canEdit(), false);
-        QCOMPARE(bridge.applyStyleEdit(&host, QString(), QStringLiteral("bg-accent")), false);
+        QCOMPARE(
+            bridge.applyStyleEdit(&host, QString(), QStringLiteral("bg-accent")), false);
     }
 
     // What actually goes wrong around a seam, established by measurement after
@@ -1207,8 +1210,7 @@ private slots:
             qPrintable(error));
         QCoreApplication::processEvents();
         QCOMPARE(controller.rootObject(), shell); // the seam was taken
-        QTRY_COMPARE(
-            shell->property("shown").toString(), QStringLiteral("first-edited"));
+        QTRY_COMPARE(shell->property("shown").toString(), QStringLiteral("first-edited"));
 
         // Navigate away and back. The binding re-evaluates, and because
         // Qt.resolvedUrl() resolves against *this document's* base URL -- still

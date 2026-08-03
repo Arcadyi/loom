@@ -635,7 +635,8 @@ void DevServer::handleStyleEdit(QTcpSocket *socket, const QByteArray &payload)
     if (source == m_bundleSources.constEnd()) {
         sendError(
             socket,
-            QStringLiteral("%1 is not a file in this project's QML roots").arg(edit.path));
+            QStringLiteral("%1 is not a file in this project's QML roots")
+                .arg(edit.path));
         return;
     }
 
@@ -643,17 +644,14 @@ void DevServer::handleStyleEdit(QTcpSocket *socket, const QByteArray &payload)
         *source, edit.line, edit.column, edit.oldStyle, edit.newStyle);
     const auto relative = QDir(m_projectRoot).relativeFilePath(*source);
     if (!result.ok) {
-        const auto message = QStringLiteral("%1:%2: %3")
-                                 .arg(relative)
-                                 .arg(edit.line)
-                                 .arg(result.error);
+        const auto message =
+            QStringLiteral("%1:%2: %3").arg(relative).arg(edit.line).arg(result.error);
         emit logMessage(QStringLiteral("style edit refused: ") + message);
         sendError(socket, message);
         return;
     }
-    emit logMessage(QStringLiteral("style edit applied to %1:%2")
-                        .arg(relative)
-                        .arg(edit.line));
+    emit logMessage(
+        QStringLiteral("style edit applied to %1:%2").arg(relative).arg(edit.line));
 }
 
 void DevServer::sendError(QTcpSocket *socket, const QString &message)

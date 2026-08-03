@@ -36,6 +36,15 @@ invent a box model that Qt Quick doesn't have. That draws some hard lines.
   the binding rule below, so `bg-surface` on a Button replaces the style's own
   down/hover colouring; restore it with `hover:`/`pressed:` variants rather than
   expecting both to apply.
+- **That needs a customisable Quick Controls style.** The native macOS and
+  Windows styles draw through the platform and refuse to have `background` or
+  `contentItem` replaced at all, so under them every box utility on a Control —
+  and every type in [`Loom.Controls`](components.md) — is skipped with a
+  warning. `loom::Application` therefore replaces those two platform defaults
+  with Qt's `Basic` style before it loads a scene. An application that names a
+  style itself keeps it: `QT_QUICK_CONTROLS_STYLE`, a `qtquickcontrols2.conf`,
+  or its own `QQuickStyle::setStyle()` after constructing the Application. Host
+  Loom in an engine of your own and the choice is yours to make.
 - **`w-full`/`h-full` copy the parent's size** (kept in sync), they do not
   create a constraint system. `fill` anchors instead, which is usually what you
   want; the two are different mechanisms and must not be combined on one item.

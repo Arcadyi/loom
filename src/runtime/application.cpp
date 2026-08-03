@@ -5,9 +5,11 @@
 #include "inspectorbridge.h"
 
 #include <QByteArray>
+#include <QFile>
 #include <QHostAddress>
 #include <QQmlComponent>
 #include <QQuickItem>
+#include <QQuickStyle>
 #include <QQuickWindow>
 
 namespace loom {
@@ -16,6 +18,41 @@ namespace {
 // Only ever used by a scene that asked for no size at all.
 constexpr int DefaultWindowWidth = 1100;
 constexpr int DefaultWindowHeight = 720;
+
+// The macOS and Windows styles are native: they draw through the platform and
+// refuse to have their `background` and `contentItem` replaced. That is exactly
+// what `bg-*` on any Control writes to, and what every type in Loom.Controls is
+// built from -- so under the default style on those two platforms a styled
+// Button paints the system button, with one warning per type to say so and
+// nothing else to show for the class string. Basic is the style Qt documents as
+// the base for customisation: it ships with every Qt build and paints what the
+// utilities say and nothing more.
+//
+// Only the platform's own default is replaced. An application that named a
+// style named it deliberately, including a native one, so anything set through
+// QT_QUICK_CONTROLS_STYLE or a qtquickcontrols2.conf is left alone -- as is a
+// QQuickStyle::setStyle() call made after this constructor, which is where the
+// generated main.cpp would put one.
+void useACustomisableControlsStyle()
+{
+    if (qEnvironmentVariableIsSet("QT_QUICK_CONTROLS_STYLE"))
+        return;
+    const auto configuration = qEnvironmentVariable(
+        "QT_QUICK_CONTROLS_CONF", QStringLiteral(":/qtquickcontrols2.conf"));
+    if (QFile::exists(configuration))
+        return;
+
+    // name() resolves the style rather than only reporting an earlier
+    // setStyle(), so this is the style the scene would actually be built with.
+    // Overriding it still works: the choice is not final until the first QML
+    // import of QtQuick.Controls, which is a scene away.
+    const QString platformDefault = QQuickStyle::name();
+    if (platformDefault != QLatin1String("macOS")
+        && platformDefault != QLatin1String("Windows")) {
+        return;
+    }
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
+}
 } // namespace
 
 // File scope rather than a local, so tst_runtime can compile it. This is the
@@ -275,7 +312,6 @@ void Application::installInspector()
     if (!targetRoot)
         return;
 
-
     // Owned by the inspector, so it dies with the overlay on every reload and
     // cannot outlive the controller it points at.
     auto *bridge = new InspectorBridge(m_reloadController.get());
@@ -301,6 +337,10 @@ void Application::installInspector()
 Application::Application(int &argc, char **argv)
     : m_application(argc, argv)
 {
+    // Here rather than in run(): an engine initializer is allowed to load QML of
+    // its own, and the style has to be settled before the first import of
+    // QtQuick.Controls, whoever makes it.
+    useACustomisableControlsStyle();
 }
 
 Application::~Application() = default;

@@ -16,10 +16,10 @@ namespace {
 using namespace QQmlJS::AST;
 
 struct Found {
-    bool sawItem = false;      // something is declared at (line, column)
-    bool sawBinding = false;   // ... and it has an Lo.style binding
-    bool literal = false;      // ... whose statement is a single string literal
-    quint32 offset = 0;        // of the literal's *contents*, inside the quotes
+    bool sawItem = false;    // something is declared at (line, column)
+    bool sawBinding = false; // ... and it has an Lo.style binding
+    bool literal = false;    // ... whose statement is a single string literal
+    quint32 offset = 0;      // of the literal's *contents*, inside the quotes
     quint32 length = 0;
 };
 
@@ -151,7 +151,8 @@ Result apply(
     parser.ast()->accept(&visitor);
 
     if (!found.sawItem)
-        return refuse(QStringLiteral("no item is declared at %1:%2").arg(line).arg(column));
+        return refuse(
+            QStringLiteral("no item is declared at %1:%2").arg(line).arg(column));
     if (!found.sawBinding) {
         return refuse(QStringLiteral("the item at %1:%2 has no Lo.style binding")
                           .arg(line)
@@ -181,8 +182,12 @@ Result applyToFile(
     const QString &path, const int line, const int column, const QString &oldStyle,
     const QString &newStyle)
 {
+    // Byte for byte, both ways. QIODevice::Text translates line endings on
+    // Windows, so reading and writing it back through Text rewrote every line
+    // of an LF file as CRLF -- one utility class edited from the inspector, and
+    // the whole file shows as changed in the user's diff.
     QFile source(path);
-    if (!source.open(QIODevice::ReadOnly | QIODevice::Text))
+    if (!source.open(QIODevice::ReadOnly))
         return refuse(QStringLiteral("cannot read %1").arg(path));
     const QString text = QString::fromUtf8(source.readAll());
     source.close();
@@ -196,7 +201,7 @@ Result applyToFile(
     // Atomic: a crash between truncate and write would otherwise leave the user
     // with half a source file, which is a far worse outcome than a refused edit.
     QSaveFile destination(path);
-    if (!destination.open(QIODevice::WriteOnly | QIODevice::Text))
+    if (!destination.open(QIODevice::WriteOnly))
         return refuse(QStringLiteral("cannot write %1").arg(path));
     destination.write(result.updated.toUtf8());
     if (!destination.commit())

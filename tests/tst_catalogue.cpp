@@ -131,7 +131,8 @@ void CatalogueTests::catalogueWidensWithConfig()
     QVERIFY(states.variants.contains(QStringLiteral("syncing")));
     QVERIFY(states.variants.contains(QStringLiteral("not-syncing")));
     QVERIFY(states.variants.contains(QStringLiteral("group-syncing")));
-    QVERIFY(loom::unknownStyleClasses(QStringLiteral("syncing:border-warning")).isEmpty());
+    QVERIFY(
+        loom::unknownStyleClasses(QStringLiteral("syncing:border-warning")).isEmpty());
 }
 
 void CatalogueTests::jsonShape()

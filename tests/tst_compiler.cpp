@@ -604,8 +604,7 @@ void CompilerTests::specificityDepthSaturatesRatherThanWrapping()
 {
     constexpr int unbounded = std::numeric_limits<int>::max();
     const quint64 plain = loomSpecificity(0, unbounded, 0, unbounded, 0);
-    const quint64 oneState =
-        loomSpecificity(0, unbounded, 0, unbounded, LoomHoverState);
+    const quint64 oneState = loomSpecificity(0, unbounded, 0, unbounded, LoomHoverState);
     // Every state bit set, plus a group and a theme: 32 + 60 well past the cap.
     const quint64 saturated =
         loomSpecificity(0, unbounded, 0, unbounded, 0xFFFFFFFFu, false, 60);

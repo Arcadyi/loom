@@ -671,7 +671,8 @@ private slots:
         // the runtime knows it may send the frame at all.
         loom::Bundle bundle;
         QVERIFY(loom::decodeBundle(probe.payloadOf(loom::MessageType::Bundle), bundle));
-        QVERIFY(bundle.capabilities.contains(QString::fromLatin1(loom::CapabilityStyleEdit)));
+        QVERIFY(
+            bundle.capabilities.contains(QString::fromLatin1(loom::CapabilityStyleEdit)));
 
         const loom::StyleEdit edit{
             .path = QStringLiteral("qt/qml/com/example/Test/Main.qml"),
@@ -820,7 +821,8 @@ private slots:
             unstyled, 2, 1, QStringLiteral(""), QStringLiteral("bg-muted"));
         QVERIFY(!result.ok);
         QVERIFY2(
-            result.error.contains(QStringLiteral("no Lo.style")), qPrintable(result.error));
+            result.error.contains(QStringLiteral("no Lo.style")),
+            qPrintable(result.error));
     }
 
     void styleEditWritesAtomicallyAndOnlyInsideTheProject()
@@ -828,12 +830,11 @@ private slots:
         QTemporaryDir project;
         QVERIFY(project.isValid());
         const QString path = project.filePath(QStringLiteral("Main.qml"));
-        const QByteArray original =
-            "import QtQuick\n"
-            "import Loom\n"
-            "Rectangle {\n"
-            "    Lo.style: \"bg-surface\"\n"
-            "}\n";
+        const QByteArray original = "import QtQuick\n"
+                                    "import Loom\n"
+                                    "Rectangle {\n"
+                                    "    Lo.style: \"bg-surface\"\n"
+                                    "}\n";
         QFile file(path);
         QVERIFY(file.open(QIODevice::WriteOnly));
         file.write(original);
@@ -855,6 +856,42 @@ private slots:
         QVERIFY(file.open(QIODevice::ReadOnly));
         QCOMPARE(file.readAll(), written);
         file.close();
+    }
+
+    // The edit is one utility class, and the diff the user reviews afterwards
+    // has to say so. Opening the file in text mode made Windows rewrite every
+    // line of an LF-ended file as CRLF -- a whole-file diff for a one-word
+    // change, and a line-ending flip-flop between the editor and the inspector.
+    void styleEditLeavesTheFilesLineEndingsAlone()
+    {
+        QTemporaryDir project;
+        QVERIFY(project.isValid());
+
+        const QByteArray crlf = "import QtQuick\r\n"
+                                "import Loom\r\n"
+                                "Rectangle {\r\n"
+                                "    Lo.style: \"bg-surface\"\r\n"
+                                "}\r\n";
+        const QByteArray lf = QByteArray(crlf).replace("\r\n", "\n");
+
+        for (const QByteArray &original : {crlf, lf}) {
+            const QString path = project.filePath(
+                original.contains('\r') ? QStringLiteral("Crlf.qml")
+                                        : QStringLiteral("Lf.qml"));
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write(original);
+            file.close();
+
+            const auto result = loom::styleedit::applyToFile(
+                path, 3, 1, QStringLiteral("bg-surface"), QStringLiteral("bg-accent"));
+            QVERIFY2(result.ok, qPrintable(result.error));
+
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            const QByteArray written = file.readAll();
+            file.close();
+            QCOMPARE(written, QByteArray(original).replace("bg-surface", "bg-accent"));
+        }
     }
 };
 

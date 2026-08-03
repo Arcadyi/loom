@@ -588,8 +588,9 @@ bool validateConfigShape(const QJsonObject &root, const QString &label)
         if (!shape.match(name).hasMatch())
             return invalidConfig(
                 label, QStringLiteral("states.") + name,
-                QStringLiteral("must be lower-case letters, digits and dashes, "
-                               "starting with a letter"));
+                QStringLiteral(
+                    "must be lower-case letters, digits and dashes, "
+                    "starting with a letter"));
         // A hard error rather than a precedence rule. parseVariant() asks the
         // built-in table first, so a state named `hover` would compile to the
         // built-in and never match the application's value -- the config would

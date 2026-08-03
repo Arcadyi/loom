@@ -134,7 +134,8 @@ QByteArray encodeDesign(const Design &design);
 bool decodeDesign(const QByteArray &payload, Design &design, QString *error = nullptr);
 
 QByteArray encodeStyleEdit(const StyleEdit &edit);
-bool decodeStyleEdit(const QByteArray &payload, StyleEdit &edit, QString *error = nullptr);
+bool decodeStyleEdit(
+    const QByteArray &payload, StyleEdit &edit, QString *error = nullptr);
 
 bool isSafeBundlePath(const QString &path);
 

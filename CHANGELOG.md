@@ -108,6 +108,17 @@ refer to.
   dependency change. Curing it properly needs a way to resolve a
   bundle-relative path against the active staging directory, which the runtime
   knows and QML cannot yet ask for.
+- `loom::Application` replaces a native Quick Controls style with `Basic`
+  before it loads a scene. macOS and Windows default to a style that refuses to
+  have `background` and `contentItem` replaced, so on those two platforms every
+  box utility on a Control and every type in `Loom.Controls` was skipped with a
+  warning — a styled Button painted the system button and nothing else. A style
+  the application names itself, through `QT_QUICK_CONTROLS_STYLE`, a
+  `qtquickcontrols2.conf` or its own `QQuickStyle::setStyle()`, is left alone.
+- An inspector style edit no longer rewrites the file's line endings. The
+  rewrite opened the source in text mode, so on Windows a one-class edit
+  returned every line of an LF-ended file as CRLF, and the user's diff said the
+  whole file had changed.
 
 **Shared state.** `Store` is a property map whose contents live in a
 process-wide C++ registry rather than in the QML singleton, so they survive the

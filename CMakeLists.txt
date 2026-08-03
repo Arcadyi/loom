@@ -22,17 +22,17 @@ option(LOOM_STRICT_SCHEMA_TEST "Fail rather than skip when jsonschema is missing
 
 # Network carries the development server and reload transport; QmlPrivate is for
 # src/runtime/statecapture.cpp alone -- see the comment on the loom_runtime link
-# below for why the private API is unavoidable there. QuickControls2 joins only
-# when Loom.Controls is built, because Box derives from Control to inherit its
-# padding and content-sizing rather than reimplementing them.
+# below for why the private API is unavoidable there. QuickControls2 is
+# unconditional even though Loom.Controls is not: loom::Application picks the
+# Quick Controls style for every application it starts (see the comment on
+# useACustomisableControlsStyle), and it needs QQuickStyle to do it whether or
+# not this build ships the component module. It costs nothing to require --
+# Qt Quick Controls lives in qtdeclarative, alongside Quick itself.
 #
 # Collected in a variable because the two generated package configs must
 # find_dependency() exactly this set: a consumer resolving the exported targets
 # needs every component the archives were linked against.
-set(LOOM_QT_COMPONENTS Core Gui Network Qml QmlPrivate Quick)
-if(LOOM_BUILD_CONTROLS)
-    list(APPEND LOOM_QT_COMPONENTS QuickControls2)
-endif()
+set(LOOM_QT_COMPONENTS Core Gui Network Qml QmlPrivate Quick QuickControls2)
 string(JOIN " " LOOM_QT_COMPONENTS_STR ${LOOM_QT_COMPONENTS})
 find_package(Qt6 6.11 REQUIRED COMPONENTS ${LOOM_QT_COMPONENTS})
 
@@ -288,6 +288,9 @@ target_link_libraries(loom_runtime
         Qt6::Qml
         Qt6::Quick
     PRIVATE
+        # application.cpp only: QQuickStyle, for the Quick Controls style the
+        # Application settles before it loads a scene.
+        Qt6::QuickControls2
         # statecapture.cpp only: QML-declared properties are not QProperty-backed,
         # so QQmlPropertyPrivate::binding() is the only way to tell a bound
         # property from a stored one before overwriting it.

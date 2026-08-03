@@ -246,7 +246,8 @@ private slots:
             .column = 0,
             .oldStyle = {},
             .newStyle = {}};
-        QVERIFY(!loom::decodeStyleEdit(loom::encodeStyleEdit(noPosition), decoded, &error));
+        QVERIFY(
+            !loom::decodeStyleEdit(loom::encodeStyleEdit(noPosition), decoded, &error));
         QVERIFY(error.contains(QStringLiteral("no source position")));
 
         // The path names a project file, so it gets the same treatment a bundle

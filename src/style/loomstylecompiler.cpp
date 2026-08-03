@@ -1392,10 +1392,13 @@ std::shared_ptr<const LoomCompiledStyle> compile(const QString &style)
                 quint8(
                     std::popcount(
                         parse.variant.groupStateMask | parse.variant.groupStateNotMask))
-                    + quint8(std::popcount(
-                        parse.variant.customMask | parse.variant.customNotMask))
-                    + quint8(std::popcount(
-                        parse.variant.groupCustomMask | parse.variant.groupCustomNotMask))
+                    + quint8(
+                        std::popcount(
+                            parse.variant.customMask | parse.variant.customNotMask))
+                    + quint8(
+                        std::popcount(
+                            parse.variant.groupCustomMask
+                            | parse.variant.groupCustomNotMask))
                     + quint8(!parse.variant.themeName.isEmpty()));
             compiled->usedStates |= rule.stateMask | rule.stateNotMask;
             compiled->usedCustomStates |= rule.customMask | rule.customNotMask;

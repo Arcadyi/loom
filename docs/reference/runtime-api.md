@@ -27,6 +27,14 @@ module URI has one definition rather than being repeated in C++.
 Owns a `QGuiApplication` and a `QQmlApplicationEngine`, loads the entry scene, and
 optionally connects to a development server.
 
+Constructing it also settles the Qt Quick Controls style: where the platform default is a
+native one that cannot be customised — macOS and Windows — it selects `Basic` instead, so
+that `bg-*` on a Control and the `Loom.Controls` types have a `background` and a
+`contentItem` they are allowed to write. Naming a style yourself keeps it, whether through
+`QT_QUICK_CONTROLS_STYLE`, a `qtquickcontrols2.conf`, or a `QQuickStyle::setStyle()` call
+after this constructor. See
+[styling/limitations.md](../styling/limitations.md#semantics-that-differ-from-css).
+
 ### `void enableDevelopmentRuntime(bool enabled = true)`
 
 Allows the runtime to connect to a development server. Without it the application never

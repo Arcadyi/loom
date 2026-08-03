@@ -294,10 +294,10 @@ bool ProjectScaffolder::isValidTypeName(const QString &name, QString *error)
     // valid type name produces a file nothing can refer to.
     static const QRegularExpression shape(QStringLiteral("\\A[A-Z][A-Za-z0-9_]*\\z"));
     if (!shape.match(name).hasMatch()) {
-        return fail(
-            QStringLiteral("'%1' is not a QML type name: start with an upper-case "
-                           "letter and use only letters, digits and underscores")
-                .arg(name));
+        return fail(QStringLiteral(
+                        "'%1' is not a QML type name: start with an upper-case "
+                        "letter and use only letters, digits and underscores")
+                        .arg(name));
     }
     return true;
 }
@@ -337,8 +337,9 @@ bool ProjectScaffolder::addSource(
         // means the resource initializer was dropped at link time rather than
         // anything about the user's project.
         if (error) {
-            *error = QStringLiteral("Could not read the %1 template").arg(
-                page ? QStringLiteral("page") : QStringLiteral("component"));
+            *error =
+                QStringLiteral("Could not read the %1 template")
+                    .arg(page ? QStringLiteral("page") : QStringLiteral("component"));
         }
         return false;
     }

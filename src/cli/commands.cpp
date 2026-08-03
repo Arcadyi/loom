@@ -784,7 +784,8 @@ int Commands::addSource(const QStringList &arguments)
         return reportError(error);
 
     ApplicationDefinition application;
-    if (!manifest.selectApplication(parsed.value(QStringLiteral("app")), application, &error))
+    if (!manifest.selectApplication(
+            parsed.value(QStringLiteral("app")), application, &error))
         return reportError(error);
     if (application.qmlRoots.isEmpty()) {
         return reportError(
