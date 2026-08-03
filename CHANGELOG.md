@@ -51,10 +51,24 @@ configured something before it renders correctly.
   ignores padding assigned after construction, and `Lo.style` only ever writes
   after construction — so `p-4` on a positioner set the property and rendered
   no differently.
-- The gallery no longer binds a seam `Loader`'s `source`. `reloadBoundaries()`
-  repoints a seam with `setProperty()`, which destroys the binding, so under
-  `loom dev` gallery navigation stopped working after the first seam reload —
-  in the example whose job is to demonstrate reloading.
+- The gallery no longer binds a seam `Loader`'s `source`, and the hazard around
+  seams is now documented and pinned by tests. A seam reload leaves the
+  document holding the Loader in the *previous* staging directory, so any URL
+  that document re-resolves points at the pre-edit copy: edit the page you are
+  looking at, navigate away and back, and the change silently reverts.
+  Assigning rather than binding does not cure that — both resolve against the
+  same stale base — but it stops the re-resolve happening spontaneously on any
+  dependency change. Curing it properly needs a way to resolve a
+  bundle-relative path against the active staging directory, which the runtime
+  knows and QML cannot yet ask for.
+
+**Shared state.** `Store` is a property map whose contents live in a
+process-wide C++ registry rather than in the QML singleton, so they survive the
+`clearSingletons()` a full reload performs — the answer to "where does state
+two documents share live", which the seam rule otherwise leaves open. `Router`
+is a thin facade over the same registry, so the current route and its history
+survive a reload too, instead of the application snapping back to its first
+page on every file save.
 
 ## 0.4.0
 

@@ -150,27 +150,45 @@ Two consequences worth knowing:
   (Note that `QJsonValue::fromVariant` maps a `QObject*` to *null* rather than to undefined,
   so a naive JSON check would accept one.)
 
-### A seam Loader's `source` must not be a binding
+### A seam reload leaves the document's URL base behind
 
-Taking the seam means repointing the Loader, and the runtime does that with a plain property
-write. That **destroys any binding on `source`**, permanently — the same rule as
-[a property Loom styles](../styling/limitations.md#property-writes-vs-bindings), for the same
-reason. A router written the obvious way therefore navigates correctly until the first seam
-reload and then silently stops for the rest of the session:
+Taking the seam rebuilds the page and leaves the document that holds the `Loader` alone — which
+is the point, and also the catch. That document was not rebuilt, so it still lives in the
+*previous* staging directory, and every URL it resolves still points there.
+
+So this happens:
+
+1. You edit `HomePage.qml`. The seam reload swaps it in and you see the change.
+2. You navigate to another page and back.
+3. `Qt.resolvedUrl("pages/HomePage.qml")` in `Main.qml` resolves against `Main.qml`'s base — the
+   old directory — and loads the **pre-edit** copy. Your change silently reverts.
+
+The consequence for navigation code is a preference rather than a rule:
 
 ```qml
-// Wrong: works until the first seam reload, then never again.
+// Re-resolves on any dependency change, so the revert can happen at any time.
 Loader { source: pages[currentPage] }
 
-// Right: assign it.
+// Re-resolves only when the application navigates. Prefer this.
 Loader { id: pageLoader }
 onCurrentPageChanged: pageLoader.source = pages[currentPage] ?? ""
 Component.onCompleted: pageLoader.source = pages[currentPage] ?? ""
 ```
 
-This is only a hazard for Loaders that are seams — that is, ones whose `source` is a URL and
-whose contents the reload controller may rebuild. A Loader you never edit behind is unaffected,
-but there is no cost to assigning either way.
+Assigning does not cure the staleness — both forms resolve against the same stale base — it
+only stops it happening spontaneously. Curing it needs a way to resolve a bundle-relative path
+against the *active* staging directory, which the runtime knows and QML has no way to ask for
+yet.
+
+A note on what this is **not**: a property write does not destroy a classic QML binding on
+`Loader.source`, so navigation does not stop working after a seam reload. Only the
+[properties Loom styles](../styling/limitations.md#property-writes-vs-bindings) have that
+behaviour. `tst_runtime` pins both halves.
+
+Files you have not navigated to are unaffected, because a changed file that is not currently
+instantiated makes the controller fall back to a full reload rather than take the seam — after
+which everything is on the new directory again. It is the file you just edited and are looking
+at that can revert.
 
 ## Scene state across a reload
 

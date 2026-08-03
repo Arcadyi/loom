@@ -124,6 +124,8 @@ qt_add_qml_module(loom
         src/style/loomiconprovider.cpp
         src/state/loomstore.h
         src/state/loomstore.cpp
+        src/state/loomrouter.h
+        src/state/loomrouter.cpp
 )
 target_include_directories(loom
     PUBLIC
