@@ -175,6 +175,9 @@ add_library(loom::loomplugin ALIAS loomplugin)
 if(LOOM_BUILD_CONTROLS)
     set(loom_controls_qml_files
         src/controls/Box.qml
+        src/controls/Col.qml
+        src/controls/Grid.qml
+        src/controls/Row.qml
     )
     # Without an alias the module resource path keeps the source subdirectory --
     # `:/qt/qml/Loom/Controls/src/controls/Box.qml` -- and the generated qmldir
