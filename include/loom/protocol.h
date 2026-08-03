@@ -44,7 +44,20 @@ enum class MessageType : quint8 {
     // Design token JSON plus the path it came from, applied in place without
     // rebuilding the scene.
     Design = 6,
+    // Client to server only: rewrite one `Lo.style` literal in the project's
+    // source. The reply is the ordinary Bundle the file watcher produces, or an
+    // Error frame -- both already exist, so no server-to-client type is added
+    // and ProtocolVersion stays where it is.
+    StyleEdit = 7,
 };
+
+// Optional capability names a server advertises in its Bundle frames. A runtime
+// only sends StyleEdit after seeing the matching capability, because takeFrame()
+// treats an unknown type as a *fatal* framing error: a new runtime meeting an
+// older server -- same declared ProtocolVersion, different build, which happens
+// whenever the CLI comes from a package and the application from a checkout --
+// would otherwise have its hot-reload session dropped for the rest of the run.
+inline constexpr char CapabilityStyleEdit[] = "styleEdit";
 
 // Largest design token document the server will send or the runtime accept.
 // Design files are hand-written configuration, not assets; anything approaching
@@ -67,7 +80,33 @@ struct BundleFile {
 struct Bundle {
     QString id;
     QList<BundleFile> files;
+    // Read by key, so a decoder that predates this field ignores it and a
+    // decoder that postdates a server without it sees an empty list. That is
+    // the whole negotiation.
+    QStringList capabilities;
 };
+
+// One `Lo.style` literal, addressed by where its item is *declared* rather than
+// by object identity. Line and column come from QQmlData, so this works for the
+// items that have no `id` -- most styled items -- and it maps directly onto an
+// AST node instead of needing a search. Repeated instances of one delegate share
+// a declaration site, which is correct: rewriting the source once is what the
+// user means.
+struct StyleEdit {
+    // The file's path within the bundle, identical to BundleFile::path, so the
+    // server resolves it by lookup rather than by path arithmetic.
+    QString path;
+    int line = 0;
+    int column = 0;
+    // What the runtime believes the literal currently says. The server refuses
+    // the edit when the file no longer matches, rather than overwriting a change
+    // made in an editor meanwhile.
+    QString oldStyle;
+    QString newStyle;
+};
+
+// Bounds a single edit. Class strings are short; anything near this is not one.
+inline constexpr qsizetype MaximumStyleEditSize = 64 * 1024;
 
 QByteArray encodeFrame(MessageType type, const QByteArray &payload);
 // Returns false both when no complete frame has arrived yet (*error stays
@@ -93,6 +132,9 @@ bool decodeBundle(const QByteArray &payload, Bundle &bundle, QString *error = nu
 
 QByteArray encodeDesign(const Design &design);
 bool decodeDesign(const QByteArray &payload, Design &design, QString *error = nullptr);
+
+QByteArray encodeStyleEdit(const StyleEdit &edit);
+bool decodeStyleEdit(const QByteArray &payload, StyleEdit &edit, QString *error = nullptr);
 
 bool isSafeBundlePath(const QString &path);
 

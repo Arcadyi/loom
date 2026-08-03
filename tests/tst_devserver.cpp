@@ -1,4 +1,5 @@
 #include "devserver.h"
+#include "styleedit.h"
 
 #include <loom/protocol.h>
 
@@ -635,6 +636,225 @@ private slots:
             !rejoin.has(loom::MessageType::Bundle),
             "the server resent a bundle the application said it already had");
         QVERIFY(!rejoin.isDisconnected());
+    }
+
+    // End to end over the socket: the frame the runtime sends, the file the
+    // server rewrites, and the bundle the watcher then pushes back. There is no
+    // success frame by design -- a successful edit is reported by the ordinary
+    // reload path, which is what makes the scene agree with the file on disk.
+    void styleEditOverTheWireRewritesTheProjectAndRebuilds()
+    {
+        QTemporaryDir project;
+        QVERIFY(project.isValid());
+        QVERIFY(QDir().mkpath(project.filePath(QStringLiteral("qml"))));
+        const QString path = project.filePath(QStringLiteral("qml/Main.qml"));
+        QFile main(path);
+        QVERIFY(main.open(QIODevice::WriteOnly));
+        main.write(
+            "import QtQuick\n"
+            "import Loom\n"
+            "Rectangle {\n"
+            "    Lo.style: \"bg-surface\"\n"
+            "}\n");
+        main.close();
+
+        DevServer server(project.path(), testApplication());
+        QString error;
+        QVERIFY2(server.start(&error), qPrintable(error));
+
+        ClientProbe probe(server.port());
+        QVERIFY(probe.waitForConnected());
+        probe.sendHello(server.token(), loom::ProtocolVersion);
+        QTRY_VERIFY_WITH_TIMEOUT(probe.has(loom::MessageType::Bundle), 3000);
+
+        // The server advertises what it accepts on every bundle, which is how
+        // the runtime knows it may send the frame at all.
+        loom::Bundle bundle;
+        QVERIFY(loom::decodeBundle(probe.payloadOf(loom::MessageType::Bundle), bundle));
+        QVERIFY(bundle.capabilities.contains(QString::fromLatin1(loom::CapabilityStyleEdit)));
+
+        const loom::StyleEdit edit{
+            .path = QStringLiteral("qt/qml/com/example/Test/Main.qml"),
+            .line = 3,
+            .column = 1,
+            .oldStyle = QStringLiteral("bg-surface"),
+            .newStyle = QStringLiteral("bg-accent rounded-lg"),
+        };
+        probe.socket.write(
+            loom::encodeFrame(loom::MessageType::StyleEdit, loom::encodeStyleEdit(edit)));
+
+        QTRY_VERIFY_WITH_TIMEOUT(
+            [&] {
+                QFile check(path);
+                return check.open(QIODevice::ReadOnly)
+                    && check.readAll().contains("bg-accent rounded-lg");
+            }(),
+            3000);
+        QVERIFY(!probe.has(loom::MessageType::Error));
+    }
+
+    void styleEditCannotNameAFileOutsideTheProject()
+    {
+        QTemporaryDir project;
+        QVERIFY(project.isValid() && writeProjectQml(project));
+        DevServer server(project.path(), testApplication());
+        QString error;
+        QVERIFY2(server.start(&error), qPrintable(error));
+
+        ClientProbe probe(server.port());
+        QVERIFY(probe.waitForConnected());
+        probe.sendHello(server.token(), loom::ProtocolVersion);
+        QTRY_VERIFY_WITH_TIMEOUT(probe.has(loom::MessageType::Bundle), 3000);
+
+        // Well-formed, and names a file the server never bundled. Only paths
+        // that went into the bundle resolve, so there is nothing to reach.
+        const loom::StyleEdit edit{
+            .path = QStringLiteral("qt/qml/com/example/Test/Elsewhere.qml"),
+            .line = 1,
+            .column = 1,
+            .oldStyle = QStringLiteral("bg-surface"),
+            .newStyle = QStringLiteral("bg-accent"),
+        };
+        probe.socket.write(
+            loom::encodeFrame(loom::MessageType::StyleEdit, loom::encodeStyleEdit(edit)));
+
+        QTRY_VERIFY_WITH_TIMEOUT(probe.has(loom::MessageType::Error), 3000);
+        // Refused, not fatal: the connection stays up so hot reload survives.
+        QVERIFY(!probe.isDisconnected());
+    }
+
+    // The inspector writes to the user's source, so every refusal below is load
+    // bearing. A wrong rewrite is worse than no feature.
+    void styleEditRewritesExactlyOneLiteral()
+    {
+        const QString document = QStringLiteral(
+            "import QtQuick\n"
+            "import Loom\n"
+            "Item {\n"
+            "    Rectangle {\n"
+            "        Lo.style: \"bg-surface rounded-lg\"\n"
+            "    }\n"
+            "    Rectangle {\n"
+            "        Lo.style: \"bg-surface rounded-lg\"\n"
+            "    }\n"
+            "}\n");
+
+        // The second Rectangle, by its declaration site. Two items carry the
+        // identical string, so this also proves the address is the position and
+        // not the text.
+        const auto result = loom::styleedit::apply(
+            document, 7, 5, QStringLiteral("bg-surface rounded-lg"),
+            QStringLiteral("bg-accent rounded-full"));
+        QVERIFY2(result.ok, qPrintable(result.error));
+
+        QVERIFY(result.updated.contains(QStringLiteral("\"bg-surface rounded-lg\"")));
+        QVERIFY(result.updated.contains(QStringLiteral("\"bg-accent rounded-full\"")));
+        QCOMPARE(result.updated.count(QStringLiteral("Lo.style")), 2);
+        // Everything outside the literal is byte-identical, including the
+        // trailing newline and the indentation.
+        QString expected = document;
+        expected.replace(
+            expected.lastIndexOf(QStringLiteral("bg-surface rounded-lg")),
+            QStringLiteral("bg-surface rounded-lg").size(),
+            QStringLiteral("bg-accent rounded-full"));
+        QCOMPARE(result.updated, expected);
+    }
+
+    void styleEditRefusesWhatItCannotRewriteSafely()
+    {
+        const QString computed = QStringLiteral(
+            "import QtQuick\n"
+            "import Loom\n"
+            "Rectangle {\n"
+            "    property bool on: false\n"
+            "    Lo.style: on ? \"bg-accent\" : \"bg-surface\"\n"
+            "}\n");
+        // A ternary is refused rather than half-rewritten: the running scene
+        // reports the evaluated result and cannot say which branch produced it,
+        // so guessing would write a silent bug into the user's source.
+        auto result = loom::styleedit::apply(
+            computed, 3, 1, QStringLiteral("bg-accent"), QStringLiteral("bg-surface"));
+        QVERIFY(!result.ok);
+        QVERIFY2(
+            result.error.contains(QStringLiteral("computed")), qPrintable(result.error));
+
+        const QString plain = QStringLiteral(
+            "import QtQuick\n"
+            "import Loom\n"
+            "Rectangle {\n"
+            "    Lo.style: \"bg-surface\"\n"
+            "}\n");
+
+        // A class the compiler does not know, so the inspector can never write a
+        // file that `loom lint` would then reject.
+        result = loom::styleedit::apply(
+            plain, 3, 1, QStringLiteral("bg-surface"), QStringLiteral("bg-nonsense-9"));
+        QVERIFY(!result.ok);
+        QVERIFY2(
+            result.error.contains(QStringLiteral("unknown utility class")),
+            qPrintable(result.error));
+
+        // The file moved under the running scene.
+        result = loom::styleedit::apply(
+            plain, 3, 1, QStringLiteral("bg-accent"), QStringLiteral("bg-muted"));
+        QVERIFY(!result.ok);
+        QVERIFY2(
+            result.error.contains(QStringLiteral("changed since")),
+            qPrintable(result.error));
+
+        // Nothing is declared there.
+        result = loom::styleedit::apply(
+            plain, 42, 1, QStringLiteral("bg-surface"), QStringLiteral("bg-muted"));
+        QVERIFY(!result.ok);
+        QVERIFY2(
+            result.error.contains(QStringLiteral("no item is declared")),
+            qPrintable(result.error));
+
+        // An item with no Lo.style at all.
+        const QString unstyled = QStringLiteral(
+            "import QtQuick\n"
+            "Rectangle {\n"
+            "    color: \"red\"\n"
+            "}\n");
+        result = loom::styleedit::apply(
+            unstyled, 2, 1, QStringLiteral(""), QStringLiteral("bg-muted"));
+        QVERIFY(!result.ok);
+        QVERIFY2(
+            result.error.contains(QStringLiteral("no Lo.style")), qPrintable(result.error));
+    }
+
+    void styleEditWritesAtomicallyAndOnlyInsideTheProject()
+    {
+        QTemporaryDir project;
+        QVERIFY(project.isValid());
+        const QString path = project.filePath(QStringLiteral("Main.qml"));
+        const QByteArray original =
+            "import QtQuick\n"
+            "import Loom\n"
+            "Rectangle {\n"
+            "    Lo.style: \"bg-surface\"\n"
+            "}\n";
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(original);
+        file.close();
+
+        const auto result = loom::styleedit::applyToFile(
+            path, 3, 1, QStringLiteral("bg-surface"), QStringLiteral("bg-accent"));
+        QVERIFY2(result.ok, qPrintable(result.error));
+
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QByteArray written = file.readAll();
+        file.close();
+        QCOMPARE(written, QByteArray(original).replace("bg-surface", "bg-accent"));
+
+        // A refused edit leaves the file untouched rather than truncated.
+        const auto refused = loom::styleedit::applyToFile(
+            path, 3, 1, QStringLiteral("bg-surface"), QStringLiteral("bg-accent"));
+        QVERIFY(!refused.ok);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.readAll(), written);
+        file.close();
     }
 };
 

@@ -265,6 +265,7 @@ add_library(loom_runtime STATIC
     include/loom/reloadcontroller.h
     src/runtime/application.cpp
     src/runtime/reloadcontroller.cpp
+    src/runtime/inspectorbridge.h
     src/runtime/statecapture.h
     src/runtime/statecapture.cpp
 )
@@ -340,6 +341,8 @@ if(LOOM_BUILD_CLI)
         src/cli/projectmanifest.cpp
         src/cli/projectscaffolder.cpp
         src/cli/stylecheck.cpp
+        src/cli/styleedit.h
+        src/cli/styleedit.cpp
         src/cli/styleintelligence.cpp
         src/cli/styleworkspace.cpp
         src/cli/toolchaindoctor.cpp

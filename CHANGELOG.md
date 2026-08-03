@@ -37,6 +37,32 @@ would have cost.
 `Field` ships using it and a component cannot require the application to have
 configured something before it renders correctly.
 
+**The inspector edits source.** The Ctrl+Shift+I overlay's `Lo.style` line is
+a text field: type a class string, press Return, and the development server
+rewrites the literal in the project's file. Nothing is applied in the running
+scene -- the edit goes to disk, the file watcher rebuilds, and the scene
+updates through the ordinary reload path, so what is on screen always agrees
+with what is in the file. Applying locally first would have hidden every
+refusal below.
+
+Refusals matter more than the feature. The server will not rewrite a binding
+that is not a single string literal, because the inspector reports the
+*evaluated* result and cannot say which branch of a ternary produced it;
+will not write a class the compiler does not recognise, checked with the same
+`unknownStyleClasses()` the linter uses; will not write when the literal no
+longer says what the scene believes, meaning the file moved underneath; and
+cannot name a file outside the project, because only paths the server itself
+put in the bundle resolve. The write is atomic.
+
+`ProtocolVersion` stays at 2. The frame is client-to-server only, so the
+hazard is the other direction: an unknown message type is a *fatal* framing
+error, so a newer runtime meeting an older server would lose hot reload for
+the session by sending one frame. The server therefore advertises
+`"capabilities": ["styleEdit"]` on every `Bundle`, which an older decoder
+ignores and a newer runtime requires before offering the field. Bumping the
+version instead would have stranded every already-built application, because
+`loom::Runtime` is statically linked.
+
 **Fixes.**
 
 - `loomSpecificity()` packs the state depth into six bits. The old worst case

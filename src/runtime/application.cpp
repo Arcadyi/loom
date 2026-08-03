@@ -2,6 +2,8 @@
 #include <loom/loom.h>
 #include <loom/reloadcontroller.h>
 
+#include "inspectorbridge.h"
+
 #include <QByteArray>
 #include <QHostAddress>
 #include <QQmlComponent>
@@ -15,6 +17,183 @@ namespace {
 constexpr int DefaultWindowWidth = 1100;
 constexpr int DefaultWindowHeight = 720;
 } // namespace
+
+// File scope rather than a local, so tst_runtime can compile it. This is the
+// only QML the runtime itself ships, and a syntax error in it would otherwise
+// surface as a warning at runtime that no test ever reads.
+const char *inspectorOverlayQml()
+{
+    static constexpr char qml[] = R"LOOM_INSPECTOR(import QtQuick
+import Loom
+
+Item {
+    id: inspector
+    required property Item targetRoot
+    parent: targetRoot
+    anchors.fill: parent
+    z: 2147483647
+    visible: false
+
+    property Item inspected: null
+    property bool locked: false
+
+    function pick(item, rootX, rootY) {
+        const children = item.children
+        for (let index = children.length - 1; index >= 0; --index) {
+            const child = children[index]
+            if (!child || child === inspector || !child.visible)
+                continue
+            const local = child.mapFromItem(targetRoot, rootX, rootY)
+            if (local.x < 0 || local.y < 0 || local.x > child.width || local.y > child.height)
+                continue
+            const nested = pick(child, rootX, rootY)
+            if (nested)
+                return nested
+            if (Loom.inspect(child).style)
+                return child
+        }
+        return item !== targetRoot && Loom.inspect(item).style ? item : null
+    }
+
+    // Set when the development server accepts source edits. False against a
+    // server that predates the capability, and when there is no server at all.
+    required property var bridge
+
+    function currentStyle() {
+        return inspected ? (Loom.inspect(inspected).style || "") : ""
+    }
+
+    function commit(text) {
+        if (!inspected)
+            return
+        // Nothing is applied here. The server rewrites the file, the file
+        // watcher rebuilds the bundle, and the scene updates through the
+        // ordinary reload path -- so what you see is always what is on disk.
+        // Applying locally first would hide every server-side refusal.
+        bridge.applyStyleEdit(inspected, inspector.currentStyle(), text)
+    }
+
+    function description() {
+        if (!inspected)
+            return "Move over a styled item"
+        const info = Loom.inspect(inspected)
+        let lines = [info.type + (info.objectName ? " #" + info.objectName : ""),
+                     "theme: " + info.theme,
+                     "states: " + (info.states.length ? info.states.join(", ") : "none")]
+        const values = info.resolved || ({})
+        const keys = Object.keys(values).sort()
+        if (keys.length)
+            lines.push("resolved:")
+        for (let index = 0; index < keys.length; ++index)
+            lines.push("  " + keys[index] + ": " + values[keys[index]])
+        return lines.join("\n")
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Shift+I"
+        onActivated: {
+            inspector.visible = !inspector.visible
+            inspector.locked = false
+            if (!inspector.visible)
+                inspector.inspected = null
+        }
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.LeftButton
+        cursorShape: Qt.CrossCursor
+        onPositionChanged: mouse => {
+            if (!inspector.locked)
+                inspector.inspected = inspector.pick(inspector.targetRoot, mouse.x, mouse.y)
+        }
+        onClicked: inspector.locked = !inspector.locked
+    }
+
+    Rectangle {
+        visible: inspector.inspected !== null
+        color: "transparent"
+        border.width: 2
+        border.color: "#7c3aed"
+        x: inspected ? inspected.mapToItem(targetRoot, 0, 0).x : 0
+        y: inspected ? inspected.mapToItem(targetRoot, 0, 0).y : 0
+        width: inspected ? inspected.width : 0
+        height: inspected ? inspected.height : 0
+    }
+
+    Rectangle {
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: 12
+        width: Math.min(460, parent.width - 24)
+        height: Math.min(details.implicitHeight + 24, parent.height - 24)
+        radius: 8
+        color: "#ee111827"
+        border.color: "#7c3aed"
+        border.width: 1
+
+        Column {
+            id: details
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 6
+
+            Row {
+                spacing: 6
+                width: parent.width
+
+                Text {
+                    text: "Lo.style:"
+                    color: "#a5b4fc"
+                    font.family: "monospace"
+                    font.pixelSize: 12
+                }
+
+                // Editable when the server accepts edits, and plainly not when
+                // it does not -- a field that silently swallowed input would be
+                // worse than a read-only one.
+                TextInput {
+                    id: styleField
+                    width: parent.width - 70
+                    color: inspector.bridge.canEdit ? "#f8fafc" : "#94a3b8"
+                    font.family: "monospace"
+                    font.pixelSize: 12
+                    readOnly: !inspector.bridge.canEdit
+                    selectByMouse: true
+                    activeFocusOnPress: inspector.bridge.canEdit
+                    // Rebound whenever the selection changes, and after a reload
+                    // brings the edited value back through the file.
+                    text: inspector.currentStyle()
+                    onAccepted: inspector.commit(text)
+                }
+            }
+
+            Text {
+                width: parent.width
+                color: "#64748b"
+                font.family: "monospace"
+                font.pixelSize: 10
+                visible: inspector.inspected !== null
+                text: inspector.bridge.canEdit
+                    ? "click to lock, Return to write it to the source file"
+                    : "click to lock (read-only: no development server)"
+            }
+
+            Text {
+                width: parent.width
+                color: "#f8fafc"
+                font.family: "monospace"
+                font.pixelSize: 12
+                wrapMode: Text.WrapAnywhere
+                text: inspector.description()
+            }
+        }
+    }
+}
+)LOOM_INSPECTOR";
+    return qml;
+}
 
 void Application::connectDevelopmentRuntime()
 {
@@ -96,117 +275,18 @@ void Application::installInspector()
     if (!targetRoot)
         return;
 
-    static constexpr char inspectorQml[] = R"LOOM_INSPECTOR(import QtQuick
-import Loom
 
-Item {
-    id: inspector
-    required property Item targetRoot
-    parent: targetRoot
-    anchors.fill: parent
-    z: 2147483647
-    visible: false
-
-    property Item inspected: null
-    property bool locked: false
-
-    function pick(item, rootX, rootY) {
-        const children = item.children
-        for (let index = children.length - 1; index >= 0; --index) {
-            const child = children[index]
-            if (!child || child === inspector || !child.visible)
-                continue
-            const local = child.mapFromItem(targetRoot, rootX, rootY)
-            if (local.x < 0 || local.y < 0 || local.x > child.width || local.y > child.height)
-                continue
-            const nested = pick(child, rootX, rootY)
-            if (nested)
-                return nested
-            if (Loom.inspect(child).style)
-                return child
-        }
-        return item !== targetRoot && Loom.inspect(item).style ? item : null
-    }
-
-    function description() {
-        if (!inspected)
-            return "Move over a styled item"
-        const info = Loom.inspect(inspected)
-        let lines = [info.type + (info.objectName ? " #" + info.objectName : ""),
-                     "Lo.style: " + (info.style || "(empty)"),
-                     "theme: " + info.theme,
-                     "states: " + (info.states.length ? info.states.join(", ") : "none")]
-        const values = info.resolved || ({})
-        const keys = Object.keys(values).sort()
-        if (keys.length)
-            lines.push("resolved:")
-        for (let index = 0; index < keys.length; ++index)
-            lines.push("  " + keys[index] + ": " + values[keys[index]])
-        return lines.join("\n")
-    }
-
-    Shortcut {
-        sequence: "Ctrl+Shift+I"
-        onActivated: {
-            inspector.visible = !inspector.visible
-            inspector.locked = false
-            if (!inspector.visible)
-                inspector.inspected = null
-        }
-    }
-
-    MouseArea {
-        anchors.fill: parent
-        hoverEnabled: true
-        acceptedButtons: Qt.LeftButton
-        cursorShape: Qt.CrossCursor
-        onPositionChanged: mouse => {
-            if (!inspector.locked)
-                inspector.inspected = inspector.pick(inspector.targetRoot, mouse.x, mouse.y)
-        }
-        onClicked: inspector.locked = !inspector.locked
-    }
-
-    Rectangle {
-        visible: inspector.inspected !== null
-        color: "transparent"
-        border.width: 2
-        border.color: "#7c3aed"
-        x: inspected ? inspected.mapToItem(targetRoot, 0, 0).x : 0
-        y: inspected ? inspected.mapToItem(targetRoot, 0, 0).y : 0
-        width: inspected ? inspected.width : 0
-        height: inspected ? inspected.height : 0
-    }
-
-    Rectangle {
-        anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.margins: 12
-        width: Math.min(460, parent.width - 24)
-        height: Math.min(details.implicitHeight + 24, parent.height - 24)
-        radius: 8
-        color: "#ee111827"
-        border.color: "#7c3aed"
-        border.width: 1
-
-        Text {
-            id: details
-            anchors.fill: parent
-            anchors.margins: 12
-            color: "#f8fafc"
-            font.family: "monospace"
-            font.pixelSize: 12
-            wrapMode: Text.WrapAnywhere
-            text: inspector.description()
-        }
-    }
-}
-)LOOM_INSPECTOR";
+    // Owned by the inspector, so it dies with the overlay on every reload and
+    // cannot outlive the controller it points at.
+    auto *bridge = new InspectorBridge(m_reloadController.get());
 
     QQmlComponent component(&m_engine);
-    component.setData(inspectorQml, QUrl());
+    component.setData(inspectorOverlayQml(), QUrl());
     QObject *created = component.createWithInitialProperties(
-        {{QStringLiteral("targetRoot"), QVariant::fromValue(targetRoot)}});
+        {{QStringLiteral("targetRoot"), QVariant::fromValue(targetRoot)},
+         {QStringLiteral("bridge"), QVariant::fromValue(bridge)}});
+    if (!created)
+        delete bridge;
     if (!created) {
         qWarning(
             "loom: could not create development inspector: %s",

@@ -78,6 +78,7 @@ signals:
     void nativeFilesChanged();
 
 private:
+    void handleStyleEdit(QTcpSocket *socket, const QByteArray &payload);
     // Replaces three QVariant properties stashed on the socket. Reading those
     // back copied the entire receive buffer twice per readyRead, which is
     // quadratic in bundle size on the one path that carries whole bundles.
@@ -121,6 +122,12 @@ private:
     QHash<QTcpSocket *, ClientState> m_clients;
     QByteArray m_encodedBundle;
     QString m_bundleId;
+    // Bundle resource path to the project file it was read from. Built while
+    // the bundle is, so answering a StyleEdit is a lookup rather than path
+    // arithmetic -- exact across several qmlRoots, and unable to name a file
+    // outside the project because only files that went into the bundle are in
+    // it.
+    QHash<QString, QString> m_bundleSources;
     QString m_designPath;
     // The file's current bytes, re-read on change and sent to clients as they
     // connect, so an application started after an edit gets the same tokens as

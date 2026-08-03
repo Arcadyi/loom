@@ -4,6 +4,7 @@
 
 // Design token reload lands in the process-wide registry, which has no public
 // membership query; the styling tests reach it the same way.
+#include "runtime/inspectorbridge.h"
 #include "state/loomrouter.h"
 #include "state/loomstore.h"
 #include "tokens/loomtokenregistry.h"
@@ -1106,6 +1107,30 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(
             shell, "show", Qt::DirectConnection, Q_ARG(QVariant, QStringLiteral("Second"))));
         QTRY_COMPARE(shell->property("shown").toString(), QStringLiteral("second"));
+    }
+
+    // The development inspector is a QML document written as a C++ string
+    // literal, so nothing compiles it until someone presses Ctrl+Shift+I in a
+    // running application -- at which point a syntax error is a warning on
+    // stderr and an overlay that simply never appears.
+    void inspectorOverlayCompiles()
+    {
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        component.setData(loom::inspectorOverlayQml(), QUrl());
+        // The two properties Application supplies. `bridge` is stubbed rather
+        // than real: this is about the document, not the wiring.
+        loom::InspectorBridge bridge(nullptr);
+        QQuickItem host;
+        QScopedPointer<QObject> overlay(component.createWithInitialProperties(
+            {{QStringLiteral("targetRoot"), QVariant::fromValue(&host)},
+             {QStringLiteral("bridge"), QVariant::fromValue(&bridge)}}));
+        QVERIFY2(overlay, qPrintable(component.errorString()));
+
+        // With no development server there is nothing to write to, and the
+        // field says so instead of silently swallowing what is typed.
+        QCOMPARE(bridge.canEdit(), false);
+        QCOMPARE(bridge.applyStyleEdit(&host, QString(), QStringLiteral("bg-accent")), false);
     }
 
     // What actually goes wrong around a seam, established by measurement after
