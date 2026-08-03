@@ -98,6 +98,7 @@ private slots:
                             contents, QCryptographicHash::Sha256),
                     },
                 },
+            .capabilities = {},
         };
         loom::Bundle decoded;
         QString error;
@@ -182,6 +183,7 @@ private slots:
                             contents, QCryptographicHash::Sha256),
                     },
                 },
+            .capabilities = {},
         };
         loom::Bundle decoded;
         QString error;
@@ -204,6 +206,7 @@ private slots:
                 loom::Bundle{
                     .id = QStringLiteral("duplicate"),
                     .files = {file, file},
+                    .capabilities = {},
                 }),
             decoded, &error));
         QVERIFY(error.contains(QStringLiteral("duplicate")));

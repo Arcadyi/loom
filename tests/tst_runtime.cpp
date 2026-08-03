@@ -38,6 +38,7 @@ loom::Bundle bundleAt(const QString &id, const QString &path, const QByteArray &
                         QCryptographicHash::hash(contents, QCryptographicHash::Sha256),
                 },
             },
+        .capabilities = {},
     };
 }
 
@@ -51,7 +52,7 @@ QByteArray encodedDesign(const QByteArray &tokens, const QString &path = QString
 loom::Bundle
 bundleWithFiles(const QString &id, const QList<QPair<QString, QByteArray>> &files)
 {
-    loom::Bundle bundle{.id = id, .files = {}};
+    loom::Bundle bundle{.id = id, .files = {}, .capabilities = {}};
     for (const auto &[path, contents] : files) {
         bundle.files.append(
             loom::BundleFile{
