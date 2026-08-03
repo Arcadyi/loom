@@ -96,7 +96,10 @@ endif()
 loom_add_test(tst_protocol LINK loom::Protocol)
 
 loom_add_test(tst_runtime
-    LINK loom::Runtime
+    # loomplugin as well as the runtime: loom_runtime links the styling library
+    # but not its static plugin, and the plugin's initializer is what registers
+    # the QML types -- so `import Loom` only resolves here with it named.
+    LINK loom::Runtime loomplugin
     # The design reload tests assert on the token registry, which is internal.
     INCLUDE "${CMAKE_SOURCE_DIR}/src"
     # A private cache root, so a reload test never sweeps or reuses bundle

@@ -115,7 +115,40 @@ document's bindings point at that instance, so replacing it would leave both dan
 is no public way to rebind them, which is the reason a seam has to be declared rather than
 inferred. For the same reason, do not bind onto a loaded item from outside — the binding would
 address the instance that gets replaced. Give the loaded document its own state instead, as
-the scaffolded `HomePage.qml` does with its counter.
+the scaffolded `HomePage.qml` does with its counter, or put genuinely shared state in
+[`Store`](#store-state-that-outlives-the-scene).
+
+### `Store`: state that outlives the scene
+
+State that several documents share has nowhere good to live under the seam rule — it cannot
+be bound across the seam, and pushing it down into one page does not make it shared. `Store`
+is that place:
+
+```qml
+import Loom
+
+Store.route = "settings"
+
+Text { text: Store.route ?? "home" }
+```
+
+It is a `QQmlPropertyMap`, so ordinary bindings track individual keys. Its contents live in a
+process-wide C++ registry rather than in the QML singleton, which is what makes them survive:
+a full reload calls `QQmlEngine::clearSingletons()`, so anything held by a QML singleton dies
+with the scene. The singleton you see is a facade, rebuilt and reseeded from the registry
+after every reload — the same split `Loom` has over its token registry, which is why design
+tokens already survive reloading.
+
+Two consequences worth knowing:
+
+- **It does not participate in scene state capture, and does not need to.** `loomSaveState`
+  and the automatic capture exist to carry values across a teardown; `Store` is never torn
+  down. It also outlives a *failed* reload and a rollback.
+- **Only JSON-representable values are accepted.** A write of a `QObject*` or any other
+  pointer is refused with a warning on the `loom.store` category. It would otherwise outlive
+  the scene it points into and dangle on the next reload, which is exactly what this is for.
+  (Note that `QJsonValue::fromVariant` maps a `QObject*` to *null* rather than to undefined,
+  so a naive JSON check would accept one.)
 
 ### A seam Loader's `source` must not be a binding
 

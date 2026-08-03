@@ -4,6 +4,7 @@
 
 // Design token reload lands in the process-wide registry, which has no public
 // membership query; the styling tests reach it the same way.
+#include "state/loomstore.h"
 #include "tokens/loomtokenregistry.h"
 
 #include <QCryptographicHash>
@@ -933,6 +934,83 @@ private slots:
                 && controller.rootObject()->objectName() == QStringLiteral("restaged"),
             "the unmarked directory was loaded instead of being restaged");
         QVERIFY(isMarkedComplete(cacheRoot + QStringLiteral("/partial")));
+    }
+
+    // The reason Store is a C++ registry with a thin QML facade rather than a
+    // QML singleton: applyBundle() calls clearSingletons() on every full
+    // reload, so a QML singleton's contents die with the scene. statecapture
+    // cannot cover it either -- belongsToScene() excludes anything whose
+    // baseUrl is outside the scene directory, which a framework singleton
+    // always is. This is the answer to "where does shared state live", which
+    // the seam rule otherwise leaves open.
+    void storeSurvivesAFullReload()
+    {
+        LoomStoreRegistry::instance()->clear();
+
+        QQmlApplicationEngine engine;
+        loom::ReloadController controller(engine);
+        QVERIFY2(
+            controller.load(QStringLiteral("com.example.Test"), QStringLiteral("Main")),
+            qPrintable(controller.lastError()));
+        const QByteArray writer = R"(
+            import QtQuick
+            import Loom
+            Item {
+                objectName: "writer"
+                Component.onCompleted: { Store.route = "settings"; Store.visits = 3 }
+            }
+        )";
+        QString error;
+        QVERIFY2(
+            controller.applyBundle(
+                loom::encodeBundle(bundleWithMain(QStringLiteral("writer"), writer)),
+                &error),
+            qPrintable(error));
+        QCoreApplication::processEvents();
+        QCOMPARE(controller.rootObject()->objectName(), QStringLiteral("writer"));
+        QCOMPARE(
+            LoomStoreRegistry::instance()->value(QStringLiteral("route")).toString(),
+            QStringLiteral("settings"));
+
+        // A full reload: different file contents, no Loader seam, so the whole
+        // scene is torn down and the engine's singletons with it.
+        const QByteArray reader = R"(
+            import QtQuick
+            import Loom
+            Item {
+                objectName: "reader"
+                property string seenRoute: Store.route ?? ""
+                property int seenVisits: Store.visits ?? 0
+            }
+        )";
+        QVERIFY2(
+            controller.applyBundle(
+                loom::encodeBundle(bundleWithMain(QStringLiteral("reader"), reader)),
+                &error),
+            qPrintable(error));
+        QCoreApplication::processEvents();
+        QCOMPARE(controller.rootObject()->objectName(), QStringLiteral("reader"));
+        QCOMPARE(
+            controller.rootObject()->property("seenRoute").toString(),
+            QStringLiteral("settings"));
+        QCOMPARE(controller.rootObject()->property("seenVisits").toInt(), 3);
+    }
+
+    // A QObject* would outlive the scene it points into and dangle on the next
+    // reload -- the exact failure the store exists to avoid -- so it is refused
+    // at the write rather than accepted and left to crash somewhere else.
+    void storeRefusesValuesThatCannotSurvive()
+    {
+        LoomStoreRegistry::instance()->clear();
+        QObject scratch;
+        QVERIFY(!LoomStoreRegistry::instance()->setValue(
+            QStringLiteral("item"), QVariant::fromValue(&scratch)));
+        QVERIFY(!LoomStoreRegistry::instance()->contains(QStringLiteral("item")));
+
+        QVERIFY(LoomStoreRegistry::instance()->setValue(
+            QStringLiteral("count"), QVariant(7)));
+        QCOMPARE(
+            LoomStoreRegistry::instance()->value(QStringLiteral("count")).toInt(), 7);
     }
 };
 

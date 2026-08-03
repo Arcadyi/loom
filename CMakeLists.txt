@@ -122,6 +122,8 @@ qt_add_qml_module(loom
         src/style/loomcatalogue.cpp
         src/style/loomiconprovider.h
         src/style/loomiconprovider.cpp
+        src/state/loomstore.h
+        src/state/loomstore.cpp
 )
 target_include_directories(loom
     PUBLIC
@@ -134,6 +136,7 @@ target_include_directories(loom
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/tokens"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/style"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/state"
 )
 target_link_libraries(loom PUBLIC Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
 target_compile_features(loom PUBLIC cxx_std_20)
