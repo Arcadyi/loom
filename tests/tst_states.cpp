@@ -41,6 +41,7 @@ private slots:
     void declaredStateViaLoStates();
     void declaredStateViaTargetProperty();
     void declaredStateRanksWithBuiltinStates();
+    void declaredStateReachesDescendantsThroughAGroup();
     void undeclaredStateInLoStatesWarns();
 
 private:
@@ -147,6 +148,52 @@ void StateTests::declaredStateRanksWithBuiltinStates()
 
     // A state beats a breakpoint at any width, the same way `hover:` does.
     QTRY_COMPARE(item->property("color").value<QColor>(), QColor(0xef, 0x44, 0x44));
+}
+
+// The form the scaffolded project uses, and the reason declared states compose
+// with groups at all: the condition is written once on the container, and
+// anything inside reads it. Without this each descendant would carry its own
+// copy of the same ternary.
+void StateTests::declaredStateReachesDescendantsThroughAGroup()
+{
+    declareStates(R"({"schemaVersion": 2, "states": {"syncing": ""}})");
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(qobject_cast<QQuickItem *>([&] {
+        component.setData(
+            "import QtQuick\nimport Loom\n"
+            "Rectangle {\n"
+            "    property bool dirty: false\n"
+            "    Lo.group: \"card\"\n"
+            "    Lo.states: ({ syncing: dirty })\n"
+            "    Lo.style: \"bg-surface syncing:bg-red-500\"\n"
+            "    Text {\n"
+            "        objectName: \"label\"\n"
+            "        Lo.style: \"text-foreground group-syncing/card:text-red-500\"\n"
+            "    }\n"
+            "}\n",
+            QUrl());
+        return component.create();
+    }()));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QQuickItem *const label = item->findChild<QQuickItem *>(QStringLiteral("label"));
+    QVERIFY(label);
+    // Waited for rather than sampled: the first apply is deferred one event-loop
+    // turn, so reading immediately gets Text's own default instead of
+    // text-foreground.
+    const QColor quiet(0x0f, 0x17, 0x2a);
+    QTRY_COMPARE(label->property("color").value<QColor>(), quiet);
+
+    item->setProperty("dirty", true);
+    // The host schedules its own apply and emits contextChanged, which is what
+    // descendants are connected to -- so this needs no subscription of its own.
+    QTRY_COMPARE(label->property("color").value<QColor>(), QColor(0xef, 0x44, 0x44));
+    QTRY_COMPARE(item->property("color").value<QColor>(), QColor(0xef, 0x44, 0x44));
+
+    item->setProperty("dirty", false);
+    QTRY_COMPARE(label->property("color").value<QColor>(), quiet);
 }
 
 void StateTests::undeclaredStateInLoStatesWarns()
@@ -395,6 +442,11 @@ void StateTests::variantComposition()
     QVERIFY2(item, qPrintable(component.errorString()));
     QTRY_COMPARE(item->property("color").value<QColor>(), QColor(Qt::white));
 
+    // Nudged away first, deliberately. Hover is synthesised from mouse *moves*,
+    // and an earlier test in this process leaves the cursor at (50, 50) --
+    // moving it there again is not a move, delivers no hover, and made this
+    // test fail on roughly half of runs while passing in isolation.
+    QTest::mouseMove(&window, QPoint(5, 5));
     QTest::mouseMove(&window, QPoint(50, 50));
     QTRY_COMPARE(item->property("color").value<QColor>(), QColor(Qt::black));
 

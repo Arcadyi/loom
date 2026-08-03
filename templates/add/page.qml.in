@@ -1,0 +1,39 @@
+pragma ComponentBehavior: Bound
+import Loom
+import Loom.Controls
+import QtQuick
+
+// A page is loaded behind a Loader, which is the seam hot reload rebuilds:
+// editing this file swaps only what is inside that Loader and leaves the
+// window, its size and its position alone.
+//
+// Keep this page's state on this page. A property the window bound to would
+// address the instance a reload replaces; put anything genuinely shared
+// between pages in Loom's `Store` instead.
+Item {
+    id: page
+
+    Box {
+        id: body
+
+        Lo.style: "p-6"
+        width: page.width
+
+        Col {
+            Lo.style: "gap-4"
+            width: body.availableWidth
+
+            Text {
+                Lo.style: "text-foreground text-2xl font-semibold"
+                text: qsTr("@LOOM_TYPE_NAME@")
+            }
+
+            Text {
+                Lo.style: "text-muted text-base"
+                width: body.availableWidth
+                wrapMode: Text.WordWrap
+                text: qsTr("Replace this with the page's content.")
+            }
+        }
+    }
+}

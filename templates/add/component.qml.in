@@ -1,0 +1,41 @@
+pragma ComponentBehavior: Bound
+import Loom
+import Loom.Controls
+import QtQuick
+
+// A Box rather than a Rectangle: `p-4` is real padding here, and the height
+// follows the content instead of the arithmetic a Rectangle would need at
+// every call site.
+//
+// Only built-in utility classes are used, so this file lints clean in a
+// project whose design file defines no recipes of its own. Reach for `@card`
+// and friends once you have them.
+Box {
+    id: root
+
+    property alias title: heading.text
+    property alias body: description.text
+
+    Lo.style: "bg-surface border border-outline rounded-lg p-4"
+
+    Col {
+        Lo.style: "gap-2"
+        width: root.availableWidth
+
+        Text {
+            id: heading
+
+            Lo.style: "text-foreground text-base font-semibold"
+            text: qsTr("@LOOM_TYPE_NAME@")
+        }
+
+        Text {
+            id: description
+
+            Lo.style: "text-muted text-sm"
+            width: root.availableWidth
+            wrapMode: Text.WordWrap
+            text: qsTr("Replace this with the component's content.")
+        }
+    }
+}

@@ -27,6 +27,14 @@ The generated screen is deliberately made from ordinary project components,
 not a framework-owned demo. Replace `HomePage`, copy `FeatureCard`, or strip it
 back as the product takes shape.
 
+```sh
+loom add page Settings      # qml/pages/Settings.qml
+loom add component Badge    # qml/components/Badge.qml
+```
+
+Nothing has to be registered: the QML root is globbed, so a new file is
+compiled in on the next configure.
+
 ## CLion
 
 Open the project directory and let the initial CMake reload finish. The scaffold

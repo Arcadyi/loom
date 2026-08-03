@@ -81,7 +81,13 @@ Item {
             Box {
                 id: hero
 
-                Lo.style: "@card p-6"
+                // `syncing` is declared in design/tokens.json and supplied once
+                // here. Being a group as well as a state is what lets anything
+                // inside react to it without restating the condition -- see the
+                // label beside the button.
+                Lo.group: "hero"
+                Lo.states: ({ syncing: page.count > 0 })
+                Lo.style: "@card p-6 border syncing:border-warning"
                 Layout.fillWidth: true
 
                 ColumnLayout {
@@ -110,10 +116,23 @@ Item {
                             + "design tokens, hot reload, tests, and editor tooling.")
                     }
 
-                    Button {
+                    RowLayout {
                         Layout.topMargin: Loom.space.s2
-                        text: qsTr("Count: %1").arg(page.count)
-                        onClicked: page.count += 1
+                        spacing: Loom.space.s3
+
+                        Button {
+                            text: qsTr("Count: %1").arg(page.count)
+                            onClicked: page.count += 1
+                        }
+
+                        // Reads the card's state through the group, so the
+                        // condition is written once. Without it this would be
+                        // the same ternary, copied.
+                        Text {
+                            Lo.style: "text-warning text-sm hidden"
+                                + " group-syncing/hero:visible"
+                            text: qsTr("unsaved changes")
+                        }
                     }
                 }
             }

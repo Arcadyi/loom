@@ -1,11 +1,12 @@
 # The `loom` command
 
-One binary, fourteen subcommands. `loom <command> --help` prints the same
+One binary, fifteen subcommands. `loom <command> --help` prints the same
 information as the reference below.
 
 | Command | Does |
 | --- | --- |
 | [`loom new`](#loom-new) | Scaffold a styled Qt/QML application |
+| [`loom add`](#loom-add) | Add a page or component to an existing project |
 | [`loom init`](#loom-init) | Add a `loom.json` to a project that already has CMake |
 | [`loom doctor`](#loom-doctor) | Check the toolchain and both halves of the package |
 | [`loom setup`](#loom-setup) | Print the remaining setup steps |
@@ -88,6 +89,43 @@ is refused rather than written out to fail later at build time.
 `--ci github` currently emits a workflow with a deliberate `TODO` in its
 *Install loom* step, because loom has no published release to install from. The
 generated workflow fails until you fill that step in, and the command says so.
+
+## `loom add`
+
+```
+loom add <page|component> <Name> [--app name]
+```
+
+Writes one QML file into the project you are standing in, following the layout
+`loom new` generates:
+
+```console
+$ loom add page Settings
+created qml/pages/Settings.qml
+no CMake change is needed: the QML root is globbed on the next configure.
+
+$ loom add component Badge
+created qml/components/Badge.qml
+```
+
+`Name` is a QML type name, and the file is named after it. It has to start with
+an upper-case letter — QML resolves a component from its file name, so a
+lower-case one is not addressable as a type at all, and the command refuses
+rather than writing a file nothing can refer to.
+
+**Nothing is registered anywhere.** `loom_add_application` globs `QML_ROOT` with
+`CONFIGURE_DEPENDS`, so a new file is compiled into the module on the next
+configure without being listed. The command says so on every run, because the
+absence of a registration step is the sort of thing people go looking for.
+
+The generated sources use only built-in utility classes, so they lint clean in a
+project whose design file defines no recipes of its own. They are a starting
+point, not a framework-owned type: edit or delete them freely.
+
+An existing file is never overwritten — this runs against a project you are
+working in, and overwriting is the one outcome that loses work. `--app` selects
+the application in a multi-application project; the file lands under that
+application's first `qmlRoot`.
 
 ## `loom init`
 

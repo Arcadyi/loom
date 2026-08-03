@@ -173,6 +173,13 @@ if(TARGET loom_cli)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/schema_test.cmake"
     )
     add_test(
+        NAME loom_cli_add
+        COMMAND "${CMAKE_COMMAND}"
+            "-DLOOM_EXE=$<TARGET_FILE:loom_cli>"
+            "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/added-to"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_add_test.cmake"
+    )
+    add_test(
         NAME loom_cli_init
         COMMAND "${CMAKE_COMMAND}"
             "-DLOOM_EXE=$<TARGET_FILE:loom_cli>"

@@ -12,6 +12,7 @@ public:
 
 private:
     int createProject(const QStringList &arguments);
+    int addSource(const QStringList &arguments);
     int initializeProject(const QStringList &arguments);
     int doctor(const QStringList &arguments);
     int setup(const QStringList &arguments);

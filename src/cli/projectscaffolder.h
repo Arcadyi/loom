@@ -26,4 +26,29 @@ public:
     static bool create(
         const QString &name, const QString &destination, const Options &options,
         QString *error = nullptr);
+
+    // What `loom add` can generate into an existing project. Each maps to one
+    // template and one conventional subdirectory of the QML root.
+    enum class SourceKind {
+        Page,
+        Component,
+    };
+
+    // A QML type name, which is what the file is named after. Must start with
+    // an upper-case letter: QML resolves a component from its file name, so a
+    // lower-case one is not addressable as a type at all.
+    static bool isValidTypeName(const QString &name, QString *error = nullptr);
+
+    // Writes one source file under `qmlRoot` and reports where it landed.
+    //
+    // Deliberately never touches CMake. loom_add_application globs QML_ROOT
+    // with CONFIGURE_DEPENDS, so a new file is picked up on the next configure
+    // without anything being registered -- which is what keeps this a pure
+    // creation with nothing to undo if it is unwanted.
+    //
+    // Refuses rather than overwrites: this runs against a project someone is
+    // working in.
+    static bool addSource(
+        SourceKind kind, const QString &typeName, const QString &qmlRoot,
+        QString *createdPath = nullptr, QString *error = nullptr);
 };

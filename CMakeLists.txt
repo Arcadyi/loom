@@ -369,6 +369,7 @@ if(LOOM_BUILD_CLI)
     target_compile_definitions(loom_cli_core PUBLIC
         LOOM_VERSION_STR="${PROJECT_VERSION}"
         LOOM_TEMPLATE_DIR=":/loom/templates/app"
+        LOOM_ADD_TEMPLATE_DIR=":/loom/templates/add"
         # Where loomConfig.cmake sits relative to the install prefix, so the CLI
         # can find its own CMake package and pass it to generated projects.
         # Baked in because CMAKE_INSTALL_LIBDIR may be lib, lib64 or a
@@ -405,6 +406,18 @@ if(LOOM_BUILD_CLI)
             templates/app/README.md.in
             templates/app/src/main.cpp.in
             templates/app/tests/tst_smoke.cpp.in
+    )
+
+    # The sources `loom add` writes into an existing project. A separate
+    # resource prefix rather than more files under templates/app, because
+    # `loom new` copies that tree wholesale and would emit these as project
+    # files.
+    qt_add_resources(loom_cli_core "loom_add_templates"
+        PREFIX "/loom/templates/add"
+        BASE "${CMAKE_CURRENT_SOURCE_DIR}/templates/add"
+        FILES
+            templates/add/component.qml.in
+            templates/add/page.qml.in
     )
 
     # The library target is already named `loom`, so the executable cannot be.

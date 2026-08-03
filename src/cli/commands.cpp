@@ -589,6 +589,8 @@ int Commands::execute(const QStringList &arguments)
     const auto tail = arguments.sliced(1);
     if (command == QStringLiteral("new"))
         return createProject(tail);
+    if (command == QStringLiteral("add"))
+        return addSource(tail);
     if (command == QStringLiteral("init"))
         return initializeProject(tail);
     if (command == QStringLiteral("doctor"))
@@ -724,6 +726,88 @@ int Commands::createProject(const QStringList &arguments)
                   "loom has no published release to pin, so you must supply the "
                   "install step yourself.\n";
     }
+    return cli::Success;
+}
+
+int Commands::addSource(const QStringList &arguments)
+{
+    const CommandSpec spec{
+        .name = QStringLiteral("add"),
+        .summary = QStringLiteral("Add a page or component to this project."),
+        .usage = QStringLiteral("loom add <page|component> <Name> [--app name]"),
+        .options =
+            {
+                {QStringLiteral("app"), QStringLiteral("name"),
+                 QStringLiteral(
+                     "Which application to add to, in a multi-application "
+                     "project (default: the manifest's).")},
+            },
+        .minimumPositional = 2,
+        .maximumPositional = 2,
+    };
+    ParsedCommand parsed;
+    switch (cli::parseCommand(spec, arguments, parsed)) {
+    case ParseOutcome::HelpPrinted:
+        return cli::Success;
+    case ParseOutcome::Rejected:
+        return cli::UsageError;
+    case ParseOutcome::Ready:
+        break;
+    }
+    applyVerbosity(parsed);
+
+    const auto kindName = parsed.positional().at(0);
+    ProjectScaffolder::SourceKind kind{};
+    if (kindName == QStringLiteral("page")) {
+        kind = ProjectScaffolder::SourceKind::Page;
+    } else if (kindName == QStringLiteral("component")) {
+        kind = ProjectScaffolder::SourceKind::Component;
+    } else {
+        return cli::reportUsageError(
+            spec,
+            QStringLiteral("unknown kind '%1'; expected 'page' or 'component'")
+                .arg(kindName));
+    }
+
+    const auto typeName = parsed.positional().at(1);
+    QString error;
+    if (!ProjectScaffolder::isValidTypeName(typeName, &error))
+        return cli::reportUsageError(spec, error);
+
+    // Deliberately not resolveProjectContext(): that resolves a build target
+    // and refuses an application whose platforms do not list it. Writing a
+    // source file has nothing to do with any target, and failing on one would
+    // be a puzzle rather than a diagnostic.
+    QString manifestPath;
+    ProjectManifest manifest;
+    if (!loadCurrentProject(manifestPath, manifest, &error))
+        return reportError(error);
+
+    ApplicationDefinition application;
+    if (!manifest.selectApplication(parsed.value(QStringLiteral("app")), application, &error))
+        return reportError(error);
+    if (application.qmlRoots.isEmpty()) {
+        return reportError(
+            QStringLiteral("application '%1' declares no qmlRoots to add to")
+                .arg(application.target));
+    }
+
+    // The first root: it is the one loom_add_application is given, and the one
+    // `loom new` fills. A project with several has chosen a layout this command
+    // has no way to guess between.
+    const QString projectRoot = QFileInfo(manifestPath).absolutePath();
+    const QString qmlRoot = QDir(projectRoot).filePath(application.qmlRoots.constFirst());
+
+    QString created;
+    if (!ProjectScaffolder::addSource(kind, typeName, qmlRoot, &created, &error))
+        return reportError(error);
+
+    QTextStream out(stdout);
+    out << "created " << QDir(projectRoot).relativeFilePath(created) << '\n';
+    // Said explicitly because the alternative -- silence -- reads as "you have
+    // probably forgotten to register this somewhere".
+    out << "no CMake change is needed: the QML root is globbed on the next "
+           "configure.\n";
     return cli::Success;
 }
 
@@ -1801,6 +1885,8 @@ void Commands::printHelp() const
            "Usage: loom <command> [options]\n\n"
            "Commands:\n"
            "  new <name>  Create a Qt/QML application\n"
+           "  add <kind> <Name>\n"
+           "              Add a page or component to this project\n"
            "  init        Add a loom manifest to an existing CMake project\n"
            "  doctor      Check the selected platform toolchain\n"
            "  setup       Show the confirmed setup plan\n"
