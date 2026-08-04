@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+**The examples use the framework.** `Loom.Controls` shipped `Box`, `Field`,
+`Button` and `Grid`, and the gallery went on using none of them: 8 files, one
+import of the module, two of its types. It kept the Rectangle + Text +
+MouseArea triple that `Button`'s own docstring names as its reason to exist,
+and reached for `spacing: Loom.space.sN` twenty times against `gap-*` -- a gap
+a comment in `tst_controls` had already remarked on with nothing to stop it.
+
+Migrated: navigation to `Router` + `RouteView` (two index-aligned arrays, an
+integer and an imperative setter, replaced by one list), the hand-wired
+`Flickable` to `Scroll` in both the gallery and the app template, twenty
+`spacing:` assignments to `gap-*`, seven muted-caption `Text` items to `Label`,
+five copies of one card shell to a `@state-card` recipe, and the template's
+unnamed `Item { Layout.fillWidth: true }` to `Spacer`.
+
+`loom_dogfood` keeps it that way, banning the constructions the components
+replace and requiring the module to actually be imported.
+
+**Not migrated, deliberately:** `StatesPage`'s Rectangle + Text + MouseArea
+cards. They look like the triple `Button` replaces and are not -- the page
+exists to demonstrate `hover:`, `pressed:`, `focus:` and `disabled:` on plain
+items, and replacing them with a control would delete what it teaches. That
+distinction is the sort of thing only migrating actually surfaces.
+
 **`RouteView`.** The rendering half `Router` never had. `Router` has held the
 route, its params and the history since 0.4, surviving a reload because it
 lives in the process-wide store -- and it had no documentation, no example and

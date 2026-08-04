@@ -1154,11 +1154,22 @@ void ControlsTests::routeViewResolvesRoutesAndFallsBack()
         router, "push", Q_ARG(QString, QStringLiteral("two")),
         Q_ARG(QVariantMap, QVariantMap{})));
     QTRY_COMPARE(loader->property("source").toUrl().toString(), two);
+    // Asserting on `source` alone would pass for a URL that resolves to
+    // nothing: a Loader that cannot find its file leaves `item` null and says
+    // nothing about it, which is how a wrongly-resolved relative path stays
+    // invisible. Check what actually loaded.
+    QTRY_VERIFY(loader->property("item").value<QObject *>());
+    QCOMPARE(
+        loader->property("item").value<QObject *>()->property("tag").toString(),
+        QStringLiteral("two"));
 
     QVERIFY(QMetaObject::invokeMethod(
         router, "push", Q_ARG(QString, QStringLiteral("nope")),
         Q_ARG(QVariantMap, QVariantMap{})));
     QTRY_COMPARE(loader->property("source").toUrl().toString(), one);
+    QTRY_COMPARE(
+        loader->property("item").value<QObject *>()->property("tag").toString(),
+        QStringLiteral("one"));
 }
 
 // The property the whole design turns on. ReloadController::reloadBoundaries()

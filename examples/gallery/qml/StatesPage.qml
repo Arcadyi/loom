@@ -1,25 +1,26 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Loom
+import Loom.Controls
 
 Column {
-    spacing: Loom.space.s3
+    Lo.style: "gap-3"
 
     SectionTitle {
         text: qsTr("Interaction states")
     }
 
-    Text {
+    Label {
         Lo.style: "text-muted text-sm"
         text: qsTr("Hover, press, focus and disable these cards; every change "
             + "is a variant in the Lo.style string.")
     }
 
     Row {
-        spacing: Loom.space.s4
+        Lo.style: "gap-4"
 
         Rectangle {
-            Lo.style: "bg-surface border border-outline rounded-lg w-56 h-20 transition-colors"
+            Lo.style: "@state-card"
                 + " hover:bg-surface-alt hover:border-accent"
 
             Text {
@@ -43,7 +44,7 @@ Column {
 
             property int clicks: 0
 
-            Lo.style: "bg-surface border border-outline rounded-lg w-56 h-20 transition-colors"
+            Lo.style: "@state-card"
                 + " hover:shadow-md pressed:bg-blue-100"
 
             Text {
@@ -59,10 +60,10 @@ Column {
     }
 
     Row {
-        spacing: Loom.space.s4
+        Lo.style: "gap-4"
 
         Rectangle {
-            Lo.style: "bg-surface border border-outline rounded-lg w-56 h-20 transition-colors"
+            Lo.style: "@state-card"
                 + " focus:border-accent focus:bg-blue-50 dark:focus:bg-slate-800"
             activeFocusOnTab: true
 
@@ -80,7 +81,7 @@ Column {
         Rectangle {
             id: disableCard
 
-            Lo.style: "bg-surface border border-outline rounded-lg w-56 h-20 transition-colors"
+            Lo.style: "@state-card"
                 + " disabled:opacity-40"
             enabled: false
 
@@ -91,7 +92,7 @@ Column {
         }
 
         Rectangle {
-            Lo.style: "bg-surface border border-outline rounded-lg w-56 h-20 transition-colors"
+            Lo.style: "@state-card"
                 + " hover:bg-surface-alt"
 
             Text {
@@ -111,7 +112,7 @@ Column {
         text: qsTr("MouseArea-backed pressed state")
     }
 
-    Text {
+    Label {
         Lo.style: "text-muted text-sm"
         text: qsTr("The MouseArea's own pressed property drives the variant; "
             + "no handler is injected.")

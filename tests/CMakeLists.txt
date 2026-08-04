@@ -233,6 +233,15 @@ if(TARGET loom_cli)
             "-DCONTROLS_DIR=${CMAKE_SOURCE_DIR}/src/controls"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/docs_types_test.cmake"
     )
+    # The gallery went on writing by hand what Loom.Controls exists to replace,
+    # for a whole release. This is what stops it drifting back.
+    add_test(
+        NAME loom_dogfood
+        COMMAND "${CMAKE_COMMAND}"
+            "-DGALLERY_DIR=${CMAKE_SOURCE_DIR}/examples/gallery/qml"
+            "-DTEMPLATE_DIR=${CMAKE_SOURCE_DIR}/templates"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/dogfood_test.cmake"
+    )
     # The gallery is the framework's own showcase; it ships 61 Lo.style
     # literals that nothing checked until now.
     add_test(

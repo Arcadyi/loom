@@ -14,14 +14,14 @@ Column {
         "50", "100", "200", "300", "400", "500", "600", "700", "800", "900", "950"
     ]
 
-    spacing: Loom.space.s3
+    Lo.style: "gap-3"
 
     SectionTitle {
         text: qsTr("Color palette")
     }
 
     Column {
-        spacing: Loom.space.s0_5
+        Lo.style: "gap-0.5"
 
         Repeater {
             model: page.hues
@@ -31,7 +31,7 @@ Column {
 
                 required property string modelData
 
-                spacing: Loom.space.s0_5
+                Lo.style: "gap-0.5"
 
                 Text {
                     Lo.style: "text-muted text-xs"
@@ -59,7 +59,7 @@ Column {
     }
 
     Column {
-        spacing: Loom.space.s1
+        Lo.style: "gap-1"
 
         Repeater {
             model: ["xs", "sm", "base", "lg", "xl", "2xl", "3xl", "4xl"]
@@ -79,7 +79,7 @@ Column {
     }
 
     Row {
-        spacing: Loom.space.s6
+        Lo.style: "gap-6"
 
         Repeater {
             model: ["none", "sm", "md", "lg", "xl", "2xl", "full"]
@@ -89,7 +89,7 @@ Column {
 
                 required property string modelData
 
-                spacing: Loom.space.s1
+                Lo.style: "gap-1"
 
                 Rectangle {
                     Lo.style: "bg-accent size-14 rounded-" + radiusSample.modelData
@@ -104,7 +104,7 @@ Column {
     }
 
     Row {
-        spacing: Loom.space.s8
+        Lo.style: "gap-8"
 
         Repeater {
             model: ["sm", "base", "md", "lg", "xl", "2xl"]
@@ -114,7 +114,7 @@ Column {
 
                 required property string modelData
 
-                spacing: Loom.space.s1
+                Lo.style: "gap-1"
 
                 Rectangle {
                     Lo.style: "bg-surface rounded-md size-14 shadow-"

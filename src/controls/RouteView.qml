@@ -47,6 +47,18 @@ Item {
     /*!
         Route name to QML file. A plain map rather than a list of objects,
         because a route is looked up far more often than it is enumerated.
+
+        **Wrap relative paths in `Qt.resolvedUrl()`.** A relative string
+        assigned to a url property resolves against the file that does the
+        assigning -- which is this one, inside the Loom.Controls module, and
+        nowhere near your pages. Resolving in the document that names them is
+        the only place the answer can be right. Absolute URLs need nothing.
+
+        \qml
+        RouteView {
+            routes: ({ "home": Qt.resolvedUrl("HomePage.qml") })
+        }
+        \endqml
     */
     property var routes: ({})
 
@@ -55,6 +67,13 @@ Item {
 
     //! The Loader, for a call site that needs `item` or `status`.
     readonly property alias loader: loader
+
+    // Taken from whatever is loaded, so a RouteView can be the content of a
+    // Scroll -- `width: parent.width; height: implicitHeight` -- as well as a
+    // full-window seam with `Lo.style: "fill"`. Without these it is an Item
+    // with no size of its own, which is only ever right for the second case.
+    implicitWidth: loader.implicitWidth
+    implicitHeight: loader.implicitHeight
 
     function resolve(): url {
         const name = Router.route;
