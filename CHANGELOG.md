@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+**Go-to-definition into the design file.** Ctrl-click a class naming a token
+your project defined, or an `@recipe`, and land on the line that declares it.
+
+Nothing in the editor pointed at the design file before this, which is the
+likeliest reason the gallery defined two recipes and reached for one of them in
+one file. The key is resolved by compiling the class and reading the registry
+key the rule carries -- the same lookup the runtime does -- so variants are
+correctly ignored as conditions rather than names.
+
+It answers only for names the project declares. A built-in token lives in loom
+itself, so the request is forwarded to `qmlls` rather than swallowed. A colour
+written as a nested hue never contains its own flat key, so `bg-brand-500`
+lands on `brand`; that is where the value is, and saying so is better than
+saying nothing.
+
 **The examples use the framework.** `Loom.Controls` shipped `Box`, `Field`,
 `Button` and `Grid`, and the gallery went on using none of them: 8 files, one
 import of the module, two of its types. It kept the Rectangle + Text +

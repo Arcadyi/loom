@@ -331,7 +331,15 @@ to Qt's `qmlls` and adds these features inside literal portions of `Lo.style`:
 - utility and chained-variant completion, including project-defined tokens;
 - live unknown-class diagnostics and confidence-gated replacement fixes;
 - hover descriptions with resolved token values and variant conditions;
-- background, text, and border color previews, including `/opacity` modifiers.
+- background, text, and border color previews, including `/opacity` modifiers;
+- **go-to-definition** into the design file, for a class naming a token your
+  project defined and for `@recipe`.
+
+Go-to-definition answers only for names the *project* declares; a built-in
+token lives in loom itself, so the request is forwarded to `qmlls` rather than
+swallowed. A colour written as a nested hue — `"brand": { "500": ... }` — never
+contains its own flat key anywhere in the file, so `bg-brand-500` lands on
+`brand`, which is where the value is declared.
 
 Configure an editor that accepts a command plus arguments to run `loom lsp`.
 Anything after `--` goes to the real `qmlls`, so its build and import

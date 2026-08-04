@@ -478,6 +478,65 @@ QString StyleWorkspace::arbitraryValuePolicy() const
     return LoomTokenRegistry::instance()->arbitraryValuePolicy();
 }
 
+namespace {
+
+// The design-file key a class names. Variants are conditions, not names, so
+// only the last segment matters; `@card` names a recipe directly; everything
+// else is resolved by compiling the class and reading the registry key the
+// rule carries, which is the same lookup the runtime does.
+QString designKeyFor(const QString &klass)
+{
+    const qsizetype lastColon = klass.lastIndexOf(QLatin1Char(':'));
+    const QString bare =
+        lastColon < 0 ? klass : klass.sliced(lastColon + 1);
+    if (bare.startsWith(QLatin1Char('@')))
+        return bare.sliced(1);
+
+    const auto compiled = LoomStyleCompiler::compile(bare);
+    for (const auto &rule : compiled->rules) {
+        if (!rule.key.isEmpty())
+            return rule.key;
+    }
+    return {};
+}
+
+} // namespace
+
+StyleWorkspace::Definition StyleWorkspace::definition(const QString &klass) const
+{
+    const auto state = m_projects.constFind(m_activeKey);
+    if (state == m_projects.constEnd() || state->designPath.isEmpty()
+        || state->lastValidDesign.isEmpty()) {
+        return {};
+    }
+
+    const QString key = designKeyFor(klass);
+    if (key.isEmpty())
+        return {};
+
+    const QString text = QString::fromUtf8(state->lastValidDesign);
+    qsizetype at = text.indexOf(QLatin1Char('"') + key + QLatin1Char('"'));
+    if (at < 0) {
+        // A colour written as a nested hue -- "brand": { "500": ... } -- never
+        // contains its own flat key. Landing on the hue is the useful answer,
+        // and the honest one: that is where the value is declared.
+        const qsizetype dash = key.lastIndexOf(QLatin1Char('-'));
+        if (dash <= 0)
+            return {};
+        const QString hue = key.first(dash);
+        at = text.indexOf(QLatin1Char('"') + hue + QLatin1Char('"'));
+        if (at < 0)
+            return {};
+    }
+
+    Definition result;
+    result.path = state->designPath;
+    const qsizetype lineStart = text.lastIndexOf(QLatin1Char('\n'), at) + 1;
+    result.line = int(text.first(at).count(QLatin1Char('\n')));
+    result.column = int(at - lineStart);
+    return result;
+}
+
 ClassMetadata StyleWorkspace::metadata(const QString &klass) const
 {
     ClassMetadata metadata;

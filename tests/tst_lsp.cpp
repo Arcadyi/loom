@@ -24,6 +24,7 @@ private slots:
     void documentReadsMultiLineTemplateLiterals();
     void incrementalChangesHonorUtf8Positions();
     void projectTokensDriveIntelligence();
+    void definitionJumpsIntoTheDesignFile();
     void proxyMergesQmllsAndLoomFeatures();
     void qmllsShimForwardsArguments();
 };
@@ -350,6 +351,104 @@ void LspTests::projectTokensDriveIntelligence()
                              .value(QStringLiteral("alpha"))
                              .toDouble();
     QVERIFY(qAbs(alpha - 0.5) < 0.001);
+}
+
+// Nothing in the editor pointed at the design file before this, which is the
+// likeliest reason the gallery defined two recipes and reached for one of them
+// in one file. A token that a project invented is declared in exactly one
+// place, and now the editor can say where.
+void LspTests::definitionJumpsIntoTheDesignFile()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    QVERIFY(QDir().mkpath(directory.filePath(QStringLiteral("qml"))));
+
+    QFile manifest(directory.filePath(QStringLiteral("loom.json")));
+    QVERIFY(manifest.open(QIODevice::WriteOnly));
+    manifest.write(R"({
+      "schemaVersion": 2,
+      "project": {"name": "LspTest"},
+      "design": "tokens.json",
+      "qt": {"version": "6.11"},
+      "applications": {"App": {
+        "name": "App", "target": "App", "id": "dev.test.app",
+        "uri": "dev.test.App", "entry": "Main", "qmlRoots": ["qml"],
+        "assetRoots": [], "platforms": {"desktop": {}}
+      }}
+    })");
+    manifest.close();
+
+    const QString designPath = directory.filePath(QStringLiteral("tokens.json"));
+    QFile design(designPath);
+    QVERIFY(design.open(QIODevice::WriteOnly));
+    design.write(R"({
+      "schemaVersion": 2,
+      "tokens": {
+        "colors": { "brand": { "500": "#123456" } }
+      },
+      "styles": { "card": "bg-surface rounded-lg" }
+    })");
+    design.close();
+
+    const QString qmlPath = directory.filePath(QStringLiteral("qml/Main.qml"));
+    lsp::Document document;
+    document.open(
+        QStringLiteral("Item { Lo.style: \"@card hover:bg-brand-500 p-4\" }"), 1);
+    lsp::StyleWorkspace workspace;
+    lsp::StyleIntelligence intelligence(&workspace);
+
+    const auto locate = [&](const QString &needle) {
+        const qsizetype offset = document.text().indexOf(needle) + 1;
+        return intelligence
+            .definition(qmlPath, document, offset, lsp::PositionEncoding::Utf16)
+            .toObject();
+    };
+
+    // A recipe: named directly, and declared under "styles".
+    const QJsonObject recipe = locate(QStringLiteral("@card"));
+    QVERIFY(!recipe.isEmpty());
+    QCOMPARE(
+        recipe.value(QStringLiteral("uri")).toString(),
+        QUrl::fromLocalFile(designPath).toString());
+    // Derived from the file rather than hard-coded, so editing the fixture
+    // above cannot silently make this assert the wrong thing.
+    QFile written(designPath);
+    QVERIFY(written.open(QIODevice::ReadOnly));
+    const QStringList designLines =
+        QString::fromUtf8(written.readAll()).split(QLatin1Char('\n'));
+    int stylesLine = -1;
+    int brandLine = -1;
+    for (int i = 0; i < designLines.size(); ++i) {
+        if (designLines.at(i).contains(QStringLiteral("\"styles\"")))
+            stylesLine = i;
+        if (designLines.at(i).contains(QStringLiteral("\"brand\"")))
+            brandLine = i;
+    }
+    QVERIFY(stylesLine >= 0);
+    QVERIFY(brandLine >= 0);
+
+    const int recipeLine =
+        recipe.value(QStringLiteral("range")).toObject()
+            .value(QStringLiteral("start")).toObject()
+            .value(QStringLiteral("line")).toInt();
+    QCOMPARE(recipeLine, stylesLine);
+
+    // A token behind a variant. The variant is a condition, not a name, so
+    // only the last segment is resolved -- and the key comes from compiling
+    // the class, which is the same lookup the runtime does.
+    const QJsonObject token = locate(QStringLiteral("hover:bg-brand-500"));
+    QVERIFY(!token.isEmpty());
+    // Colours written as a nested hue never contain their own flat key, so
+    // this lands on "brand" -- which is where the value is declared.
+    QCOMPARE(
+        token.value(QStringLiteral("range")).toObject()
+            .value(QStringLiteral("start")).toObject()
+            .value(QStringLiteral("line")).toInt(),
+        brandLine);
+
+    // A built-in is declared in loom itself, not in the project. Answering
+    // would be a lie; returning null lets qmlls say whatever it would have.
+    QVERIFY(locate(QStringLiteral("p-4")).isEmpty());
 }
 
 void LspTests::proxyMergesQmllsAndLoomFeatures()

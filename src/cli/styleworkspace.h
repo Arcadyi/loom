@@ -29,6 +29,15 @@ public:
     bool activateForFile(const QString &filePath);
     loom::StyleCatalogue catalogue() const;
     ClassMetadata metadata(const QString &klass) const;
+
+    //! Where a class's token, recipe or state is declared in the design file.
+    struct Definition {
+        QString path;
+        int line = 0;   // 0-based, LSP's convention
+        int column = 0; // 0-based
+        bool valid() const { return !path.isEmpty(); }
+    };
+    Definition definition(const QString &klass) const;
     QStringList replacements(const QString &unknown) const;
     QString arbitraryValuePolicy() const;
 
