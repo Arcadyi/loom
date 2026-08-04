@@ -207,16 +207,25 @@ they do not fill it:
 ```qml
 Row {
     Lo.style: "gap-3 w-full"
-    justify: Row.SpaceBetween
+    justify: Justify.SpaceBetween
 
     Label { text: qsTr("Title") }
     Button { text: qsTr("Edit") }
 }
 ```
 
-`Start` (the default), `Center`, `End`, `SpaceBetween`, `SpaceAround`,
+`Justify.Start` (the default), `Center`, `End`, `SpaceBetween`, `SpaceAround`,
 `SpaceEvenly`. `Start` hands the axis back to the positioner untouched, which
 is the QtQuick behaviour.
+
+The values live on a `Justify` type rather than on `Row`, and that is not
+cosmetic. `Row` collides with QtQuick's: a colliding name still *instantiates*
+correctly, because the last import wins, but as a value in an expression it
+resolves to the QtQuick type — which has no such enum. `Row.SpaceBetween`
+therefore evaluated to `undefined` at every call site that was not itself
+rooted in a `Row`, the property fell back to `0`, and a `justify` that read
+correctly in the source did nothing on screen. `Justify` collides with nothing,
+so it resolves the same way everywhere.
 
 Qt Quick has no such property anywhere: a positioner packs to the start, and a
 Layout distributes through per-child `Layout.fillWidth`. `SpaceBetween`

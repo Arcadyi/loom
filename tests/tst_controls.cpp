@@ -1069,14 +1069,22 @@ void ControlsTests::rowDistributesChildrenOnTheMainAxis()
     QQmlComponent component(&engine);
     QScopedPointer<QQuickItem> item(createItem(
         component,
+        // Nested rather than the root element, which is the shape a real call
+        // site has -- and the difference that matters. As a root, the bare name
+        // `Row` self-resolves to the component and its enum is reachable; one
+        // level down it resolves through the imports to *QtQuick's* Row, which
+        // has no such enum. Rooting this test is what let `Row.SpaceBetween`
+        // pass here while evaluating to undefined everywhere else.
         "import QtQuick\nimport Loom\nimport Loom.Controls\n"
-        "Row {\n"
+        "Item {\n"
+        "  Row {\n"
         "    width: 300\n"
         "    spacing: 0\n"
-        "    justify: Row.SpaceBetween\n"
+        "    justify: Justify.SpaceBetween\n"
         "    Rectangle { objectName: \"a\"; width: 40; height: 10 }\n"
         "    Rectangle { objectName: \"b\"; width: 40; height: 10 }\n"
         "    Rectangle { objectName: \"c\"; width: 40; height: 10 }\n"
+        "  }\n"
         "}\n"));
     QVERIFY2(item, qPrintable(component.errorString()));
 
@@ -1087,14 +1095,20 @@ void ControlsTests::rowDistributesChildrenOnTheMainAxis()
     QVERIFY(b);
     QVERIFY(c);
 
+    QQuickItem *const row = a->parentItem();
+    QVERIFY(row);
+    // The enum resolved to something, rather than to undefined falling back to
+    // 0. Without this the geometry checks below would still pass for a Row
+    // that had quietly kept its default.
+    QCOMPARE(row->property("justify").toInt(), 3); // Justify.SpaceBetween
+
     QTRY_COMPARE(a->x(), 0.0);
     QTRY_COMPARE(c->x(), 260.0);
     QCOMPARE(b->x(), 130.0);
 
     // Start hands the axis back to the positioner untouched, which is the
     // QtQuick behaviour and has to stay the default.
-    item->setProperty("justify", 0);
-    item->setProperty("width", 300);
+    row->setProperty("justify", 0);
     QTRY_COMPARE(a->x(), 0.0);
 }
 
@@ -1112,7 +1126,7 @@ void ControlsTests::colDistributionSettlesRatherThanLooping()
         "    property int passes: 0\n"
         "    height: 300\n"
         "    spacing: 0\n"
-        "    justify: Col.SpaceEvenly\n"
+        "    justify: Justify.SpaceEvenly\n"
         "    onPositioningComplete: passes++\n"
         "    Rectangle { objectName: \"a\"; width: 10; height: 40 }\n"
         "    Rectangle { width: 10; height: 40 }\n"

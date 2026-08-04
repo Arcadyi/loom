@@ -190,6 +190,7 @@ if(LOOM_BUILD_CONTROLS)
         src/controls/Field.qml
         src/controls/Grid.qml
         src/controls/Icon.qml
+        src/controls/Justify.qml
         src/controls/Label.qml
         src/controls/ListRow.qml
         src/controls/Menu.qml
