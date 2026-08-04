@@ -2,6 +2,55 @@
 
 ## Unreleased
 
+**Structural components.** `Icon`, `Scroll`, `Label`, `Divider` and `Spacer`
+join `Loom.Controls`. Each replaces a construction the repository was writing by
+hand:
+
+`Icon` is the sharpest of them, because its absence was already visible.
+`Loom.icon()` has recoloured assets since 0.4 — Qt tints an icon item only
+while it is a mask, and a file source never is — but there was no type, and two
+examples in this repository instantiated `Icon { }` for one that did not exist.
+A third, `Card { }`, was in `Grid`'s docstring. `loom_docs_types` now resolves
+every type the documentation instantiates, which is the check whose absence let
+all three survive; `loom_docs_style` only ever checked the classes inside them.
+
+Colour reaches an `Icon` through `text-*`, with every state and responsive
+variant that implies. That is the one engine change here: the target profile
+routes `TextColor` to `color` for an `Image` that declares one. Deliberately
+narrower than a bare `hasProperty("color")` test, which would have made
+`text-red-500` repaint a Rectangle's fill.
+
+`Scroll` is the hand-wired `Flickable` — six anchor lines and a `contentHeight`
+sum — written once. This repository had two of them and they disagreed on how
+to compute the height. It needed no engine change either: declaring the four
+conventional padding property names is enough for `p-*`, because the profile
+duck-types on the names rather than on the type.
+
+`Label` shadows `QtQuick.Controls.Label` and so derives from it, not from
+`Text`. Shadowing it with a `Text` subclass would have taken away the padding
+and background `QQuickLabel` adds, breaking the module's own invariant. The
+invariant test now covers `Button` and `Label`, not just `Row` and `Grid`.
+
+**Part styles.** A control owns items a call site cannot reach — a `Field`'s
+caption, input and error line are internal to `Field.qml`, and `Lo.style`
+writes onto the item carrying it. The convention is a `<part>Style` string
+property forwarded onto that part's own `Lo.style`, appended to the part's
+classes rather than replacing them, so an override keeps what it did not
+mention. `Field` gains `labelStyle`, `contentStyle` and `messageStyle`.
+
+The engine needs none of this; the tooling does. A forwarded property is not an
+attached one, so nothing about its shape says it carries classes — without
+`src/cli/stylebindings.h`, every class string in the library's part-styling
+surface would be uncompleted, undiagnosed, and unchecked by `loom lint`. Both
+scanners read that list: the AST visitor and the heuristic one that answers
+while a document will not parse. `loom_controls_partstyle` fails the build when
+a control declares a part style the list does not know, because the failure it
+prevents is silent.
+
+The list is matched by name and without context, so an unrelated
+`property string labelStyle` is diagnosed as if it carried classes. A `*Style`
+suffix rule would have claimed far more names on far less evidence.
+
 **Components.** `Loom.Controls` is a new QML module: `Box`, `Row`, `Col`,
 `Grid`, `Button`, `Field` and `ListRow`. Loom styled items and placed them but
 shipped nothing to place, so the shapes every project needs lived in the

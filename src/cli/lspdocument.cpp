@@ -1,5 +1,7 @@
 #include "lspdocument.h"
 
+#include "stylebindings.h"
+
 #include <algorithm>
 #include <private/qqmljsast_p.h>
 #include <private/qqmljsengine_p.h>
@@ -93,11 +95,25 @@ QVector<StyleLiteral> scanStyleLiteralsHeuristic(const QString &text)
             continue;
         }
 
-        constexpr QLatin1StringView marker("Lo.style");
-        if (text.mid(i, marker.size()) != marker
-            || (i > 0 && identifierChar(text.at(i - 1)))
-            || (i + marker.size() < text.size()
-                && identifierChar(text.at(i + marker.size())))) {
+        // Every name that can carry a class string, not just `Lo.style`: the
+        // part-style properties Loom.Controls forwards onto a sub-delegate are
+        // ordinary QML properties, so nothing but the name identifies them.
+        // QStringView rather than QString::mid, because this runs once per
+        // character of the document and now against a list.
+        QLatin1StringView marker;
+        for (const char *candidate : loom::stylebindings::kNames) {
+            const QLatin1StringView name(candidate);
+            if (QStringView(text).mid(i, name.size()) != name)
+                continue;
+            if (i > 0 && identifierChar(text.at(i - 1)))
+                continue;
+            if (i + name.size() < text.size()
+                && identifierChar(text.at(i + name.size())))
+                continue;
+            marker = name;
+            break;
+        }
+        if (marker.isEmpty()) {
             ++i;
             continue;
         }
@@ -230,7 +246,7 @@ public:
     bool visit(QQmlJS::AST::UiScriptBinding *binding) override
     {
         if (!binding->qualifiedId
-            || binding->qualifiedId->toString() != QLatin1String("Lo.style"))
+            || !loom::stylebindings::isStyleBinding(binding->qualifiedId->toString()))
             return true;
         if (auto *statement = QQmlJS::AST::cast<QQmlJS::AST::ExpressionStatement *>(
                 binding->statement)) {

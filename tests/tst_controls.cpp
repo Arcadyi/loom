@@ -1,11 +1,14 @@
 #include <QtTest>
 
+#include <QFile>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQmlProperty>
 #include <QQuickItem>
 #include <QQuickStyle>
 #include <QScopedPointer>
+#include <QTemporaryDir>
+#include <QUrl>
 #include <loom/loom.h>
 
 namespace {
@@ -19,6 +22,35 @@ QQuickItem *createItem(QQmlComponent &component, const QByteArray &document)
 QQuickItem *itemProperty(const QQuickItem *item, const char *name)
 {
     return item->property(name).value<QQuickItem *>();
+}
+
+// Escaped rather than a raw string literal for the reason tst_icon.cpp gives:
+// moc does not honour raw strings and reads the "//" in the xmlns URL as a
+// comment, which eats the Q_OBJECT below with it.
+constexpr auto squareSvg =
+    "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" "
+    "viewBox=\"0 0 16 16\">"
+    "<rect x=\"0\" y=\"0\" width=\"16\" height=\"16\" fill=\"#0000ff\"/>"
+    "</svg>";
+
+// A real asset behind a real URL, so an Icon under test resolves rather than
+// warning its way to an empty image. Returns the file:// form, which
+// loomResolveIconSource leaves alone -- no icon root to configure.
+QString writeIcon(const QTemporaryDir &dir)
+{
+    const QString path = dir.filePath(QStringLiteral("home.svg"));
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly))
+        return {};
+    file.write(squareSvg);
+    return QUrl::fromLocalFile(path).toString();
+}
+
+QByteArray iconDocument(const QString &source, const QByteArray &body)
+{
+    return QByteArray("import QtQuick\nimport Loom\nimport Loom.Controls\n"
+                      "Icon {\n    name: \"")
+        + source.toUtf8() + "\"\n" + body + "}\n";
 }
 
 } // namespace
@@ -50,7 +82,14 @@ private slots:
     void gapUtilityReachesPositionerSpacing();
     void buttonStylesThroughItsBackgroundAndLabel();
     void fieldInvalidStateNeedsNoConfiguration();
+    void fieldPartStylesReachTheParts();
     void listRowSelectionReachesItsLabel();
+    void iconResolvesItsSourceThroughTheProvider();
+    void iconTakesItsColourFromATextUtility();
+    void scrollContentHeightFollowsItsContent();
+    void scrollPaddingUtilityReachesTheViewport();
+    void labelAndDividerFollowTheirTokens();
+    void spacerFillsInALayoutAndSizesInAPositioner();
 };
 
 // Box exists because `p-4` needs `topPadding`, and the Rectangle everyone
@@ -154,11 +193,20 @@ void ControlsTests::shadowingTypesDeriveFromWhatTheyShadow()
         const char *type;
         const char *base;
     };
-    // Col is absent on purpose: it does not collide with a QtQuick name, which
-    // is exactly why it is spelled Col and not Column.
+    // Col, Box, Field, ListRow, Icon, Scroll, Spacer and Divider are absent on
+    // purpose: none of them collide with a QtQuick or QtQuick.Controls name,
+    // which is exactly why Col is spelled Col and not Column.
+    //
+    // Label is the one that nearly went wrong. It reads like a plain Text --
+    // and was written as one -- but QtQuick.Controls has a Label, so shadowing
+    // it with a Text subclass would have taken away the padding and background
+    // that QQuickLabel adds. Deriving from the Control end costs nothing and
+    // keeps the invariant.
     static constexpr Shadowed shadowed[] = {
         {"Row", "QQuickRow"},
         {"Grid", "QQuickGrid"},
+        {"Button", "QQuickButton"},
+        {"Label", "QQuickLabel"},
     };
 
     for (const auto &entry : shadowed) {
@@ -395,6 +443,221 @@ void ControlsTests::listRowSelectionReachesItsLabel()
 
     item->setProperty("selected", true);
     QTRY_VERIFY(background->property("color").value<QColor>() != unselected);
+}
+
+// A part-style property is the library's answer to a sub-delegate the engine
+// cannot reach: LoomStyleAttached writes onto the item carrying `Lo.style`, and
+// Field's caption, input and error line are internal to Field.qml. Forwarding
+// is ordinary QML -- what has to be pinned is that the classes *append*, so an
+// override at the call site keeps the part's own styling.
+void ControlsTests::fieldPartStylesReachTheParts()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Field {\n"
+        "    width: 300\n"
+        "    label: \"Email\"\n"
+        "    contentStyle: \"text-white\"\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QQuickItem *input = nullptr;
+    const auto children = item->findChildren<QQuickItem *>();
+    for (QQuickItem *const child : children) {
+        if (child->inherits("QQuickTextField")) {
+            input = child;
+            break;
+        }
+    }
+    QVERIFY(input);
+
+    // Field.qml already writes `text-foreground` onto the input. `text-white`
+    // arrives after it in the same string and at the same specificity, and
+    // later wins -- which is the whole reason these are appended rather than
+    // substituted.
+    QTRY_COMPARE(input->property("color").value<QColor>(), QColor(Qt::white));
+    // The part's own classes survive the override.
+    QCOMPARE(input->property("leftPadding").toReal(), 12.0);
+}
+
+// Icon exists because two places in this repository -- Row.qml's docstring and
+// docs/styling/components.md -- wrote `Icon { }` for a type that did not.
+void ControlsTests::iconResolvesItsSourceThroughTheProvider()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString source = writeIcon(dir);
+    QVERIFY(!source.isEmpty());
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(component, iconDocument(source, {})));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    // Not the file URL: an icon is served through LoomIconProvider so the tint
+    // can be applied on the way out, which is the only reachable recolouring
+    // hook Qt leaves for a non-mask source.
+    QTRY_VERIFY(item->property("source").toUrl().toString().startsWith(
+        QLatin1String("image://loom/")));
+    QCOMPARE(item->width(), 20.0);
+}
+
+// The negative control for the one engine change in this phase. Revert the
+// QQuickImage branch in LoomTargetProfile::forType and `color` keeps its
+// binding to the foreground token, so this goes red on exactly that line.
+void ControlsTests::iconTakesItsColourFromATextUtility()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString source = writeIcon(dir);
+    QVERIFY(!source.isEmpty());
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(
+        createItem(component, iconDocument(source, "    Lo.style: \"size-8 text-white\"\n")));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QTRY_COMPARE(item->property("color").value<QColor>(), QColor(Qt::white));
+    // Sizing is a class too, and sourceSize follows it, so the asset
+    // rasterises at the size it is drawn at.
+    QCOMPARE(item->width(), 32.0);
+    QCOMPARE(item->property("sourceSize").toSize(), QSize(32, 32));
+}
+
+// The hand-wired Flickable appears in Main.qml and in the app template, and
+// the two compute contentHeight differently. This is that arithmetic, once.
+void ControlsTests::scrollContentHeightFollowsItsContent()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Scroll {\n"
+        "    width: 200\n"
+        "    height: 100\n"
+        "    Rectangle { width: 100; height: 400 }\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QTRY_COMPARE(item->property("contentHeight").toReal(), 400.0);
+    QCOMPARE(item->property("contentWidth").toReal(), 200.0);
+}
+
+// Flickable is not a Control and has no padding properties. Declaring the four
+// conventional names is enough, because LoomTargetProfile duck-types on them --
+// the same opt-in a user component gets, and the reason Box could be an
+// ordinary Control rather than a special case in the engine.
+void ControlsTests::scrollPaddingUtilityReachesTheViewport()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Scroll {\n"
+        "    width: 200\n"
+        "    height: 100\n"
+        "    Lo.style: \"p-6\"\n"
+        "    Rectangle { width: 100; height: 400 }\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QTRY_COMPARE(item->property("topPadding").toReal(), 24.0);
+    // And the padding is inside the scrollable extent rather than clipped off
+    // it, which is the part the hand-written versions kept restating.
+    QTRY_COMPARE(item->property("contentHeight").toReal(), 448.0);
+}
+
+// Compared against reference items in the same document rather than against
+// literals: what matters is that these types agree with the tokens, not what
+// the tokens currently happen to be.
+void ControlsTests::labelAndDividerFollowTheirTokens()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Item {\n"
+        "    Label { objectName: \"label\"; text: \"body\" }\n"
+        "    Text {\n"
+        "        objectName: \"referenceText\"\n"
+        "        wrapMode: Text.WordWrap\n"
+        "        color: Loom.color.foreground\n"
+        "    }\n"
+        "    Divider { objectName: \"divider\"; width: 100 }\n"
+        "    Rectangle { objectName: \"referenceRule\"; color: Loom.color.outline }\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QQuickItem *const label = item->findChild<QQuickItem *>(QStringLiteral("label"));
+    QQuickItem *const referenceText =
+        item->findChild<QQuickItem *>(QStringLiteral("referenceText"));
+    QVERIFY(label);
+    QVERIFY(referenceText);
+    QCOMPARE(label->property("wrapMode").toInt(), referenceText->property("wrapMode").toInt());
+    QCOMPARE(
+        label->property("color").value<QColor>(),
+        referenceText->property("color").value<QColor>());
+
+    QQuickItem *const divider = item->findChild<QQuickItem *>(QStringLiteral("divider"));
+    QQuickItem *const referenceRule =
+        item->findChild<QQuickItem *>(QStringLiteral("referenceRule"));
+    QVERIFY(divider);
+    QVERIFY(referenceRule);
+    QCOMPARE(
+        divider->property("color").value<QColor>(),
+        referenceRule->property("color").value<QColor>());
+    // Thickness on the cross axis, nothing on the main one: the extent is
+    // still owed by the call site, and staying 0 makes that obvious.
+    QCOMPARE(divider->implicitHeight(), 1.0);
+    QCOMPARE(divider->implicitWidth(), 0.0);
+}
+
+void ControlsTests::spacerFillsInALayoutAndSizesInAPositioner()
+{
+    QQmlEngine engine;
+
+    QQmlComponent layoutComponent(&engine);
+    QScopedPointer<QQuickItem> layout(createItem(
+        layoutComponent,
+        "import QtQuick\nimport QtQuick.Layouts\nimport Loom\nimport Loom.Controls\n"
+        "RowLayout {\n"
+        "    width: 300\n"
+        "    spacing: 0\n"
+        "    Item { implicitWidth: 50; implicitHeight: 10 }\n"
+        "    Spacer { objectName: \"spacer\" }\n"
+        "    Item { implicitWidth: 50; implicitHeight: 10 }\n"
+        "}\n"));
+    QVERIFY2(layout, qPrintable(layoutComponent.errorString()));
+
+    QQuickItem *const spacer = layout->findChild<QQuickItem *>(QStringLiteral("spacer"));
+    QVERIFY(spacer);
+    QTRY_COMPARE(spacer->width(), 200.0);
+
+    // A positioner distributes nothing -- Row places children end to end and
+    // stops -- so there is no fill to take and `size` is the only thing that
+    // can work there. Saying so in a test rather than only in a docstring.
+    QQmlComponent rowComponent(&engine);
+    QScopedPointer<QQuickItem> row(createItem(
+        rowComponent,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Row {\n"
+        "    spacing: 0\n"
+        "    Item { implicitWidth: 10; implicitHeight: 10 }\n"
+        "    Spacer { size: 16 }\n"
+        "    Item { objectName: \"tail\"; implicitWidth: 10; implicitHeight: 10 }\n"
+        "}\n"));
+    QVERIFY2(row, qPrintable(rowComponent.errorString()));
+
+    QQuickItem *const tail = row->findChild<QQuickItem *>(QStringLiteral("tail"));
+    QVERIFY(tail);
+    QTRY_COMPARE(tail->x(), 26.0);
 }
 
 QTEST_MAIN(ControlsTests)

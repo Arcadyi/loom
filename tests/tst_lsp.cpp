@@ -20,6 +20,7 @@ class LspTests final : public QObject {
 private slots:
     void framingHandlesFragmentedAndCoalescedMessages();
     void documentFindsOnlyStyleResultLiterals();
+    void documentFindsPartStyleLiterals();
     void incrementalChangesHonorUtf8Positions();
     void projectTokensDriveIntelligence();
     void proxyMergesQmllsAndLoomFeatures();
@@ -143,6 +144,51 @@ void LspTests::documentFindsOnlyStyleResultLiterals()
         QStringList(
             {QStringLiteral("bg-red-500"), QStringLiteral("hover:bg-blue-500"),
              QStringLiteral("p-4")}));
+}
+
+// A Loom.Controls part-style property forwards its string onto a sub-delegate's
+// Lo.style, so it carries classes but is not an attached property and nothing
+// about its shape says so. Without the name list in src/cli/stylebindings.h the
+// entire part-styling surface of the component library is uncompleted,
+// undiagnosed, and unchecked by `loom lint`.
+void LspTests::documentFindsPartStyleLiterals()
+{
+    lsp::Document document;
+    document.open(
+        QStringLiteral(
+            "Checkbox {\n"
+            "  Lo.style: \"gap-2\"\n"
+            "  indicatorStyle: \"size-5 rounded-sm\"\n"
+            "  contentStyle: \"text-sm\"\n"
+            // Not a style binding: a name that merely ends in the same letters
+            // is not on the list, and the list is matched exactly.
+            "  borderStyle: \"solid\"\n"
+            "  property string unrelated: \"bg-nope\"\n"
+            "}\n"),
+        1);
+    QStringList names;
+    for (const auto &token : document.styleTokens())
+        names.append(token.text);
+    QCOMPARE(
+        names,
+        QStringList(
+            {QStringLiteral("gap-2"), QStringLiteral("size-5"),
+             QStringLiteral("rounded-sm"), QStringLiteral("text-sm")}));
+
+    // The same through the heuristic scanner, which is what answers while a
+    // document is mid-edit and will not parse. It matches the marker textually,
+    // so it needs the list every bit as much as the AST visitor does.
+    lsp::Document broken;
+    broken.open(
+        QStringLiteral(
+            "Checkbox {\n"
+            "  indicatorStyle: \"size-5\"\n"
+            "  onSomething: { unbalanced(\n"),
+        1);
+    QStringList brokenNames;
+    for (const auto &token : broken.styleTokens())
+        brokenNames.append(token.text);
+    QCOMPARE(brokenNames, QStringList({QStringLiteral("size-5")}));
 }
 
 void LspTests::incrementalChangesHonorUtf8Positions()

@@ -214,6 +214,16 @@ if(TARGET loom_cli)
             "-DDOCS_DESIGN=${CMAKE_CURRENT_SOURCE_DIR}/data/docs-design.json"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/docs_style_test.cmake"
     )
+    # The classes in those blocks are checked above; the types around them were
+    # not, and three examples in this repository instantiated types that did
+    # not exist before anything looked.
+    add_test(
+        NAME loom_docs_types
+        COMMAND "${CMAKE_COMMAND}"
+            "-DDOCS_DIR=${CMAKE_SOURCE_DIR}/docs"
+            "-DCONTROLS_DIR=${CMAKE_SOURCE_DIR}/src/controls"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/docs_types_test.cmake"
+    )
     # The gallery is the framework's own showcase; it ships 61 Lo.style
     # literals that nothing checked until now.
     add_test(
@@ -317,5 +327,15 @@ if(TARGET loomcontrols)
             "-DQMLDIR=${CMAKE_BINARY_DIR}/qml/Loom/Controls/qmldir"
             "-DCONTROLS_DIR=${CMAKE_SOURCE_DIR}/src/controls"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/controls_qmldir_test.cmake"
+    )
+
+    # And that every part-style property they declare is one the tooling knows
+    # to look inside. Same failure shape as the qmldir test above -- something
+    # that works at runtime and is silently invisible to lint and completion.
+    add_test(NAME loom_controls_partstyle
+        COMMAND "${CMAKE_COMMAND}"
+            "-DBINDINGS_HEADER=${CMAKE_SOURCE_DIR}/src/cli/stylebindings.h"
+            "-DCONTROLS_DIR=${CMAKE_SOURCE_DIR}/src/controls"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/controls_partstyle_test.cmake"
     )
 endif()

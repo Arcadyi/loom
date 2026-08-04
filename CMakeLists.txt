@@ -182,10 +182,15 @@ if(LOOM_BUILD_CONTROLS)
         src/controls/Box.qml
         src/controls/Button.qml
         src/controls/Col.qml
+        src/controls/Divider.qml
         src/controls/Field.qml
         src/controls/Grid.qml
+        src/controls/Icon.qml
+        src/controls/Label.qml
         src/controls/ListRow.qml
         src/controls/Row.qml
+        src/controls/Scroll.qml
+        src/controls/Spacer.qml
     )
     # Without an alias the module resource path keeps the source subdirectory --
     # `:/qt/qml/Loom/Controls/src/controls/Box.qml` -- and the generated qmldir

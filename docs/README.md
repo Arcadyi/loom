@@ -18,7 +18,7 @@ loop, or upgrading.
 | [styling/theming.md](styling/theming.md) | Semantic tokens, system/custom themes, motion and contrast |
 | [styling/responsive.md](styling/responsive.md) | Viewport and component container queries |
 | [styling/states.md](styling/states.md) | Interaction, control, environment, structure, negation, and group variants, plus states your application declares |
-| [styling/components.md](styling/components.md) | `Loom.Controls`: `Box`, `Row`, `Col`, `Grid`, `Button`, `Field`, `ListRow` |
+| [styling/components.md](styling/components.md) | `Loom.Controls`: `Box`, `Row`, `Col`, `Grid`, `Scroll`, `Button`, `Field`, `ListRow`, `Icon`, `Label`, `Divider`, `Spacer` — and the part-style convention for reaching a control's sub-delegates |
 | [styling/configuration.md](styling/configuration.md) | The design token file: custom colours, scales, themes and states |
 | [styling/cookbook.md](styling/cookbook.md) | Complete components — buttons, cards, forms, responsive layouts, Quick Controls |
 | [styling/performance.md](styling/performance.md) | What a styled item actually costs, and how to keep it cheap |
