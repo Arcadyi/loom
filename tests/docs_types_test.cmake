@@ -70,7 +70,13 @@ foreach(source IN LISTS sources)
             string(REGEX REPLACE "[\r\n][ \t]*" "" type "${declaration}")
             string(REGEX REPLACE "[ \t]*\\{" "" type "${type}")
             math(EXPR checked "${checked} + 1")
-            if(NOT type IN_LIST known_types)
+            # list(FIND) rather than `if(... IN_LIST ...)`: the operator needs
+            # CMP0057, and a `cmake -P` script does not inherit the project's
+            # policy settings. Which default applies then depends on the CMake
+            # running it -- so this passed locally and failed on CI, where the
+            # policy is unset and IN_LIST is read as a bare argument.
+            list(FIND known_types "${type}" known_index)
+            if(known_index EQUAL -1)
                 string(APPEND problems "  ${shown}: ${type}\n")
             endif()
         endforeach()

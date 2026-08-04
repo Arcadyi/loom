@@ -107,8 +107,7 @@ QVector<StyleLiteral> scanStyleLiteralsHeuristic(const QString &text)
                 continue;
             if (i > 0 && identifierChar(text.at(i - 1)))
                 continue;
-            if (i + name.size() < text.size()
-                && identifierChar(text.at(i + name.size())))
+            if (i + name.size() < text.size() && identifierChar(text.at(i + name.size())))
                 continue;
             marker = name;
             break;

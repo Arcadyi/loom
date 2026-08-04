@@ -51,16 +51,13 @@ template <typename Group, typename Keys, typename Lookup>
 void wireToRegistry(Group *group, Keys keys, Lookup lookup)
 {
     auto *const registry = LoomTokenRegistry::instance();
-    const auto refresh = [group, keys, lookup]() {
-        seedGroup(group, keys(), lookup);
-    };
+    const auto refresh = [group, keys, lookup]() { seedGroup(group, keys(), lookup); };
     refresh();
     QObject::connect(registry, &LoomTokenRegistry::tokensChanged, group, &Group::changed);
     // Values change on a theme switch; which keys *exist* changes on a config
     // load. Both have to re-seed, or a binding keeps the value it was given.
     QObject::connect(registry, &LoomTokenRegistry::tokensChanged, group, refresh);
-    QObject::connect(
-        registry, &LoomTokenRegistry::vocabularyChanged, group, refresh);
+    QObject::connect(registry, &LoomTokenRegistry::vocabularyChanged, group, refresh);
 }
 
 } // namespace
@@ -132,7 +129,9 @@ LoomFontGroup::LoomFontGroup(QObject *parent)
 {
     wireToRegistry(
         this, [] { return LoomTokenRegistry::instance()->fontWeightKeys(); },
-        [](const QString &key) { return LoomTokenRegistry::instance()->fontWeight(key); });
+        [](const QString &key) {
+            return LoomTokenRegistry::instance()->fontWeight(key);
+        });
 }
 
 QStringList LoomFontGroup::sans() const
@@ -193,7 +192,9 @@ LoomOpacityGroup::LoomOpacityGroup(QObject *parent)
 {
     wireToRegistry(
         this, [] { return LoomTokenRegistry::instance()->opacityKeys(); },
-        [](const QString &key) { return LoomTokenRegistry::instance()->opacityValue(key); });
+        [](const QString &key) {
+            return LoomTokenRegistry::instance()->opacityValue(key);
+        });
 }
 
 LoomDurationGroup::LoomDurationGroup(QObject *parent)
@@ -217,5 +218,7 @@ LoomBreakpointGroup::LoomBreakpointGroup(QObject *parent)
 {
     wireToRegistry(
         this, [] { return LoomTokenRegistry::instance()->breakpointKeys(); },
-        [](const QString &key) { return LoomTokenRegistry::instance()->breakpoint(key); });
+        [](const QString &key) {
+            return LoomTokenRegistry::instance()->breakpoint(key);
+        });
 }

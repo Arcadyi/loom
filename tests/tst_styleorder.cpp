@@ -31,8 +31,7 @@ void StyleOrderTests::unconditionalClassesComeBeforeConditionalOnes()
     // The same with an extra unconditional class, which is the shape a real
     // string has.
     QCOMPARE(
-        canonicalOrder(
-            QStringLiteral("hover:bg-blue-600 md:p-6 bg-surface rounded-lg")),
+        canonicalOrder(QStringLiteral("hover:bg-blue-600 md:p-6 bg-surface rounded-lg")),
         QStringLiteral("bg-surface rounded-lg md:p-6 hover:bg-blue-600"));
 }
 
@@ -112,8 +111,7 @@ void StyleOrderTests::ambiguousAndUnknownStringsAreLeftAlone()
     // sides to px-6 instead of the other way round. Rather than reason about
     // which overlaps are safe, the sorter compiles both and keeps the original
     // when they differ.
-    QCOMPARE(
-        canonicalOrder(QStringLiteral("px-6 p-4")), QStringLiteral("px-6 p-4"));
+    QCOMPARE(canonicalOrder(QStringLiteral("px-6 p-4")), QStringLiteral("px-6 p-4"));
 
     // An unknown class has no rank. Moving it somewhere arbitrary in a string
     // its author is still editing is the worst possible moment to do it.

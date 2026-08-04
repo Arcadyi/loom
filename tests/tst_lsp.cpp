@@ -230,8 +230,7 @@ void LspTests::documentReadsMultiLineTemplateLiterals()
     // A substitution makes it a computed string, and its parts are guesses --
     // declined, the way a concatenation with a variable half already is.
     lsp::Document interpolated;
-    interpolated.open(
-        QStringLiteral("Item {\n  Lo.style: `p-4 ${extra}`\n}\n"), 1);
+    interpolated.open(QStringLiteral("Item {\n  Lo.style: `p-4 ${extra}`\n}\n"), 1);
     QVERIFY(interpolated.styleTokens().isEmpty());
 }
 
@@ -427,10 +426,12 @@ void LspTests::definitionJumpsIntoTheDesignFile()
     QVERIFY(stylesLine >= 0);
     QVERIFY(brandLine >= 0);
 
-    const int recipeLine =
-        recipe.value(QStringLiteral("range")).toObject()
-            .value(QStringLiteral("start")).toObject()
-            .value(QStringLiteral("line")).toInt();
+    const int recipeLine = recipe.value(QStringLiteral("range"))
+                               .toObject()
+                               .value(QStringLiteral("start"))
+                               .toObject()
+                               .value(QStringLiteral("line"))
+                               .toInt();
     QCOMPARE(recipeLine, stylesLine);
 
     // A token behind a variant. The variant is a condition, not a name, so
@@ -441,9 +442,12 @@ void LspTests::definitionJumpsIntoTheDesignFile()
     // Colours written as a nested hue never contain their own flat key, so
     // this lands on "brand" -- which is where the value is declared.
     QCOMPARE(
-        token.value(QStringLiteral("range")).toObject()
-            .value(QStringLiteral("start")).toObject()
-            .value(QStringLiteral("line")).toInt(),
+        token.value(QStringLiteral("range"))
+            .toObject()
+            .value(QStringLiteral("start"))
+            .toObject()
+            .value(QStringLiteral("line"))
+            .toInt(),
         brandLine);
 
     // A built-in is declared in loom itself, not in the project. Answering

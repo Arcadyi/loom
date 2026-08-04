@@ -27,18 +27,9 @@
 namespace loom::stylebindings {
 
 inline constexpr const char *kNames[] = {
-    "Lo.style",
-    "contentStyle",
-    "grooveStyle",
-    "handleStyle",
-    "headerStyle",
-    "indicatorStyle",
-    "itemStyle",
-    "labelStyle",
-    "messageStyle",
-    "popupStyle",
-    "separatorStyle",
-    "trackStyle",
+    "Lo.style",     "contentStyle",   "grooveStyle",    "handleStyle",
+    "headerStyle",  "indicatorStyle", "itemStyle",      "labelStyle",
+    "messageStyle", "popupStyle",     "separatorStyle", "trackStyle",
 };
 
 inline bool isStyleBinding(QStringView name)

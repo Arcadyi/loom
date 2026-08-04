@@ -60,27 +60,28 @@ QString writePage(const QTemporaryDir &dir, const QString &name, const QString &
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly))
         return {};
-    file.write(
-        QStringLiteral("import QtQuick\nItem { property string tag: \"%1\" }\n")
-            .arg(text)
-            .toUtf8());
+    file.write(QStringLiteral("import QtQuick\nItem { property string tag: \"%1\" }\n")
+                   .arg(text)
+                   .toUtf8());
     return QUrl::fromLocalFile(path).toString();
 }
 
 QByteArray routeViewDocument(const QString &first, const QString &second)
 {
-    return QByteArray("import QtQuick\nimport Loom\nimport Loom.Controls\n"
-                      "RouteView {\n"
-                      "    width: 100\n    height: 100\n"
-                      "    routes: ({ \"one\": \"")
+    return QByteArray(
+               "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+               "RouteView {\n"
+               "    width: 100\n    height: 100\n"
+               "    routes: ({ \"one\": \"")
         + first.toUtf8() + "\", \"two\": \"" + second.toUtf8() + "\" })\n"
         + "    fallback: \"" + first.toUtf8() + "\"\n}\n";
 }
 
 QByteArray iconDocument(const QString &source, const QByteArray &body)
 {
-    return QByteArray("import QtQuick\nimport Loom\nimport Loom.Controls\n"
-                      "Icon {\n    name: \"")
+    return QByteArray(
+               "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+               "Icon {\n    name: \"")
         + source.toUtf8() + "\"\n" + body + "}\n";
 }
 
@@ -563,8 +564,8 @@ void ControlsTests::iconTakesItsColourFromATextUtility()
 
     QQmlEngine engine;
     QQmlComponent component(&engine);
-    QScopedPointer<QQuickItem> item(
-        createItem(component, iconDocument(source, "    Lo.style: \"size-8 text-white\"\n")));
+    QScopedPointer<QQuickItem> item(createItem(
+        component, iconDocument(source, "    Lo.style: \"size-8 text-white\"\n")));
     QVERIFY2(item, qPrintable(component.errorString()));
 
     QTRY_COMPARE(item->property("color").value<QColor>(), QColor(Qt::white));
@@ -646,7 +647,8 @@ void ControlsTests::labelAndDividerFollowTheirTokens()
         item->findChild<QQuickItem *>(QStringLiteral("referenceText"));
     QVERIFY(label);
     QVERIFY(referenceText);
-    QCOMPARE(label->property("wrapMode").toInt(), referenceText->property("wrapMode").toInt());
+    QCOMPARE(
+        label->property("wrapMode").toInt(), referenceText->property("wrapMode").toInt());
     QCOMPARE(
         label->property("color").value<QColor>(),
         referenceText->property("color").value<QColor>());
@@ -755,7 +757,10 @@ void ControlsTests::checkBoxIndicatorFollowsTheControlsState()
 void ControlsTests::formControlBackgroundsTakeRootAppearanceUtilities()
 {
     static constexpr const char *types[] = {
-        "CheckBox", "Switch", "RadioButton", "Select",
+        "CheckBox",
+        "Switch",
+        "RadioButton",
+        "Select",
     };
 
     for (const char *type : types) {
@@ -765,14 +770,16 @@ void ControlsTests::formControlBackgroundsTakeRootAppearanceUtilities()
             QByteArray("import QtQuick\nimport Loom\nimport Loom.Controls\n") + type
             + " {\n    Lo.style: \"bg-blue-500 rounded-lg\"\n}\n";
         QScopedPointer<QQuickItem> item(createItem(component, document));
-        QVERIFY2(item, qPrintable(QStringLiteral("%1: %2").arg(
-                           QString::fromLatin1(type), component.errorString())));
+        QVERIFY2(
+            item,
+            qPrintable(QStringLiteral("%1: %2").arg(
+                QString::fromLatin1(type), component.errorString())));
 
         QQuickItem *const background = itemProperty(item.data(), "background");
         QVERIFY2(background, type);
         QTRY_COMPARE_WITH_TIMEOUT(
-            background->property("color").value<QColor>(),
-            QColor(0x3b, 0x82, 0xf6), 2000);
+            background->property("color").value<QColor>(), QColor(0x3b, 0x82, 0xf6),
+            2000);
         QCOMPARE(background->property("radius").toReal(), 8.0);
     }
 }
@@ -801,11 +808,12 @@ void ControlsTests::formControlLabelsTakeRootTextUtilities()
         QQmlComponent component(&engine);
         const QByteArray document =
             QByteArray("import QtQuick\nimport Loom\nimport Loom.Controls\n") + type
-            + " {\n" + entry.extra
-            + "    Lo.style: \"text-white text-2xl\"\n}\n";
+            + " {\n" + entry.extra + "    Lo.style: \"text-white text-2xl\"\n}\n";
         QScopedPointer<QQuickItem> item(createItem(component, document));
-        QVERIFY2(item, qPrintable(QStringLiteral("%1: %2").arg(
-                           QString::fromLatin1(type), component.errorString())));
+        QVERIFY2(
+            item,
+            qPrintable(QStringLiteral("%1: %2").arg(
+                QString::fromLatin1(type), component.errorString())));
 
         QQuickItem *const label = itemProperty(item.data(), "contentItem");
         QVERIFY2(label, type);
@@ -836,8 +844,7 @@ void ControlsTests::switchHandleTravelsWithTheControl()
     QQuickItem *const handle = handles.first();
 
     // The part style reaches the knob.
-    QTRY_COMPARE(
-        handle->property("color").value<QColor>(), QColor(0xf5, 0x9e, 0x0b));
+    QTRY_COMPARE(handle->property("color").value<QColor>(), QColor(0xf5, 0x9e, 0x0b));
 
     const qreal off = handle->x();
     item->setProperty("checked", true);
@@ -921,11 +928,13 @@ void ControlsTests::overlayPanelsAreReachableOnlyThroughPartStyles()
         QQmlEngine engine;
         QQmlComponent component(&engine);
         const QByteArray document =
-            QByteArray("import QtQuick\nimport Loom\nimport Loom.Controls\n")
-            + entry.type + " {\n" + entry.body + "}\n";
+            QByteArray("import QtQuick\nimport Loom\nimport Loom.Controls\n") + entry.type
+            + " {\n" + entry.body + "}\n";
         QScopedPointer<QObject> popup(createObject(component, document));
-        QVERIFY2(popup, qPrintable(QStringLiteral("%1: %2").arg(
-                            QString::fromLatin1(entry.type), component.errorString())));
+        QVERIFY2(
+            popup,
+            qPrintable(QStringLiteral("%1: %2").arg(
+                QString::fromLatin1(entry.type), component.errorString())));
 
         // Not an Item. This is the whole reason for the part styles.
         QVERIFY2(!qobject_cast<QQuickItem *>(popup.data()), entry.type);
@@ -1134,8 +1143,7 @@ void ControlsTests::routeViewResolvesRoutesAndFallsBack()
 
     QQmlEngine engine;
     QQmlComponent component(&engine);
-    QScopedPointer<QQuickItem> view(
-        createItem(component, routeViewDocument(one, two)));
+    QScopedPointer<QQuickItem> view(createItem(component, routeViewDocument(one, two)));
     QVERIFY2(view, qPrintable(component.errorString()));
 
     QObject *const loader = view->property("loader").value<QObject *>();
@@ -1150,9 +1158,10 @@ void ControlsTests::routeViewResolvesRoutesAndFallsBack()
     router = holder->property("r").value<QObject *>();
     QVERIFY(router);
 
-    QVERIFY(QMetaObject::invokeMethod(
-        router, "push", Q_ARG(QString, QStringLiteral("two")),
-        Q_ARG(QVariantMap, QVariantMap{})));
+    QVERIFY(
+        QMetaObject::invokeMethod(
+            router, "push", Q_ARG(QString, QStringLiteral("two")),
+            Q_ARG(QVariantMap, QVariantMap{})));
     QTRY_COMPARE(loader->property("source").toUrl().toString(), two);
     // Asserting on `source` alone would pass for a URL that resolves to
     // nothing: a Loader that cannot find its file leaves `item` null and says
@@ -1163,9 +1172,10 @@ void ControlsTests::routeViewResolvesRoutesAndFallsBack()
         loader->property("item").value<QObject *>()->property("tag").toString(),
         QStringLiteral("two"));
 
-    QVERIFY(QMetaObject::invokeMethod(
-        router, "push", Q_ARG(QString, QStringLiteral("nope")),
-        Q_ARG(QVariantMap, QVariantMap{})));
+    QVERIFY(
+        QMetaObject::invokeMethod(
+            router, "push", Q_ARG(QString, QStringLiteral("nope")),
+            Q_ARG(QVariantMap, QVariantMap{})));
     QTRY_COMPARE(loader->property("source").toUrl().toString(), one);
     QTRY_COMPARE(
         loader->property("item").value<QObject *>()->property("tag").toString(),
@@ -1188,8 +1198,7 @@ void ControlsTests::routeViewRestoresItsSourceAfterASeamReload()
 
     QQmlEngine engine;
     QQmlComponent component(&engine);
-    QScopedPointer<QQuickItem> view(
-        createItem(component, routeViewDocument(one, two)));
+    QScopedPointer<QQuickItem> view(createItem(component, routeViewDocument(one, two)));
     QVERIFY2(view, qPrintable(component.errorString()));
 
     QObject *const loader = view->property("loader").value<QObject *>();

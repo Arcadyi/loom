@@ -3,11 +3,11 @@
 #include "lspdocument.h"
 
 #include <QDirIterator>
-#include <QSet>
-#include <tuple>
 #include <QFile>
 #include <QFileInfo>
+#include <QSet>
 #include <algorithm>
+#include <tuple>
 
 #include <loom/loomcatalogue.h>
 
@@ -153,8 +153,8 @@ QList<Finding> checkFile(const QString &path, QString *error)
     // the entire point of writing one.
     const QStringList lines = source.split(QLatin1Char('\n'));
     for (const auto &literal : document.styleLiterals()) {
-        const QString text =
-            source.mid(literal.content.start, literal.content.end - literal.content.start);
+        const QString text = source.mid(
+            literal.content.start, literal.content.end - literal.content.start);
         const auto classes = classesOf(text, literal.content.start);
 
         // Which condition slots each class fills. Not named `slots`: Qt
@@ -182,7 +182,10 @@ QList<Finding> checkFile(const QString &path, QString *error)
                 if (!suppressed(lines, line, QStringLiteral("duplicateClass"))) {
                     findings.append(
                         Finding{
-                            path, line, column, occurrence.name,
+                            path,
+                            line,
+                            column,
+                            occurrence.name,
                             QStringLiteral("duplicateClass"),
                             QStringLiteral("'%1' is already in this class string")
                                 .arg(occurrence.name),
@@ -229,7 +232,10 @@ QList<Finding> checkFile(const QString &path, QString *error)
                 continue;
             findings.append(
                 Finding{
-                    path, line, column, occurrence.name,
+                    path,
+                    line,
+                    column,
+                    occurrence.name,
                     QStringLiteral("conflictingClass"),
                     QStringLiteral(
                         "'%1' is overridden by a later class in the same string "

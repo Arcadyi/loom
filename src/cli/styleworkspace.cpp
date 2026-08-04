@@ -487,8 +487,7 @@ namespace {
 QString designKeyFor(const QString &klass)
 {
     const qsizetype lastColon = klass.lastIndexOf(QLatin1Char(':'));
-    const QString bare =
-        lastColon < 0 ? klass : klass.sliced(lastColon + 1);
+    const QString bare = lastColon < 0 ? klass : klass.sliced(lastColon + 1);
     if (bare.startsWith(QLatin1Char('@')))
         return bare.sliced(1);
 

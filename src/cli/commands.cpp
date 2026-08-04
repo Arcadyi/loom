@@ -1180,8 +1180,8 @@ int Commands::lint(const QStringList &arguments)
     // Both halves always run, and the worse status wins. Stopping at the first
     // failure would hide every utility-class typo behind one qmllint complaint,
     // which is exactly the round trip this command exists to avoid.
-    const auto styleStatus = runStyleCheck(
-        context, qmlFilesOf(context), parsed.isSet(QStringLiteral("json")));
+    const auto styleStatus =
+        runStyleCheck(context, qmlFilesOf(context), parsed.isSet(QStringLiteral("json")));
     return qmllintStatus != cli::Success ? qmllintStatus : styleStatus;
 }
 
@@ -1344,8 +1344,8 @@ int Commands::format(const QStringList &arguments)
     }
 
     if (!parsed.isSet(QStringLiteral("check"))) {
-        const auto status = BuildRunner::run(
-            qmlformat, QStringList{QStringLiteral("--inplace")} + files);
+        const auto status =
+            BuildRunner::run(qmlformat, QStringList{QStringLiteral("--inplace")} + files);
         if (status != cli::Success)
             return status;
         // qmlformat rewrites QML; it has no idea what is inside a string. The
