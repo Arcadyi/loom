@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+**Form controls.** `CheckBox`, `Switch`, `RadioButton`, `Slider` and `Select`.
+Each derives from its QtQuick.Controls type and replaces only the delegates the
+style engine cannot reach; none reimplements behaviour. Exclusivity is still
+Qt's, `ButtonGroup` still works, and every property Qt documents is still there.
+
+They exist because a stock control has nowhere for the vocabulary to write. An
+indicator is a style-provided delegate and
+`LoomStyleAttached::backgroundPath()` refuses anything that is not a Rectangle,
+so `bg-*` on a plain `CheckBox` styles nothing and warns.
+
+Sub-delegates read the control's state through `Lo.group` rather than directly:
+`checked` is duck-typed off the item carrying `Lo.style`, and a Rectangle has
+no such property. That is the mechanism `ListRow` already used for its label.
+
+**Part styles are only for parts the routing cannot reach,** which is narrower
+than it sounds and worth stating because getting it wrong is invisible. The
+engine already routes `bg-*`/`rounded-*`/`border-*` to a control's `background`
+and `text-*` to its `contentItem`. So a `contentStyle` for a label -- or a
+default `Lo.style` on a replaced `background` delegate -- is a *second writer*
+for a property the root already writes, and whichever landed last would decide
+the colour. `Select` was written that way first and the contract test caught
+it.
+
+The consequence: a replaced delegate takes plain property bindings as defaults,
+never its own class string, exactly as `Button`'s label has always done
+(`color: control.palette.buttonText`, "a readable default that any `text-*`
+class overrides"). `CheckBox`, `Switch`, `RadioButton` and `Select` therefore
+have no `contentStyle`, and `Slider` no `grooveStyle` -- Qt's Slider has no
+groove delegate, the channel *is* the background.
+
 **Structural components.** `Icon`, `Scroll`, `Label`, `Divider` and `Spacer`
 join `Loom.Controls`. Each replaces a construction the repository was writing by
 hand:

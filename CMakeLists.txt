@@ -181,6 +181,7 @@ if(LOOM_BUILD_CONTROLS)
     set(loom_controls_qml_files
         src/controls/Box.qml
         src/controls/Button.qml
+        src/controls/CheckBox.qml
         src/controls/Col.qml
         src/controls/Divider.qml
         src/controls/Field.qml
@@ -188,9 +189,13 @@ if(LOOM_BUILD_CONTROLS)
         src/controls/Icon.qml
         src/controls/Label.qml
         src/controls/ListRow.qml
+        src/controls/RadioButton.qml
         src/controls/Row.qml
         src/controls/Scroll.qml
+        src/controls/Select.qml
+        src/controls/Slider.qml
         src/controls/Spacer.qml
+        src/controls/Switch.qml
     )
     # Without an alias the module resource path keeps the source subdirectory --
     # `:/qt/qml/Loom/Controls/src/controls/Box.qml` -- and the generated qmldir

@@ -90,6 +90,12 @@ private slots:
     void scrollPaddingUtilityReachesTheViewport();
     void labelAndDividerFollowTheirTokens();
     void spacerFillsInALayoutAndSizesInAPositioner();
+    void checkBoxIndicatorFollowsTheControlsState();
+    void formControlBackgroundsTakeRootAppearanceUtilities();
+    void formControlLabelsTakeRootTextUtilities();
+    void switchHandleTravelsWithTheControl();
+    void sliderFillFollowsItsValue();
+    void selectPopupAndRowsAreStyleable();
 };
 
 // Box exists because `p-4` needs `topPadding`, and the Rectangle everyone
@@ -658,6 +664,200 @@ void ControlsTests::spacerFillsInALayoutAndSizesInAPositioner()
     QQuickItem *const tail = row->findChild<QQuickItem *>(QStringLiteral("tail"));
     QVERIFY(tail);
     QTRY_COMPARE(tail->x(), 26.0);
+}
+
+// The mechanism the whole form tranche rests on. A control's sub-delegate is a
+// Rectangle with no `checked` of its own, so it cannot read the state the way
+// the control does -- `Lo.group` publishes it downward instead, which is the
+// same thing that lets a ListRow's label follow the row's selection.
+//
+// If this stops working, every part of every form control silently stops
+// reacting while still rendering, which is the worst failure shape available.
+void ControlsTests::checkBoxIndicatorFollowsTheControlsState()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "CheckBox {\n"
+        "    text: \"Remember me\"\n"
+        "    indicatorStyle: \"rounded-md\"\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QQuickItem *const indicator = itemProperty(item.data(), "indicator");
+    QVERIFY(indicator);
+
+    // The part style reaches the part at all.
+    QTRY_COMPARE(indicator->property("radius").toReal(), 6.0);
+
+    // And the part's own classes survive it: the border is still there.
+    QVERIFY(indicator->property("border").isValid());
+
+    const QColor unchecked = indicator->property("color").value<QColor>();
+    item->setProperty("checked", true);
+    QTRY_VERIFY(indicator->property("color").value<QColor>() != unchecked);
+
+    // Back again, so this is a live subscription rather than a one-way latch.
+    item->setProperty("checked", false);
+    QTRY_COMPARE(indicator->property("color").value<QColor>(), unchecked);
+}
+
+// Rule 2 of the contract in docs/styling/components.md, across the whole form
+// tranche at once: `background` must be a Rectangle that nothing else writes.
+//
+// This is the test that catches the mistake worth catching. A delegate given
+// its own default `Lo.style` looks right in isolation and is a *second writer*
+// for the properties backgroundPath() already routes here -- so `bg-*` at the
+// call site and the delegate's own class string race, and which one lands last
+// decides the colour. Select was written that way first.
+void ControlsTests::formControlBackgroundsTakeRootAppearanceUtilities()
+{
+    static constexpr const char *types[] = {
+        "CheckBox", "Switch", "RadioButton", "Select",
+    };
+
+    for (const char *type : types) {
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        const QByteArray document =
+            QByteArray("import QtQuick\nimport Loom\nimport Loom.Controls\n") + type
+            + " {\n    Lo.style: \"bg-blue-500 rounded-lg\"\n}\n";
+        QScopedPointer<QQuickItem> item(createItem(component, document));
+        QVERIFY2(item, qPrintable(QStringLiteral("%1: %2").arg(
+                           QString::fromLatin1(type), component.errorString())));
+
+        QQuickItem *const background = itemProperty(item.data(), "background");
+        QVERIFY2(background, type);
+        QTRY_COMPARE_WITH_TIMEOUT(
+            background->property("color").value<QColor>(),
+            QColor(0x3b, 0x82, 0xf6), 2000);
+        QCOMPARE(background->property("radius").toReal(), 8.0);
+    }
+}
+
+// The mirror of the above for the label half, and the reason none of these
+// types has a `contentStyle`: contentPath() already routes `text-*` to a
+// Control's contentItem, and the font group lands on the Control and
+// propagates down. A part style for the label would be the same race.
+void ControlsTests::formControlLabelsTakeRootTextUtilities()
+{
+    // Select carries a model rather than a `text`, so it names its own body.
+    struct Labelled {
+        const char *type;
+        const char *extra;
+    };
+    static constexpr Labelled types[] = {
+        {"CheckBox", "    text: \"Label\"\n"},
+        {"Switch", "    text: \"Label\"\n"},
+        {"RadioButton", "    text: \"Label\"\n"},
+        {"Select", "    model: [\"Daily\"]\n"},
+    };
+
+    for (const auto &entry : types) {
+        const char *const type = entry.type;
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        const QByteArray document =
+            QByteArray("import QtQuick\nimport Loom\nimport Loom.Controls\n") + type
+            + " {\n" + entry.extra
+            + "    Lo.style: \"text-white text-2xl\"\n}\n";
+        QScopedPointer<QQuickItem> item(createItem(component, document));
+        QVERIFY2(item, qPrintable(QStringLiteral("%1: %2").arg(
+                           QString::fromLatin1(type), component.errorString())));
+
+        QQuickItem *const label = itemProperty(item.data(), "contentItem");
+        QVERIFY2(label, type);
+        QTRY_COMPARE_WITH_TIMEOUT(
+            label->property("color").value<QColor>(), QColor(Qt::white), 2000);
+        // text-2xl lands on the Control and reaches the label through the
+        // `font: root.font` binding, not through a second class string.
+        QCOMPARE(label->property("font").value<QFont>().pixelSize(), 24);
+    }
+}
+
+void ControlsTests::switchHandleTravelsWithTheControl()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Switch {\n"
+        "    handleStyle: \"bg-warning\"\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QQuickItem *const track = itemProperty(item.data(), "indicator");
+    QVERIFY(track);
+    const auto handles = track->childItems();
+    QVERIFY(!handles.isEmpty());
+    QQuickItem *const handle = handles.first();
+
+    // The part style reaches the knob.
+    QTRY_COMPARE(
+        handle->property("color").value<QColor>(), QColor(0xf5, 0x9e, 0x0b));
+
+    const qreal off = handle->x();
+    item->setProperty("checked", true);
+    // Travel is a Behavior, so this settles rather than jumping.
+    QTRY_VERIFY(handle->x() > off);
+}
+
+void ControlsTests::sliderFillFollowsItsValue()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Slider {\n"
+        "    width: 200\n"
+        "    from: 0\n"
+        "    to: 100\n"
+        "    value: 50\n"
+        "    trackStyle: \"bg-success\"\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QQuickItem *const groove = itemProperty(item.data(), "background");
+    QVERIFY(groove);
+    const auto fills = groove->childItems();
+    QVERIFY(!fills.isEmpty());
+    QQuickItem *const fill = fills.first();
+
+    // Splitting groove from fill is the whole point: one part is the channel,
+    // the other is how far along it the value is.
+    QTRY_COMPARE(fill->property("color").value<QColor>(), QColor(0x16, 0xa3, 0x4a));
+    QTRY_COMPARE(fill->width(), groove->width() / 2);
+
+    item->setProperty("value", 100.0);
+    QTRY_COMPARE(fill->width(), groove->width());
+}
+
+void ControlsTests::selectPopupAndRowsAreStyleable()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Select {\n"
+        "    model: [\"Daily\", \"Weekly\"]\n"
+        "    popupStyle: \"bg-warning\"\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QObject *const popup = item->property("popup").value<QObject *>();
+    QVERIFY(popup);
+    QQuickItem *const panel = popup->property("background").value<QQuickItem *>();
+    QVERIFY(panel);
+
+    // A Popup renders in the window's overlay, so its background is reachable
+    // only through a part style -- nothing about the Select's own class string
+    // crosses that boundary.
+    QTRY_COMPARE(panel->property("color").value<QColor>(), QColor(0xf5, 0x9e, 0x0b));
 }
 
 QTEST_MAIN(ControlsTests)

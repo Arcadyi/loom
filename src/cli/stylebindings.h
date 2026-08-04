@@ -33,6 +33,7 @@ inline constexpr const char *kNames[] = {
     "handleStyle",
     "headerStyle",
     "indicatorStyle",
+    "itemStyle",
     "labelStyle",
     "messageStyle",
     "popupStyle",

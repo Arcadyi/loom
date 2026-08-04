@@ -98,6 +98,42 @@ keeps everything it did not mention. That works because later classes win at
 equal specificity — the same rule that makes `p-4 px-6` mean what it looks
 like.
 
+### Only for parts the engine cannot reach
+
+This is the rule that decides whether a part style should exist at all, and it
+is narrower than it first looks. The engine already routes:
+
+| From the call site | Lands on |
+| --- | --- |
+| `bg-*`, `rounded-*`, `border-*` | the control's `background` delegate |
+| `text-*` (colour, alignment, elide, line height) | its `contentItem` |
+| `p-*`, `gap-*`, and the whole font group | the control itself, and the font propagates down |
+
+So a `contentStyle` for a control's label would be a **second writer for a
+property the root already writes** — and which one landed last would decide the
+colour. That is a race, not a feature. `CheckBox`, `Switch`, `RadioButton` and
+`Select` therefore have no `contentStyle`: style their labels with
+`Lo.style: "text-sm text-muted"` at the call site.
+
+The same rule says what a delegate may contain. **A replaced delegate takes
+plain property bindings as defaults, never its own `Lo.style`:**
+
+```qml
+// Wrong — races with any bg-* the call site writes.
+background: Rectangle { Lo.style: "bg-surface rounded-md" }
+
+// Right — a default the first class write cleanly replaces.
+background: Rectangle {
+    color: Loom.color.surface
+    radius: Loom.radius.md
+}
+```
+
+`Button`'s label has always done it this way (`color: control.palette.buttonText`,
+described in its source as "a readable default that any `text-*` class
+overrides"). Part styles are for `indicator`, `handle`, `popup` and the like —
+delegates no routing table mentions.
+
 Forwarding is ordinary QML and the engine knows nothing about it. The
 *tooling* does: `src/cli/stylebindings.h` lists the property names, which is
 what lets completion, hovers and `loom lint` see inside them. A part-style
@@ -265,6 +301,91 @@ and the style engine duck-types it, the same way it reads `checked` and
 
 The caption, the input and the error line are reachable through
 [part styles](#part-styles) — `labelStyle`, `contentStyle` and `messageStyle`.
+
+## CheckBox, Switch and RadioButton
+
+```qml
+Col {
+    Lo.style: "gap-2"
+
+    CheckBox {
+        text: qsTr("Remember me")
+        Lo.style: "text-sm"
+        indicatorStyle: "rounded-md"
+    }
+
+    Switch {
+        text: qsTr("Sync automatically")
+        indicatorStyle: "group-checked/switch:bg-success"
+    }
+}
+```
+
+Each replaces its delegates with Rectangles and hands them back as part styles:
+`indicatorStyle` on all three, plus `handleStyle` for the `Switch`'s knob. The
+label needs no part style — see [the rule above](#only-for-parts-the-engine-cannot-reach).
+
+The indicator reads the control's state through **the group**, not directly:
+`checked` is duck-typed off the item carrying `Lo.style`, and a `Rectangle`
+has no such property. `Lo.group` publishes it downward, which is the same
+mechanism `ListRow` uses for its label. That is why the group name is set by
+the component, and why a call site needing its own group should wrap rather
+than reassign.
+
+The `Switch`'s knob travels on a QML `Behavior`, not a `transition-*` class.
+Loom's transitions animate Loom's own writes; `x` here is a binding the
+component owns, which is exactly the case the class
+[does not cover](utilities.md).
+
+## Slider
+
+```qml
+Slider {
+    from: 0
+    to: 100
+    value: 40
+    Lo.style: "w-64 bg-surface-alt"
+    trackStyle: "bg-success"
+}
+```
+
+The channel is the control's **background**, so `bg-*` and `rounded-*` reach it
+with no part style — Qt's `Slider` has no groove delegate. What routing cannot
+see is the filled portion drawn on top of it and the knob, which is what
+`trackStyle` and `handleStyle` are for.
+
+Horizontal only. `orientation: Qt.Vertical` still works — it is Qt's property
+and nothing here removes it — but the delegate geometry lays out along x, so a
+vertical slider gets Qt's own groove back rather than a styled one.
+
+## Select
+
+```qml
+Select {
+    model: [qsTr("Daily"), qsTr("Weekly"), qsTr("Never")]
+    Lo.style: "w-48"
+    popupStyle: "rounded-lg"
+    itemStyle: "rounded-md"
+}
+```
+
+Named `Select` rather than `ComboBox` because it does not shadow the
+QtQuick.Controls type — it derives from it, so everything Qt documents still
+applies, and both names stay resolvable. `Col` is spelled that way for the same
+reason.
+
+**The popup does not inherit context.** A `Popup` renders in the window's
+overlay, not inside the item, so `Lo.group` and container queries do not cross
+that boundary: a `group-hover/select:` class on a row would never fire. The
+rows use their own `hover:` and `highlighted:` states, which reach them
+directly because an `ItemDelegate` carries both properties. This is a property
+of Qt's overlay rather than something Loom chose, and it applies to every
+popup-based control.
+
+**The arrow is a glyph,** not an asset — there is no bundled icon set, so the
+indicator is a text character, which also means `indicatorStyle: "text-accent"`
+colours it like any label. Replace `indicator` outright for a drawn shape or an
+`Icon`.
 
 ## ListRow
 
