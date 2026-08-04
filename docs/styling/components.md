@@ -415,6 +415,86 @@ Text { Lo.style: "group-selected/row:text-on-accent" }
 That replaces the cookbook's ternary written twice — once on the row and once
 on its label, because two items cannot share one class string.
 
+## Dialog, Menu and Tooltip
+
+```qml
+Dialog {
+    title: qsTr("Delete project?")
+    popupStyle: "rounded-xl"
+
+    Label { text: qsTr("This cannot be undone.") }
+}
+```
+
+**A Popup is not an Item, so `Lo.style` on these types does nothing.**
+`LoomStyleAttached` casts its target to a `QQuickItem` and warns when it
+cannot — so the classes are not ignored, there is no item for them to be
+about. `Lo.group` cannot be published from one either, which is why their parts
+read their own states rather than the popup's.
+
+That is the reason these types expose more part styles than a Control-based one
+needs. `popupStyle` reaches the panel on all three; `headerStyle` the title bar
+on `Dialog`, `itemStyle` the rows on `Menu`, `contentStyle` the text on
+`Tooltip`. They are the only way in.
+
+**Context stops at the overlay.** A popup renders in the window's overlay
+rather than inside whatever opened it, so container queries and `Lo.group` do
+not reach its contents. Classes on items *inside* it work normally; classes
+that ask about an ancestor outside it never fire.
+
+`Tooltip` is spelled that way so it does not shadow `QtQuick.Controls.ToolTip`,
+whose attached form — `ToolTip.text` on any control — stays available and
+unchanged. Shadowing a type used mainly through its attached property would
+have been a trap.
+
+There is no `Toast`. A toast's value is the host and the queue that decides
+what shows when, and that is application behaviour rather than styling — which
+[the contract](#the-contract) says these types do not implement. A `Dialog`
+with `modal: false` covers the one-off case.
+
+## Card, Badge, Progress and Tabs
+
+```qml
+Card {
+    Lo.style: "w-64"
+
+    Col {
+        Lo.style: "gap-2"
+
+        Row {
+            Lo.style: "gap-2"
+            align: Qt.AlignVCenter
+
+            Label { text: qsTr("Storage") }
+            Badge { text: qsTr("beta") }
+        }
+        Progress { value: 0.41; Lo.style: "w-full" }
+    }
+}
+```
+
+`Card` derives from `Box`, so padding is real and children land inside it. Its
+defaults are token bindings and **not** the `@card` recipe: a shipped component
+cannot require the application to have declared something before it renders
+correctly, which is the same rule that made `invalid` a built-in state rather
+than one `Field` asks projects to declare. A project that wants its own card
+still writes `@card` in its design file — that remains the better answer for a
+project-specific shape.
+
+`Badge` is a `Control` rather than a `Rectangle` so the pill sizes itself from
+its label instead of needing a width — the same reason `Box` exists.
+
+`Progress` puts the channel on its background, so `bg-*` and `rounded-*` reach
+it from the call site; `trackStyle` is the fill. `indeterminate: true` is Qt's
+and still sets, but the animation it drives lives in the style's own
+contentItem, which this replaces — so an indeterminate `Progress` renders an
+empty channel. Use Qt's `ProgressBar` where that mode matters.
+
+`Tabs` pairs with `Tab`. Both are needed: a `TabBar` styles nothing about its
+buttons, so shipping only the bar would leave the part everyone looks at
+unstyled. `checked` is a built-in state, so the selected tab styles itself from
+the call site's own class string with no wiring.
+
 ## Icon
 
 ```qml

@@ -180,15 +180,20 @@ add_library(loom::loomplugin ALIAS loomplugin)
 if(LOOM_BUILD_CONTROLS)
     set(loom_controls_qml_files
         src/controls/Box.qml
+        src/controls/Badge.qml
         src/controls/Button.qml
+        src/controls/Card.qml
         src/controls/CheckBox.qml
         src/controls/Col.qml
+        src/controls/Dialog.qml
         src/controls/Divider.qml
         src/controls/Field.qml
         src/controls/Grid.qml
         src/controls/Icon.qml
         src/controls/Label.qml
         src/controls/ListRow.qml
+        src/controls/Menu.qml
+        src/controls/Progress.qml
         src/controls/RadioButton.qml
         src/controls/Row.qml
         src/controls/Scroll.qml
@@ -196,6 +201,9 @@ if(LOOM_BUILD_CONTROLS)
         src/controls/Slider.qml
         src/controls/Spacer.qml
         src/controls/Switch.qml
+        src/controls/Tab.qml
+        src/controls/Tabs.qml
+        src/controls/Tooltip.qml
     )
     # Without an alias the module resource path keeps the source subdirectory --
     # `:/qt/qml/Loom/Controls/src/controls/Box.qml` -- and the generated qmldir

@@ -19,9 +19,16 @@ QQuickItem *createItem(QQmlComponent &component, const QByteArray &document)
     return qobject_cast<QQuickItem *>(component.create());
 }
 
-QQuickItem *itemProperty(const QQuickItem *item, const char *name)
+QQuickItem *itemProperty(const QObject *item, const char *name)
 {
     return item->property(name).value<QQuickItem *>();
+}
+
+// Popups are not Items, so the Item-returning helper above cannot create one.
+QObject *createObject(QQmlComponent &component, const QByteArray &document)
+{
+    component.setData(document, QUrl());
+    return component.create();
 }
 
 // Escaped rather than a raw string literal for the reason tst_icon.cpp gives:
@@ -96,6 +103,11 @@ private slots:
     void switchHandleTravelsWithTheControl();
     void sliderFillFollowsItsValue();
     void selectPopupAndRowsAreStyleable();
+    void overlayPanelsAreReachableOnlyThroughPartStyles();
+    void cardIsAPaddedSurfaceThatCallSitesCanOverride();
+    void progressFillFollowsItsValue();
+    void badgeGrowsWithItsLabel();
+    void tabIndicatorFollowsSelection();
 };
 
 // Box exists because `p-4` needs `topPadding`, and the Rectangle everyone
@@ -858,6 +870,156 @@ void ControlsTests::selectPopupAndRowsAreStyleable()
     // only through a part style -- nothing about the Select's own class string
     // crosses that boundary.
     QTRY_COMPARE(panel->property("color").value<QColor>(), QColor(0xf5, 0x9e, 0x0b));
+}
+
+// The constraint that shapes every popup-based type here. LoomStyleAttached
+// casts its target to a QQuickItem and warns when it cannot, and a Popup is a
+// QObject -- so `Lo.style` on a Dialog, Menu or Tooltip is not "ignored", there
+// is no item for it to be about. Part styles are the only way in, which is why
+// these types expose more of them than a Control-based one needs.
+void ControlsTests::overlayPanelsAreReachableOnlyThroughPartStyles()
+{
+    struct Overlay {
+        const char *type;
+        const char *body;
+    };
+    static constexpr Overlay overlays[] = {
+        {"Dialog", "    popupStyle: \"bg-warning\"\n"},
+        {"Menu", "    popupStyle: \"bg-warning\"\n"},
+        {"Tooltip", "    popupStyle: \"bg-warning\"\n"},
+    };
+
+    for (const auto &entry : overlays) {
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        const QByteArray document =
+            QByteArray("import QtQuick\nimport Loom\nimport Loom.Controls\n")
+            + entry.type + " {\n" + entry.body + "}\n";
+        QScopedPointer<QObject> popup(createObject(component, document));
+        QVERIFY2(popup, qPrintable(QStringLiteral("%1: %2").arg(
+                            QString::fromLatin1(entry.type), component.errorString())));
+
+        // Not an Item. This is the whole reason for the part styles.
+        QVERIFY2(!qobject_cast<QQuickItem *>(popup.data()), entry.type);
+
+        QQuickItem *const panel = itemProperty(popup.data(), "background");
+        QVERIFY2(panel, entry.type);
+        QTRY_COMPARE_WITH_TIMEOUT(
+            panel->property("color").value<QColor>(), QColor(0xf5, 0x9e, 0x0b), 2000);
+    }
+}
+
+// Card ships defaults as property bindings rather than as a class string, so a
+// call site's own `bg-*` replaces them instead of racing them. The second half
+// of this test is the part that would catch a regression to `Lo.style`.
+void ControlsTests::cardIsAPaddedSurfaceThatCallSitesCanOverride()
+{
+    QQmlEngine engine;
+
+    QQmlComponent plain(&engine);
+    QScopedPointer<QQuickItem> bare(createItem(
+        plain,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Card { }\n"));
+    QVERIFY2(bare, qPrintable(plain.errorString()));
+    // Real padding, inherited from Box, with no configuration.
+    QCOMPARE(bare->property("topPadding").toReal(), 24.0);
+    QQuickItem *const surface = itemProperty(bare.data(), "background");
+    QVERIFY(surface);
+    QCOMPARE(surface->property("radius").toReal(), 8.0);
+
+    QQmlComponent styled(&engine);
+    QScopedPointer<QQuickItem> overridden(createItem(
+        styled,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Card {\n"
+        "    Lo.style: \"bg-blue-500 p-2\"\n"
+        "}\n"));
+    QVERIFY2(overridden, qPrintable(styled.errorString()));
+    QQuickItem *const painted = itemProperty(overridden.data(), "background");
+    QVERIFY(painted);
+    QTRY_COMPARE(painted->property("color").value<QColor>(), QColor(0x3b, 0x82, 0xf6));
+    QTRY_COMPARE(overridden->property("topPadding").toReal(), 8.0);
+}
+
+void ControlsTests::progressFillFollowsItsValue()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Progress {\n"
+        "    width: 200\n"
+        "    value: 0.5\n"
+        "    trackStyle: \"bg-success\"\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QQuickItem *const content = itemProperty(item.data(), "contentItem");
+    QVERIFY(content);
+    const auto fills = content->childItems();
+    QVERIFY(!fills.isEmpty());
+    QQuickItem *const fill = fills.first();
+
+    QTRY_COMPARE(fill->property("color").value<QColor>(), QColor(0x16, 0xa3, 0x4a));
+    QTRY_COMPARE(fill->width(), content->width() / 2);
+}
+
+// A Control rather than a Rectangle, so the pill sizes itself from its label
+// instead of needing a width -- the same reason Box exists.
+void ControlsTests::badgeGrowsWithItsLabel()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Row {\n"
+        "    Badge { objectName: \"short\"; text: \"1\" }\n"
+        "    Badge { objectName: \"long\"; text: \"1284\" }\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QQuickItem *const shortBadge = item->findChild<QQuickItem *>(QStringLiteral("short"));
+    QQuickItem *const longBadge = item->findChild<QQuickItem *>(QStringLiteral("long"));
+    QVERIFY(shortBadge);
+    QVERIFY(longBadge);
+    QTRY_VERIFY(longBadge->implicitWidth() > shortBadge->implicitWidth());
+}
+
+void ControlsTests::tabIndicatorFollowsSelection()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Tabs {\n"
+        "    width: 300\n"
+        "    Tab { objectName: \"first\"; text: \"Overview\" }\n"
+        "    Tab { objectName: \"second\"; text: \"Activity\" }\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QQuickItem *const first = item->findChild<QQuickItem *>(QStringLiteral("first"));
+    QQuickItem *const second = item->findChild<QQuickItem *>(QStringLiteral("second"));
+    QVERIFY(first);
+    QVERIFY(second);
+
+    const auto firstMarks = itemProperty(first, "background")->childItems();
+    const auto secondMarks = itemProperty(second, "background")->childItems();
+    QVERIFY(!firstMarks.isEmpty());
+    QVERIFY(!secondMarks.isEmpty());
+
+    // TabBar selects the first tab on its own; the underline follows `checked`
+    // with nothing wired at the call site.
+    QTRY_VERIFY(firstMarks.first()->isVisible());
+    QVERIFY(!secondMarks.first()->isVisible());
+
+    item->setProperty("currentIndex", 1);
+    QTRY_VERIFY(secondMarks.first()->isVisible());
+    QVERIFY(!firstMarks.first()->isVisible());
 }
 
 QTEST_MAIN(ControlsTests)

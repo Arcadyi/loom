@@ -21,9 +21,9 @@ endif()
 # the documentation legitimately reaches for, plus the two example-local
 # components the docs define inline.
 set(external_types
-    ApplicationWindow Column ColumnLayout GridLayout Item ListView Loader
-    NumberAnimation Rectangle RectangularShadow Repeater RowLayout Text
-    TextField CheckBox
+    Action ApplicationWindow ButtonGroup Column ColumnLayout GridLayout Item
+    ListView Loader NumberAnimation Rectangle RectangularShadow Repeater
+    RowLayout Text TextField
     # Defined by the examples that use them, not by loom.
     SectionTitle
 )

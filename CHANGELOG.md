@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+**Overlays and display types.** `Dialog`, `Menu`, `Tooltip`, `Card`, `Badge`,
+`Progress`, `Tabs` and `Tab`.
+
+The overlays turned up a constraint nothing had documented: **a Popup is not an
+Item**, so `Lo.style` on one does nothing at all -- `LoomStyleAttached` casts
+its target to a QQuickItem and warns when it cannot. The classes are not
+ignored; there is no item for them to be about. `Lo.group` cannot be published
+from a Popup either, so their parts read their own states rather than the
+popup's. That is why these types expose more part styles than a Control-based
+one needs: `popupStyle`, `headerStyle`, `itemStyle` and `contentStyle` are the
+only way in.
+
+`Tooltip` is spelled that way so it does not shadow `QtQuick.Controls.ToolTip`,
+whose attached form -- `ToolTip.text` on any control -- stays available.
+Shadowing a type used mainly through its attached property would have been a
+trap.
+
+`Card`'s defaults are token bindings rather than the `@card` recipe, on the
+rule `Field` already set: a shipped component cannot require the application to
+have declared something before it renders correctly. A project that wants its
+own card still writes `@card` in its design file.
+
+**No `Toast`,** deliberately. A toast's value is the host and the queue that
+decides what shows when, and that is application behaviour rather than styling
+-- which the contract these types follow says they do not implement. Shipping
+the styled panel without the queue would have been the half-feature the
+tranching was meant to avoid.
+
 **Form controls.** `CheckBox`, `Switch`, `RadioButton`, `Slider` and `Select`.
 Each derives from its QtQuick.Controls type and replaces only the delegates the
 style engine cannot reach; none reimplements behaviour. Exclusivity is still
