@@ -205,6 +205,26 @@ void collectExpressionLiterals(
                      qsizetype(location.offset + location.length - 1)}});
         return;
     }
+    if (auto *tmpl = cast<TemplateLiteral *>(expression)) {
+        // A backtick string is how a long class list is written across lines
+        // without `+` at the end of every one. Only the substitution-free form
+        // is a literal: `p-4 ${size}` is a computed string, and its parts are
+        // no more checkable than the halves of a concatenation whose other
+        // half is a variable -- which the Add case below already declines to
+        // guess at.
+        if (tmpl->hasNoSubstitution) {
+            const auto location = tmpl->literalToken;
+            // Same arithmetic as the StringLiteral case: the token includes
+            // both delimiters, and keeping a source range rather than a decoded
+            // value is what keeps LSP edits exact.
+            if (location.length >= 2)
+                literals->append(
+                    StyleLiteral{
+                        {qsizetype(location.offset + 1),
+                         qsizetype(location.offset + location.length - 1)}});
+        }
+        return;
+    }
     if (auto *nested = cast<NestedExpression *>(expression)) {
         collectExpressionLiterals(nested->expression, literals);
         return;

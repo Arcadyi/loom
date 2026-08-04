@@ -49,6 +49,24 @@ variant  := ( breakpoint | "max-" breakpoint | "min-[" px "]" | "max-[" px "]"
 modifier := "/" ( 0 .. 100 )        // colour opacity on every colour utility
 ```
 
+### Writing a long class string
+
+Classes are separated by whitespace, and a QML template literal can carry
+newlines — so a long list does not need a `+` at the end of every line:
+
+```qml
+Rectangle {
+    Lo.style: `p-4 bg-surface rounded-lg
+               hover:bg-blue-600 hover:shadow-md
+               md:p-6 md:text-lg`
+}
+```
+
+`loom lint`, `loom style` and the editor read these exactly as they read a
+plain string. A template with a `${...}` substitution in it is a computed
+string and is not read offline, the same as the dynamic half of a
+concatenation.
+
 Variant prefixes compose in any order and combine as **AND** —
 `md:hover:bg-accent` is identical to `hover:md:bg-accent`, and needs both a
 window at least 768 px wide and a hovered item. At most one breakpoint prefix is

@@ -263,6 +263,41 @@ qml/Main.qml:44: unknown utility class 'bg-brand-999'
 loom: 1 unknown class(es) in 1 file(s)
 ```
 
+`--json` emits the same diagnostics machine-readably, matching `loom style`.
+
+### What the class check reports
+
+| Code | Severity | Meaning |
+| --- | --- | --- |
+| `unknownUtility` | error | no such class |
+| `arbitraryValue` | per design policy | a `[...]` value where the project discourages or forbids them |
+| `duplicateClass` | warning | the same class twice in one string |
+| `conflictingClass` | warning | a class every one of whose writes a later class in the same string repeats |
+
+The last two read a whole class string rather than one class at a time, and
+what they *do not* report is the point:
+
+```qml
+Lo.style: "p-4 px-6"                      // fine: px-6 covers two of four sides
+Lo.style: "hover:bg-accent bg-surface"    // fine: different conditions
+Lo.style: cond ? "bg-accent" : "bg-surface"   // fine: separate literals
+Lo.style: "p-4 p-6"                       // reported: p-4 does nothing
+```
+
+`conflictingClass` fires only when *everything* a class writes is written again
+later. A partial overlap is the shorthand idiom, and a variant is a variant.
+Two branches of a ternary are separate strings and are supposed to set the same
+property.
+
+Suppress a code on the following line with a comment:
+
+```qml
+// loom-ignore conflictingClass
+Rectangle { Lo.style: "bg-accent bg-surface" }
+```
+
+A bare `// loom-ignore` suppresses every code on the next line.
+
 ## `loom style`
 
 ```

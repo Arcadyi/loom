@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+**Two lint rules that read a whole class string.** `duplicateClass` for the
+same class twice, and `conflictingClass` for a class every one of whose writes
+a later class in the same string repeats. Both are warnings; `loom lint` gains
+`--json`, which `loom style` has had since it shipped.
+
+What they do *not* report is the design. `conflictingClass` fires only when
+**everything** a class writes is written again later, so `p-4 px-6` -- four
+sides then two of them, the documented shorthand idiom -- is silent, and so is
+`hover:bg-accent bg-surface`, where the conditions differ. The two branches of
+a ternary are separate literals and are supposed to write the same property,
+which is why the pass works per literal rather than per binding. Run over the
+gallery, the docs and the templates, the rules produce no findings at all.
+
+`// loom-ignore <code>` suppresses a code on the following line, and a bare
+`// loom-ignore` suppresses all of them. Without that, a rule with any
+false-positive rate is un-adoptable, and the honest response would have been to
+make it so conservative it found nothing.
+
+**Multi-line class strings.** A QML template literal now reads as a class
+string, so a long list does not need a `+` at the end of every line:
+
+    Lo.style: `p-4 bg-surface rounded-lg
+               hover:bg-blue-600
+               md:p-6`
+
+One AST case in the scanner. An array form was considered and rejected:
+`Lo.style` is a QString property, so a JS array coerces through toString() and
+arrives comma-joined; making it work would mean changing the property's type,
+which breaks the compile cache key, leaves every class in the list
+undiagnosed, and turns the inspector's editable style field read-only on any
+binding that used it. A substitution-free template costs none of that.
+
 **Design-defined tokens are reactive.** `Loom.color["brand-500"]` and its camel
 alias `Loom.color.brand500` re-evaluate on a theme switch and on a design
 reload, like any built-in token. The same holds for every scale.

@@ -21,6 +21,7 @@ private slots:
     void framingHandlesFragmentedAndCoalescedMessages();
     void documentFindsOnlyStyleResultLiterals();
     void documentFindsPartStyleLiterals();
+    void documentReadsMultiLineTemplateLiterals();
     void incrementalChangesHonorUtf8Positions();
     void projectTokensDriveIntelligence();
     void proxyMergesQmllsAndLoomFeatures();
@@ -189,6 +190,48 @@ void LspTests::documentFindsPartStyleLiterals()
     for (const auto &token : broken.styleTokens())
         brokenNames.append(token.text);
     QCOMPARE(brokenNames, QStringList({QStringLiteral("size-5")}));
+}
+
+// A long class list written across lines. Every example in the documentation
+// used to end each line with `+`, because a plain string cannot span lines and
+// nothing else was understood. A backtick string can, and teaching the scanner
+// about it costs one AST case -- where accepting an array would have cost the
+// property's type, the compile cache key, and the inspector's ability to edit
+// a style in place.
+void LspTests::documentReadsMultiLineTemplateLiterals()
+{
+    lsp::Document document;
+    document.open(
+        QStringLiteral(
+            "Item {\n"
+            "  Lo.style: `p-4 bg-surface\n"
+            "             hover:bg-blue-600\n"
+            "             md:p-6`\n"
+            "}\n"),
+        1);
+    QStringList names;
+    for (const auto &token : document.styleTokens())
+        names.append(token.text);
+    QCOMPARE(
+        names,
+        QStringList(
+            {QStringLiteral("p-4"), QStringLiteral("bg-surface"),
+             QStringLiteral("hover:bg-blue-600"), QStringLiteral("md:p-6")}));
+
+    // The range has to be the content, not the backticks, or every quick fix
+    // and completion would be off by one at each end.
+    const auto literals = document.styleLiterals();
+    QCOMPARE(literals.size(), 1);
+    const QString text = document.text();
+    QCOMPARE(text.at(literals.first().content.start), QLatin1Char('p'));
+    QCOMPARE(text.at(literals.first().content.end - 1), QLatin1Char('6'));
+
+    // A substitution makes it a computed string, and its parts are guesses --
+    // declined, the way a concatenation with a variable half already is.
+    lsp::Document interpolated;
+    interpolated.open(
+        QStringLiteral("Item {\n  Lo.style: `p-4 ${extra}`\n}\n"), 1);
+    QVERIFY(interpolated.styleTokens().isEmpty());
 }
 
 void LspTests::incrementalChangesHonorUtf8Positions()

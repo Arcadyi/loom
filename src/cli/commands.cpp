@@ -1091,7 +1091,16 @@ int Commands::lint(const QStringList &arguments)
         .summary =
             QStringLiteral("Run qmllint and check Lo.style classes over the project."),
         .usage = QStringLiteral("loom lint [options]"),
-        .options = buildOptions(),
+        // `loom style` has had --json since it shipped and lint has not, so a
+        // CI job wanting structured output had to run the style half twice --
+        // once through lint for the qmllint pass, once through style to parse
+        // the result.
+        .options = buildOptions()
+            + QList<OptionSpec>{
+                {QStringLiteral("json"),
+                 {},
+                 QStringLiteral("Emit machine-readable diagnostics as JSON.")},
+            },
     };
     ParsedCommand parsed;
     switch (cli::parseCommand(spec, arguments, parsed)) {
@@ -1123,7 +1132,8 @@ int Commands::lint(const QStringList &arguments)
     // Both halves always run, and the worse status wins. Stopping at the first
     // failure would hide every utility-class typo behind one qmllint complaint,
     // which is exactly the round trip this command exists to avoid.
-    const auto styleStatus = runStyleCheck(context, qmlFilesOf(context));
+    const auto styleStatus = runStyleCheck(
+        context, qmlFilesOf(context), parsed.isSet(QStringLiteral("json")));
     return qmllintStatus != cli::Success ? qmllintStatus : styleStatus;
 }
 

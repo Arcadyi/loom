@@ -195,6 +195,15 @@ if(TARGET loom_cli)
             "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/style-check"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_style_test.cmake"
     )
+    # The rules that read a whole class string rather than one class at a time,
+    # and -- more to the point -- the idioms they must leave alone.
+    add_test(
+        NAME loom_cli_lint
+        COMMAND "${CMAKE_COMMAND}"
+            "-DLOOM_EXE=$<TARGET_FILE:loom_cli>"
+            "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/lint-check"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_lint_test.cmake"
+    )
     add_test(
         NAME loom_cli_migrate
         COMMAND "${CMAKE_COMMAND}"
