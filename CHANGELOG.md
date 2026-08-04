@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+**`loom fmt` puts class strings in canonical order.** Specificity first --
+unconditional, then responsive, then stateful -- and then by what a class
+writes, so a family stays together. The string ends up reading in the order the
+engine resolves it, ranked on the axis `loomSpecificity()` already uses rather
+than a second one that could disagree with it.
+
+Reordering can change what a string paints, because later classes win at equal
+specificity: `px-6 p-4` and `p-4 px-6` are different. So the sorter is checked
+rather than trusted. It compiles both the original and its candidate, compares
+which rule wins each condition slot, and returns the original untouched when
+they differ -- as it does for any string containing a class it does not
+recognise. Ranking alone cannot see every overlap (`size-4` writes what `w-8`
+writes, under different utilities), and rather than enumerate the safe pairs,
+it asks the compiler.
+
+Driven off the AST literal ranges `lspdocument` already produces, so a class
+string in a comment or a comparison is untouched, and concatenations and
+ternaries work for free -- each fragment is its own range.
+
 **Go-to-definition into the design file.** Ctrl-click a class naming a token
 your project defined, or an `@recipe`, and land on the line that declares it.
 

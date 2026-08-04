@@ -131,6 +131,9 @@ loom_add_test(tst_statecapture
 # Everything below links loom_cli_core instead of re-listing src/cli sources, so
 # adding a test for any CLI unit costs one loom_add_test line.
 if(TARGET loom_cli_core)
+    loom_add_test(tst_styleorder LINK loom_cli_core)
+    target_include_directories(tst_styleorder PRIVATE "${CMAKE_SOURCE_DIR}/src")
+
     loom_add_test(tst_manifest LINK loom_cli_core)
     loom_add_test(tst_devserver LINK loom_cli_core)
     loom_add_test(tst_commandline LINK loom_cli_core)

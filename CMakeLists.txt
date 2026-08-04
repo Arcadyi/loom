@@ -364,6 +364,8 @@ if(LOOM_BUILD_CLI)
         src/cli/projectmanifest.cpp
         src/cli/projectscaffolder.cpp
         src/cli/stylecheck.cpp
+        src/cli/styleorder.h
+        src/cli/styleorder.cpp
         src/cli/styleedit.h
         src/cli/styleedit.cpp
         src/cli/styleintelligence.cpp

@@ -415,8 +415,31 @@ arbitrary JavaScript at run time.
 loom fmt [--check] [options]
 ```
 
-Runs `qmlformat` over the project's QML, rewriting in place. `--check` reports
-unformatted files instead, for CI.
+Runs `qmlformat` over the project's QML, rewriting in place, and then puts each
+`Lo.style` string into canonical class order. `--check` reports files that
+either step would change, for CI.
+
+Canonical order is specificity first — unconditional classes, then responsive,
+then stateful — and then by what a class writes, so a family stays together:
+
+```qml
+// before
+Lo.style: "hover:bg-blue-600 md:p-6 bg-surface rounded-lg"
+
+// after
+Lo.style: "bg-surface rounded-lg md:p-6 hover:bg-blue-600"
+```
+
+The string reads in the order the engine resolves it, which is the same axis
+`loomSpecificity()` already ranks on rather than a second one that could
+disagree.
+
+**Reordering can change meaning, so it is checked rather than assumed.** Later
+classes win at equal specificity, so `px-6 p-4` and `p-4 px-6` paint
+differently. The sorter compiles both the original and its candidate, compares
+which rule wins each condition slot, and **keeps the original when they
+differ** — as it does for any string containing a class it does not recognise.
+A string it cannot order safely is left exactly as it was.
 
 It formats QML only — it does not run `clang-format` over C++, even though
 `loom new` scaffolds a `.clang-format`.
