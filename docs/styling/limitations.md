@@ -91,7 +91,10 @@ flicker-critical properties.
   breakpoint variant, so `hover:bg-accent` still applies at `md:` widths, and
   `md:hover:` outranks both.
 - `Loom.*.value()` runtime lookups are snapshots — they do not re-evaluate on
-  theme switches (typed properties and utility strings do).
+  theme switches. Subscripting the group does
+  ([`Loom.color["brand-500"]`](tokens.md#design-defined-keys)), as do typed
+  properties and utility strings, so this is a reason to prefer those rather
+  than a limitation of design-defined tokens.
 - Control icons ignore `icon.color` when the source is a file. Qt tints an
   icon item only while it is a mask, which a `.svg`/`.png` source never is, so
   the color is accepted and silently dropped — as is `palette.buttonText`,

@@ -198,18 +198,35 @@ Explicit alternatives are `Loom.ExplicitTheme`, `Loom.ReduceMotion`, and
 `Loom.FullMotion`. See [theming.md](theming.md) for system theme mappings and
 motion variants.
 
-## Runtime lookup for design-defined keys
+## Design-defined keys
 
-Token groups have a `value(key)` method taking the *vocabulary* name, for keys
-that have no generated property — anything a design token file added:
+The typed properties above are generated from tables compiled into loom, so a
+name a design file invents has none. Those resolve through the group itself,
+by key:
 
 ```qml
 Rectangle {
-    color: Loom.color.value("brand-500")
-    width: Loom.space.value("18")
-    radius: Loom.radius.value("card")
+    color: Loom.color["brand-500"]
+    width: Loom.space["18"]
+    radius: Loom.radius["card"]
 }
 ```
+
+A key with dashes also gets a camelCase alias, so dotted access works where the
+name allows it — `Loom.color.brand500`, `Loom.radius.card`. The transform is
+the one [above](#naming): dashes join up, a leading digit takes an `x`.
+
+**These are ordinary reactive reads.** A binding through one re-evaluates on a
+theme switch and on a design reload, exactly like a generated property. Groups
+are property maps, and per-key change notification is what QML bindings track.
+
+There is also a `value(key)` method, kept for source compatibility:
+
+```qml
+Loom.color.value("brand-500")   // snapshot: does NOT re-evaluate
+```
+
+It reads the registry once. Prefer the subscript form.
 
 The same lookup is available on `font`, `shadow`, `opacity`, `duration`,
 `easing`, and `breakpoint`. Because `Loom.text` combines three scales,
@@ -300,8 +317,9 @@ full public surface.
 | Access | Re-evaluates on theme switch | Re-evaluates on design reload |
 | --- | --- | --- |
 | `Loom.color.surface` and every typed property | yes | yes |
+| `Loom.color["brand-500"]`, `Loom.color.brand500` | yes | yes, including keys the reload adds |
 | `Lo.style: "bg-surface"` | yes | yes, including recompiling for new token names |
 | `Loom.color.value("brand")` | **no** | **no** |
 
 The last row is the one that catches people. A `value()` call in a binding looks
-reactive and is not.
+reactive and is not — which is why the subscript form exists and is preferred.

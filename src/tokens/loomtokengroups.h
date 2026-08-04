@@ -3,19 +3,39 @@
 #include <QColor>
 #include <QEasingCurve>
 #include <QObject>
+#include <QQmlPropertyMap>
 #include <QtQml/qqmlregistration.h>
 
 #include "loomtokendata.h"
 #include "loomtokenregistry.h"
 #include "loomvaluetypes.h"
 
-// One QObject per token scale, exposed as grouped properties of the `Loom`
+// One group per token scale, exposed as grouped properties of the `Loom`
 // singleton (`Loom.color.blue500`). Every property in a group shares the
 // single changed() NOTIFY signal, wired to the registry's tokensChanged(), so
 // a theme switch or config load re-evaluates every binding that goes through
 // the group. READ accessors pull from the registry so overrides apply.
+//
+// QQmlPropertyMap rather than plain QObject so the *config-defined* tokens
+// resolve too. The X-macro tables above generate a Q_PROPERTY per built-in
+// token, and there is no such table for the ones a design file invents -- so
+// `brand-500` had only Loom.color.value("brand-500"), a snapshot that never
+// re-evaluated when the theme changed. Every scaffolded project defines a
+// brand ramp, so every scaffolded project met that on day one.
+//
+// A property map gives per-key change notification that QML bindings actually
+// track, which is the property value() lacks. It is the same choice LoomStore
+// made, for the same reason. Custom keys are inserted in two spellings -- the
+// registry's own (`Loom.color["brand-500"]`) and a camel alias for dotted
+// access (`Loom.color.brand500`) -- and built-in names are never inserted,
+// because those already exist as compiled-in properties.
+//
+// The map is writable from QML, as any QQmlPropertyMap is. Writing to one of
+// these is not meaningful: the next theme switch or config load re-seeds every
+// key from the registry and the write is gone. Tokens come from the design
+// file.
 
-class LoomColorGroup : public QObject {
+class LoomColorGroup : public QQmlPropertyMap {
     Q_OBJECT
     QML_ANONYMOUS
 
@@ -36,15 +56,16 @@ public:
     LOOM_SEMANTIC_COLORS(LOOM_READ)
 #undef LOOM_READ
 
-    // Escape hatch for config-defined tokens ("brand-500"). Snapshot lookup:
-    // a binding through it does not re-evaluate on theme switch.
+    // Direct registry lookup for a config-defined token. Kept for source
+    // compatibility; prefer Loom.color["brand-500"], which re-resolves when
+    // the theme changes where this does not.
     Q_INVOKABLE QColor value(const QString &key) const;
 
 signals:
     void changed();
 };
 
-class LoomSpaceGroup : public QObject {
+class LoomSpaceGroup : public QQmlPropertyMap {
     Q_OBJECT
     QML_ANONYMOUS
 
@@ -69,7 +90,7 @@ signals:
     void changed();
 };
 
-class LoomTextGroup : public QObject {
+class LoomTextGroup : public QQmlPropertyMap {
     Q_OBJECT
     QML_ANONYMOUS
 
@@ -118,7 +139,7 @@ signals:
     void changed();
 };
 
-class LoomRadiusGroup : public QObject {
+class LoomRadiusGroup : public QQmlPropertyMap {
     Q_OBJECT
     QML_ANONYMOUS
 
@@ -143,7 +164,7 @@ signals:
     void changed();
 };
 
-class LoomFontGroup : public QObject {
+class LoomFontGroup : public QQmlPropertyMap {
     Q_OBJECT
     QML_ANONYMOUS
     Q_PROPERTY(QStringList sans READ sans NOTIFY changed)
@@ -161,7 +182,7 @@ signals:
     void changed();
 };
 
-class LoomShadowGroup : public QObject {
+class LoomShadowGroup : public QQmlPropertyMap {
     Q_OBJECT
     QML_ANONYMOUS
 
@@ -186,7 +207,7 @@ signals:
     void changed();
 };
 
-class LoomOpacityGroup : public QObject {
+class LoomOpacityGroup : public QQmlPropertyMap {
     Q_OBJECT
     QML_ANONYMOUS
 
@@ -211,7 +232,7 @@ signals:
     void changed();
 };
 
-class LoomDurationGroup : public QObject {
+class LoomDurationGroup : public QQmlPropertyMap {
     Q_OBJECT
     QML_ANONYMOUS
 
@@ -236,7 +257,7 @@ signals:
     void changed();
 };
 
-class LoomEasingGroup : public QObject {
+class LoomEasingGroup : public QQmlPropertyMap {
     Q_OBJECT
     QML_ANONYMOUS
 
@@ -261,7 +282,7 @@ signals:
     void changed();
 };
 
-class LoomBreakpointGroup : public QObject {
+class LoomBreakpointGroup : public QQmlPropertyMap {
     Q_OBJECT
     QML_ANONYMOUS
 

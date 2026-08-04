@@ -31,6 +31,8 @@ private slots:
     void themeSwitchReevaluatesBindings();
     void unknownThemeIsRejected();
     void easingTokensAreBezierCurves();
+    void customTokensReactToAThemeSwitch();
+    void customTokensDoNotShadowBuiltInNames();
 };
 
 void TokenTests::cleanup()
@@ -136,6 +138,89 @@ void TokenTests::unknownThemeIsRejected()
         QtWarningMsg, QRegularExpression(QStringLiteral("unknown theme")));
     loom::setTheme(QStringLiteral("solarized"));
     QCOMPARE(loom::theme(), QStringLiteral("dark"));
+}
+
+namespace {
+
+// One brand ramp, two values for it. Exactly the shape templates/app and the
+// gallery both scaffold, which is why this limitation met every new project on
+// its first theme switch.
+//
+// The base block nests colours by hue; a theme overrides them by their flat
+// resolved key. That asymmetry is the loader's, and worth writing down here
+// because getting it wrong reports as "must be a color or palette reference".
+constexpr auto brandDesign = R"({
+  "schemaVersion": 2,
+  "tokens": { "colors": { "brand": { "500": "#112233" } },
+              "space": { "gutter": 30 } },
+  "themes": {
+    "dark": { "dark": true,
+              "tokens": { "colors": { "brand-500": "#445566" } } }
+  }
+})";
+
+} // namespace
+
+// The limitation this removes was documented twice: Loom.color.value("brand-500")
+// is a snapshot, so a binding through it kept the value it was first given and
+// a theme switch left it stale. Reverting the QQmlPropertyMap conversion makes
+// this test fail on exactly that -- the built-in half keeps working, the custom
+// half stops tracking.
+void TokenTests::customTokensReactToAThemeSwitch()
+{
+    QVERIFY(loom::reloadConfigData(QByteArray(brandDesign), QString()));
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QObject> object(createFromQml(
+        component,
+        // Both spellings: the registry's own key, and the camel alias that
+        // makes dotted access possible.
+        "property color bracketed: Loom.color[\"brand-500\"]\n"
+        "property color dotted: Loom.color.brand500\n"
+        "property real gutter: Loom.space.gutter\n"
+        // The built-in half, to prove the conversion did not cost it.
+        "property color builtIn: Loom.color.surface"));
+    QVERIFY2(object, qPrintable(component.errorString()));
+
+    QCOMPARE(object->property("bracketed").value<QColor>(), QColor(0x11, 0x22, 0x33));
+    QCOMPARE(object->property("dotted").value<QColor>(), QColor(0x11, 0x22, 0x33));
+    QCOMPARE(object->property("gutter").toReal(), 30.0);
+    QCOMPARE(object->property("builtIn").value<QColor>(), QColor(Qt::white));
+
+    loom::setTheme(QStringLiteral("dark"));
+
+    QCOMPARE(object->property("bracketed").value<QColor>(), QColor(0x44, 0x55, 0x66));
+    QCOMPARE(object->property("dotted").value<QColor>(), QColor(0x44, 0x55, 0x66));
+    QCOMPARE(object->property("builtIn").value<QColor>(), QColor(0x0f, 0x17, 0x2a));
+}
+
+// Seeding skips any name the X-macro tables already generated a Q_PROPERTY
+// for. Inserting over one would shadow the accessor that reads through the
+// registry -- which is the thing that makes a theme switch work at all -- so
+// the built-ins would go stale in exactly the way the custom ones used to.
+void TokenTests::customTokensDoNotShadowBuiltInNames()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QObject> object(createFromQml(
+        component,
+        "property color camel: Loom.color.blue500\n"
+        "property color dashed: Loom.color[\"blue-500\"]\n"
+        "property color semantic: Loom.color.surfaceAlt\n"
+        "property real step: Loom.space.s4"));
+    QVERIFY2(object, qPrintable(component.errorString()));
+
+    QCOMPARE(object->property("camel").value<QColor>(), QColor(0x3b, 0x82, 0xf6));
+    // The dashed spelling is an added alias, not a replacement, and resolves to
+    // the same colour.
+    QCOMPARE(object->property("dashed").value<QColor>(), QColor(0x3b, 0x82, 0xf6));
+    QCOMPARE(object->property("step").toReal(), 16.0);
+
+    loom::setTheme(QStringLiteral("dark"));
+    QCOMPARE(
+        object->property("semantic").value<QColor>(),
+        LoomTokenRegistry::instance()->color(QStringLiteral("surface-alt")));
 }
 
 void TokenTests::easingTokensAreBezierCurves()

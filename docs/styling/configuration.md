@@ -42,7 +42,7 @@ The one `loom new` generates, which is a complete and useful example:
 }
 ```
 
-Three lines of consequence: `bg-brand-500` and `Loom.color.value("brand-500")`
+Three lines of consequence: `bg-brand-500` and `Loom.color["brand-500"]`
 now resolve, and every existing `bg-accent` in the project is now the brand
 colour, correctly lighter on dark backgrounds. Nothing else in the UI had to
 change.
@@ -294,17 +294,19 @@ Config-defined tokens work in utility strings immediately — `bg-brand-500`,
 `w-18`. The compile cache is invalidated on load, so strings compiled before the
 config defined a name recompile rather than keeping the gap.
 
-The typed `Loom.*` surface is generated at build time, so config tokens are read
-with the runtime lookups instead:
+The typed `Loom.*` surface is generated at build time, so a config token has no
+generated property. It is read from the group by key instead, and a dashed key
+also gets a camelCase alias:
 
 ```qml
-Loom.color.value("brand-500")
-Loom.space.value("18")
+Loom.color["brand-500"]
+Loom.color.brand500
+Loom.space["18"]
 ```
 
-Those are **snapshot** reads: they do not re-evaluate on a theme switch, unlike
-the generated properties. For a theme-dependent custom colour, prefer a utility
-string, which re-resolves on every apply.
+Both re-evaluate on a theme switch and on a design reload, like any other
+token. The older `Loom.color.value("brand-500")` still works but is a
+**snapshot** — it reads once and a binding through it goes stale.
 
 ## Checking it
 

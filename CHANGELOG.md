@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+**Design-defined tokens are reactive.** `Loom.color["brand-500"]` and its camel
+alias `Loom.color.brand500` re-evaluate on a theme switch and on a design
+reload, like any built-in token. The same holds for every scale.
+
+This removes a limitation the documentation stated twice. The typed `Loom.*`
+surface is X-macro-generated from tables compiled into loom, so a name a design
+file invents had no property -- only `Loom.color.value("brand-500")`, which
+reads the registry once and leaves a binding stale. Both `templates/app` and
+the gallery define a brand ramp, so every scaffolded project met this on its
+first theme switch.
+
+The groups are `QQmlPropertyMap`s now, which is what gives per-key change
+notification that QML bindings actually track -- the same choice `LoomStore`
+made, for the same reason, and not codegen: a generated property set cannot
+work under `loom dev`, where a design change repaints without touching the
+scene, and the X-macro tables are compiled into the shipped library rather than
+into the application.
+
+Seeding skips any name the tables already generated a property for. Inserting
+over one would shadow the accessor that reads through the registry, which is
+the thing that makes a theme switch work -- so the built-ins would have gone
+stale in exactly the way the custom ones used to.
+`customTokensDoNotShadowBuiltInNames` pins that.
+
+`value()` still works and is still a snapshot. It is documented as the older
+form now rather than as the only one.
+
 **Overlays and display types.** `Dialog`, `Menu`, `Tooltip`, `Card`, `Badge`,
 `Progress`, `Tabs` and `Tab`.
 
