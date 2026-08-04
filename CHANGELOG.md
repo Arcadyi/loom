@@ -77,8 +77,17 @@ re-assigns when the Loader reports itself empty; a binding-based version fails
 No route guards, no nested routes, no transitions, no URL parsing, and
 `Router.back()` still drops params. Documented rather than implied.
 
-**Main-axis distribution.** `Row` and `Col` take a `justify` property --
-`Start`, `Center`, `End`, `SpaceBetween`, `SpaceAround`, `SpaceEvenly`.
+**Main-axis distribution.** `Row` and `Col` take a `justify` property, with
+values on a `Justify` type: `Justify.Start`, `Center`, `End`, `SpaceBetween`,
+`SpaceAround`, `SpaceEvenly`.
+
+The values are a separate type rather than an enum on `Row` because `Row`
+collides with QtQuick's. A colliding name still instantiates correctly -- the
+last import wins -- but as a value in an expression it resolves to the QtQuick
+type, which has no such enum. So `Row.SpaceBetween` evaluated to undefined at
+every call site not itself rooted in a `Row`, the property fell back to 0, and
+a justify that read correctly in the source did nothing. `Justify` collides
+with nothing.
 
 Qt Quick has no such property anywhere: a positioner packs to the start, and a
 Layout distributes through per-child `Layout.fillWidth`. `SpaceBetween` meant

@@ -17,7 +17,8 @@ Window {
         { route: "states", name: qsTr("States"), source: "StatesPage.qml" },
         { route: "responsive", name: qsTr("Responsive"), source: "ResponsivePage.qml" },
         { route: "theming", name: qsTr("Theming"), source: "ThemingPage.qml" },
-        { route: "features", name: qsTr("Modern"), source: "FeaturesPage.qml" }
+        { route: "features", name: qsTr("Modern"), source: "FeaturesPage.qml" },
+        { route: "components", name: qsTr("Components"), source: "ComponentsPage.qml" }
     ]
 
     // Qt.resolvedUrl() here and not in RouteView: a relative string assigned

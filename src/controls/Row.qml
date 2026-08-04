@@ -1,9 +1,12 @@
 pragma ComponentBehavior: Bound
 
-import QtQuick
-// Qualified, because this file *is* `Row` inside its own module: the implicit
-// directory import would otherwise resolve the root element to this component
-// and recurse.
+// QtQuick is imported *only* qualified. The root element needs the qualified
+// name or it would resolve to this component and recurse -- but an unqualified
+// `import QtQuick` also makes the bare name `Row` mean QtQuick's, which has no
+// Justify enum, so `Row.Start` below silently evaluated to undefined and Qt
+// logged "Unable to assign [undefined] to int" for every Row ever created.
+// Without it, the bare name resolves to this component, which is what the
+// enum reference needs.
 import QtQuick as Quick
 import "positioning.js" as Positioning
 
@@ -37,7 +40,7 @@ import "positioning.js" as Positioning
     \qml
     Row {
         Lo.style: "gap-3 w-full"
-        justify: Row.SpaceBetween
+        justify: Justify.SpaceBetween
 
         Text { text: qsTr("Title") }
         Text { text: qsTr("Edit") }
@@ -53,21 +56,13 @@ import "positioning.js" as Positioning
 Quick.Row {
     id: root
 
-    enum Justify {
-        Start,
-        Center,
-        End,
-        SpaceBetween,
-        SpaceAround,
-        SpaceEvenly
-    }
-
     //! Qt.AlignTop (the QtQuick default), Qt.AlignVCenter, or Qt.AlignBottom.
     property int align: Qt.AlignTop
 
-    //! Where children sit along the row. Row.Start leaves positioning to the
-    //! positioner, which is the QtQuick behaviour and the default.
-    property int justify: Row.Start
+    //! Where children sit along the row, from \l Justify. Justify.Start leaves
+    //! positioning to the positioner, which is the QtQuick behaviour and the
+    //! default.
+    property int justify: Justify.Start
 
     // Writing `x` is writing the axis QQuickRow owns, so a write re-enters
     // through positioningComplete. The guard makes that re-entry a no-op
@@ -76,7 +71,7 @@ Quick.Row {
     property bool _distributing: false
 
     function distributeChildren(): void {
-        if (root.justify === Row.Start || root._distributing)
+        if (root.justify === Justify.Start || root._distributing)
             return;
         const visible = [];
         const sizes = [];
