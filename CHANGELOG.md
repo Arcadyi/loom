@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+**`RouteView`.** The rendering half `Router` never had. `Router` has held the
+route, its params and the history since 0.4, surviving a reload because it
+lives in the process-wide store -- and it had no documentation, no example and
+no user anywhere in the repository. Applications kept two index-aligned arrays
+and an integer instead, which is what the gallery does.
+
+The source is assigned rather than bound, and that is load-bearing.
+`ReloadController::reloadBoundaries()` repoints a seam Loader's `source` with a
+property write, and a property write destroys the binding on it permanently --
+the rule limitations.md already states for utility classes. A
+`source: routes[Router.route]` binding would navigate correctly until the first
+hot reload and then silently stop, still rendering. `RouteView` assigns, and
+re-assigns when the Loader reports itself empty; a binding-based version fails
+`routeViewRestoresItsSourceAfterASeamReload` and nothing else.
+
+No route guards, no nested routes, no transitions, no URL parsing, and
+`Router.back()` still drops params. Documented rather than implied.
+
 **Main-axis distribution.** `Row` and `Col` take a `justify` property --
 `Start`, `Center`, `End`, `SpaceBetween`, `SpaceAround`, `SpaceEvenly`.
 

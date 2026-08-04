@@ -53,6 +53,30 @@ QString writeIcon(const QTemporaryDir &dir)
     return QUrl::fromLocalFile(path).toString();
 }
 
+// Two trivial pages on disk, so a RouteView has something real to resolve to.
+QString writePage(const QTemporaryDir &dir, const QString &name, const QString &text)
+{
+    const QString path = dir.filePath(name);
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly))
+        return {};
+    file.write(
+        QStringLiteral("import QtQuick\nItem { property string tag: \"%1\" }\n")
+            .arg(text)
+            .toUtf8());
+    return QUrl::fromLocalFile(path).toString();
+}
+
+QByteArray routeViewDocument(const QString &first, const QString &second)
+{
+    return QByteArray("import QtQuick\nimport Loom\nimport Loom.Controls\n"
+                      "RouteView {\n"
+                      "    width: 100\n    height: 100\n"
+                      "    routes: ({ \"one\": \"")
+        + first.toUtf8() + "\", \"two\": \"" + second.toUtf8() + "\" })\n"
+        + "    fallback: \"" + first.toUtf8() + "\"\n}\n";
+}
+
 QByteArray iconDocument(const QString &source, const QByteArray &body)
 {
     return QByteArray("import QtQuick\nimport Loom\nimport Loom.Controls\n"
@@ -110,6 +134,8 @@ private slots:
     void tabIndicatorFollowsSelection();
     void rowDistributesChildrenOnTheMainAxis();
     void colDistributionSettlesRatherThanLooping();
+    void routeViewResolvesRoutesAndFallsBack();
+    void routeViewRestoresItsSourceAfterASeamReload();
 };
 
 // Box exists because `p-4` needs `topPadding`, and the Rectangle everyone
@@ -1092,6 +1118,77 @@ void ControlsTests::colDistributionSettlesRatherThanLooping()
     const int settled = item->property("passes").toInt();
     QTest::qWait(50);
     QCOMPARE(item->property("passes").toInt(), settled);
+}
+
+// Router has held the route, its params and the history since 0.4 and had no
+// rendering half, so it was 88 lines of shipped code with no documentation, no
+// example and no user. Applications kept two index-aligned arrays and an
+// integer instead -- which is what the gallery does.
+void ControlsTests::routeViewResolvesRoutesAndFallsBack()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString one = writePage(dir, QStringLiteral("One.qml"), QStringLiteral("one"));
+    const QString two = writePage(dir, QStringLiteral("Two.qml"), QStringLiteral("two"));
+    QVERIFY(!one.isEmpty() && !two.isEmpty());
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> view(
+        createItem(component, routeViewDocument(one, two)));
+    QVERIFY2(view, qPrintable(component.errorString()));
+
+    QObject *const loader = view->property("loader").value<QObject *>();
+    QVERIFY(loader);
+
+    QObject *router = nullptr;
+    QQmlComponent routerHandle(&engine);
+    routerHandle.setData(
+        "import QtQuick\nimport Loom\nQtObject { property var r: Router }\n", QUrl());
+    QScopedPointer<QObject> holder(routerHandle.create());
+    QVERIFY2(holder, qPrintable(routerHandle.errorString()));
+    router = holder->property("r").value<QObject *>();
+    QVERIFY(router);
+
+    QVERIFY(QMetaObject::invokeMethod(
+        router, "push", Q_ARG(QString, QStringLiteral("two")),
+        Q_ARG(QVariantMap, QVariantMap{})));
+    QTRY_COMPARE(loader->property("source").toUrl().toString(), two);
+
+    QVERIFY(QMetaObject::invokeMethod(
+        router, "push", Q_ARG(QString, QStringLiteral("nope")),
+        Q_ARG(QVariantMap, QVariantMap{})));
+    QTRY_COMPARE(loader->property("source").toUrl().toString(), one);
+}
+
+// The property the whole design turns on. ReloadController::reloadBoundaries()
+// repoints a seam Loader's source with setProperty(), which destroys a binding
+// permanently -- so `source: routes[Router.route]` would navigate correctly
+// until the first hot reload and then silently stop, while still rendering.
+// Assigning imperatively and restoring when the Loader reports itself empty is
+// what survives that; this simulates the blanking the reload does.
+void ControlsTests::routeViewRestoresItsSourceAfterASeamReload()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString one = writePage(dir, QStringLiteral("One.qml"), QStringLiteral("one"));
+    const QString two = writePage(dir, QStringLiteral("Two.qml"), QStringLiteral("two"));
+    QVERIFY(!one.isEmpty() && !two.isEmpty());
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> view(
+        createItem(component, routeViewDocument(one, two)));
+    QVERIFY2(view, qPrintable(component.errorString()));
+
+    QObject *const loader = view->property("loader").value<QObject *>();
+    QVERIFY(loader);
+    QTRY_VERIFY(!loader->property("source").toUrl().isEmpty());
+    const QUrl before = loader->property("source").toUrl();
+
+    // What the reload does to a seam.
+    loader->setProperty("source", QUrl());
+    QTRY_COMPARE(loader->property("source").toUrl(), before);
 }
 
 QTEST_MAIN(ControlsTests)
