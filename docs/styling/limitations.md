@@ -91,7 +91,10 @@ flicker-critical properties.
   breakpoint variant, so `hover:bg-accent` still applies at `md:` widths, and
   `md:hover:` outranks both.
 - `Loom.*.value()` runtime lookups are snapshots — they do not re-evaluate on
-  theme switches (typed properties and utility strings do).
+  theme switches. Subscripting the group does
+  ([`Loom.color["brand-500"]`](tokens.md#design-defined-keys)), as do typed
+  properties and utility strings, so this is a reason to prefer those rather
+  than a limitation of design-defined tokens.
 - Control icons ignore `icon.color` when the source is a file. Qt tints an
   icon item only while it is a mask, which a `.svg`/`.png` source never is, so
   the color is accepted and silently dropped — as is `palette.buttonText`,
@@ -108,7 +111,7 @@ reported as unknown rather than approximated with surprising behavior.
 
 | Missing | Why / what to use |
 | --- | --- |
-| **Container-level alignment** — `items-*`, `justify-*` | still not classes: Qt Quick Layouts expose alignment per child, through [`self-*`](utilities.md#layout-only). `Loom.Controls`' [`Row` and `Col`](components.md#row-col-and-grid) take an `align` property instead, and `Grid` has had `verticalItemAlignment` all along |
+| **Container-level alignment** — `items-*`, `justify-*` | still not classes: Qt Quick Layouts expose alignment per child, through [`self-*`](utilities.md#layout-only). `Loom.Controls`' [`Row` and `Col`](components.md#row-col-and-grid) take `align` and `justify` **properties** instead, and `Grid` has had `verticalItemAlignment` all along. Properties are reversible; a class in the catalogue is close to permanent, so the semantics get to survive real use first |
 | **Sibling anchors** — `anchors.left: sidebar.right` | a class cannot name another QML `id`; write the anchor in QML |
 | **Changing structure** — `flex`, `grid`, column counts | a class cannot change an item's QML type; use `RowLayout`, `ColumnLayout`, `GridLayout`, positioners, or views. How many columns is a structural decision, and stays a binding |
 | **Named sibling/peer selectors** | Loom groups walk ancestors. Qt ownership and visual stacking do not provide a stable CSS-like previous-sibling selector |

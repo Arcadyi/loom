@@ -2,6 +2,274 @@
 
 ## Unreleased
 
+**`loom fmt` puts class strings in canonical order.** Specificity first --
+unconditional, then responsive, then stateful -- and then by what a class
+writes, so a family stays together. The string ends up reading in the order the
+engine resolves it, ranked on the axis `loomSpecificity()` already uses rather
+than a second one that could disagree with it.
+
+Reordering can change what a string paints, because later classes win at equal
+specificity: `px-6 p-4` and `p-4 px-6` are different. So the sorter is checked
+rather than trusted. It compiles both the original and its candidate, compares
+which rule wins each condition slot, and returns the original untouched when
+they differ -- as it does for any string containing a class it does not
+recognise. Ranking alone cannot see every overlap (`size-4` writes what `w-8`
+writes, under different utilities), and rather than enumerate the safe pairs,
+it asks the compiler.
+
+Driven off the AST literal ranges `lspdocument` already produces, so a class
+string in a comment or a comparison is untouched, and concatenations and
+ternaries work for free -- each fragment is its own range.
+
+**Go-to-definition into the design file.** Ctrl-click a class naming a token
+your project defined, or an `@recipe`, and land on the line that declares it.
+
+Nothing in the editor pointed at the design file before this, which is the
+likeliest reason the gallery defined two recipes and reached for one of them in
+one file. The key is resolved by compiling the class and reading the registry
+key the rule carries -- the same lookup the runtime does -- so variants are
+correctly ignored as conditions rather than names.
+
+It answers only for names the project declares. A built-in token lives in loom
+itself, so the request is forwarded to `qmlls` rather than swallowed. A colour
+written as a nested hue never contains its own flat key, so `bg-brand-500`
+lands on `brand`; that is where the value is, and saying so is better than
+saying nothing.
+
+**The examples use the framework.** `Loom.Controls` shipped `Box`, `Field`,
+`Button` and `Grid`, and the gallery went on using none of them: 8 files, one
+import of the module, two of its types. It kept the Rectangle + Text +
+MouseArea triple that `Button`'s own docstring names as its reason to exist,
+and reached for `spacing: Loom.space.sN` twenty times against `gap-*` -- a gap
+a comment in `tst_controls` had already remarked on with nothing to stop it.
+
+Migrated: navigation to `Router` + `RouteView` (two index-aligned arrays, an
+integer and an imperative setter, replaced by one list), the hand-wired
+`Flickable` to `Scroll` in both the gallery and the app template, twenty
+`spacing:` assignments to `gap-*`, seven muted-caption `Text` items to `Label`,
+five copies of one card shell to a `@state-card` recipe, and the template's
+unnamed `Item { Layout.fillWidth: true }` to `Spacer`.
+
+`loom_dogfood` keeps it that way, banning the constructions the components
+replace and requiring the module to actually be imported.
+
+**Not migrated, deliberately:** `StatesPage`'s Rectangle + Text + MouseArea
+cards. They look like the triple `Button` replaces and are not -- the page
+exists to demonstrate `hover:`, `pressed:`, `focus:` and `disabled:` on plain
+items, and replacing them with a control would delete what it teaches. That
+distinction is the sort of thing only migrating actually surfaces.
+
+**`RouteView`.** The rendering half `Router` never had. `Router` has held the
+route, its params and the history since 0.4, surviving a reload because it
+lives in the process-wide store -- and it had no documentation, no example and
+no user anywhere in the repository. Applications kept two index-aligned arrays
+and an integer instead, which is what the gallery does.
+
+The source is assigned rather than bound, and that is load-bearing.
+`ReloadController::reloadBoundaries()` repoints a seam Loader's `source` with a
+property write, and a property write destroys the binding on it permanently --
+the rule limitations.md already states for utility classes. A
+`source: routes[Router.route]` binding would navigate correctly until the first
+hot reload and then silently stop, still rendering. `RouteView` assigns, and
+re-assigns when the Loader reports itself empty; a binding-based version fails
+`routeViewRestoresItsSourceAfterASeamReload` and nothing else.
+
+No route guards, no nested routes, no transitions, no URL parsing, and
+`Router.back()` still drops params. Documented rather than implied.
+
+**Main-axis distribution.** `Row` and `Col` take a `justify` property --
+`Start`, `Center`, `End`, `SpaceBetween`, `SpaceAround`, `SpaceEvenly`.
+
+Qt Quick has no such property anywhere: a positioner packs to the start, and a
+Layout distributes through per-child `Layout.fillWidth`. `SpaceBetween` meant
+an invisible `Item { Layout.fillWidth: true }` spacer, which is what
+templates/app reaches for.
+
+A property and not a class, on the rule `align` already set: a class has to
+enter the catalogue, LSP completion, the docs and `tst_catalogue`'s round-trip,
+none of which is easy to take back. The `limitations.md` row that names
+container alignment as missing vocabulary is updated rather than left stale --
+it is still not a class, and now says why.
+
+Unlike `align`, this writes the axis the positioner owns, so it re-enters
+through `positioningComplete`; a guard makes the re-entry a no-op and
+`colDistributionSettlesRatherThanLooping` asserts the layout settles. A loop
+there would not crash, it would burn a core while rendering correctly. Children
+that overflow are left to the positioner: spreading negative free space would
+move them backwards past the container's edge.
+
+The distribution arithmetic is shared through `src/controls/positioning.js`,
+the property plumbing is not -- Row writes `x` and Col writes `y`, and passing
+those in as strings would trade two readable loops for one unreadable one.
+`loom_controls_qmldir` globbed `*.qml` only, so a script in QML_FILES escaped
+the "you forgot to register it" guard; it now checks those too.
+
+**Two lint rules that read a whole class string.** `duplicateClass` for the
+same class twice, and `conflictingClass` for a class every one of whose writes
+a later class in the same string repeats. Both are warnings; `loom lint` gains
+`--json`, which `loom style` has had since it shipped.
+
+What they do *not* report is the design. `conflictingClass` fires only when
+**everything** a class writes is written again later, so `p-4 px-6` -- four
+sides then two of them, the documented shorthand idiom -- is silent, and so is
+`hover:bg-accent bg-surface`, where the conditions differ. The two branches of
+a ternary are separate literals and are supposed to write the same property,
+which is why the pass works per literal rather than per binding. Run over the
+gallery, the docs and the templates, the rules produce no findings at all.
+
+`// loom-ignore <code>` suppresses a code on the following line, and a bare
+`// loom-ignore` suppresses all of them. Without that, a rule with any
+false-positive rate is un-adoptable, and the honest response would have been to
+make it so conservative it found nothing.
+
+**Multi-line class strings.** A QML template literal now reads as a class
+string, so a long list does not need a `+` at the end of every line:
+
+    Lo.style: `p-4 bg-surface rounded-lg
+               hover:bg-blue-600
+               md:p-6`
+
+One AST case in the scanner. An array form was considered and rejected:
+`Lo.style` is a QString property, so a JS array coerces through toString() and
+arrives comma-joined; making it work would mean changing the property's type,
+which breaks the compile cache key, leaves every class in the list
+undiagnosed, and turns the inspector's editable style field read-only on any
+binding that used it. A substitution-free template costs none of that.
+
+**Design-defined tokens are reactive.** `Loom.color["brand-500"]` and its camel
+alias `Loom.color.brand500` re-evaluate on a theme switch and on a design
+reload, like any built-in token. The same holds for every scale.
+
+This removes a limitation the documentation stated twice. The typed `Loom.*`
+surface is X-macro-generated from tables compiled into loom, so a name a design
+file invents had no property -- only `Loom.color.value("brand-500")`, which
+reads the registry once and leaves a binding stale. Both `templates/app` and
+the gallery define a brand ramp, so every scaffolded project met this on its
+first theme switch.
+
+The groups are `QQmlPropertyMap`s now, which is what gives per-key change
+notification that QML bindings actually track -- the same choice `LoomStore`
+made, for the same reason, and not codegen: a generated property set cannot
+work under `loom dev`, where a design change repaints without touching the
+scene, and the X-macro tables are compiled into the shipped library rather than
+into the application.
+
+Seeding skips any name the tables already generated a property for. Inserting
+over one would shadow the accessor that reads through the registry, which is
+the thing that makes a theme switch work -- so the built-ins would have gone
+stale in exactly the way the custom ones used to.
+`customTokensDoNotShadowBuiltInNames` pins that.
+
+`value()` still works and is still a snapshot. It is documented as the older
+form now rather than as the only one.
+
+**Overlays and display types.** `Dialog`, `Menu`, `Tooltip`, `Card`, `Badge`,
+`Progress`, `Tabs` and `Tab`.
+
+The overlays turned up a constraint nothing had documented: **a Popup is not an
+Item**, so `Lo.style` on one does nothing at all -- `LoomStyleAttached` casts
+its target to a QQuickItem and warns when it cannot. The classes are not
+ignored; there is no item for them to be about. `Lo.group` cannot be published
+from a Popup either, so their parts read their own states rather than the
+popup's. That is why these types expose more part styles than a Control-based
+one needs: `popupStyle`, `headerStyle`, `itemStyle` and `contentStyle` are the
+only way in.
+
+`Tooltip` is spelled that way so it does not shadow `QtQuick.Controls.ToolTip`,
+whose attached form -- `ToolTip.text` on any control -- stays available.
+Shadowing a type used mainly through its attached property would have been a
+trap.
+
+`Card`'s defaults are token bindings rather than the `@card` recipe, on the
+rule `Field` already set: a shipped component cannot require the application to
+have declared something before it renders correctly. A project that wants its
+own card still writes `@card` in its design file.
+
+**No `Toast`,** deliberately. A toast's value is the host and the queue that
+decides what shows when, and that is application behaviour rather than styling
+-- which the contract these types follow says they do not implement. Shipping
+the styled panel without the queue would have been the half-feature the
+tranching was meant to avoid.
+
+**Form controls.** `CheckBox`, `Switch`, `RadioButton`, `Slider` and `Select`.
+Each derives from its QtQuick.Controls type and replaces only the delegates the
+style engine cannot reach; none reimplements behaviour. Exclusivity is still
+Qt's, `ButtonGroup` still works, and every property Qt documents is still there.
+
+They exist because a stock control has nowhere for the vocabulary to write. An
+indicator is a style-provided delegate and
+`LoomStyleAttached::backgroundPath()` refuses anything that is not a Rectangle,
+so `bg-*` on a plain `CheckBox` styles nothing and warns.
+
+Sub-delegates read the control's state through `Lo.group` rather than directly:
+`checked` is duck-typed off the item carrying `Lo.style`, and a Rectangle has
+no such property. That is the mechanism `ListRow` already used for its label.
+
+**Part styles are only for parts the routing cannot reach,** which is narrower
+than it sounds and worth stating because getting it wrong is invisible. The
+engine already routes `bg-*`/`rounded-*`/`border-*` to a control's `background`
+and `text-*` to its `contentItem`. So a `contentStyle` for a label -- or a
+default `Lo.style` on a replaced `background` delegate -- is a *second writer*
+for a property the root already writes, and whichever landed last would decide
+the colour. `Select` was written that way first and the contract test caught
+it.
+
+The consequence: a replaced delegate takes plain property bindings as defaults,
+never its own class string, exactly as `Button`'s label has always done
+(`color: control.palette.buttonText`, "a readable default that any `text-*`
+class overrides"). `CheckBox`, `Switch`, `RadioButton` and `Select` therefore
+have no `contentStyle`, and `Slider` no `grooveStyle` -- Qt's Slider has no
+groove delegate, the channel *is* the background.
+
+**Structural components.** `Icon`, `Scroll`, `Label`, `Divider` and `Spacer`
+join `Loom.Controls`. Each replaces a construction the repository was writing by
+hand:
+
+`Icon` is the sharpest of them, because its absence was already visible.
+`Loom.icon()` has recoloured assets since 0.4 — Qt tints an icon item only
+while it is a mask, and a file source never is — but there was no type, and two
+examples in this repository instantiated `Icon { }` for one that did not exist.
+A third, `Card { }`, was in `Grid`'s docstring. `loom_docs_types` now resolves
+every type the documentation instantiates, which is the check whose absence let
+all three survive; `loom_docs_style` only ever checked the classes inside them.
+
+Colour reaches an `Icon` through `text-*`, with every state and responsive
+variant that implies. That is the one engine change here: the target profile
+routes `TextColor` to `color` for an `Image` that declares one. Deliberately
+narrower than a bare `hasProperty("color")` test, which would have made
+`text-red-500` repaint a Rectangle's fill.
+
+`Scroll` is the hand-wired `Flickable` — six anchor lines and a `contentHeight`
+sum — written once. This repository had two of them and they disagreed on how
+to compute the height. It needed no engine change either: declaring the four
+conventional padding property names is enough for `p-*`, because the profile
+duck-types on the names rather than on the type.
+
+`Label` shadows `QtQuick.Controls.Label` and so derives from it, not from
+`Text`. Shadowing it with a `Text` subclass would have taken away the padding
+and background `QQuickLabel` adds, breaking the module's own invariant. The
+invariant test now covers `Button` and `Label`, not just `Row` and `Grid`.
+
+**Part styles.** A control owns items a call site cannot reach — a `Field`'s
+caption, input and error line are internal to `Field.qml`, and `Lo.style`
+writes onto the item carrying it. The convention is a `<part>Style` string
+property forwarded onto that part's own `Lo.style`, appended to the part's
+classes rather than replacing them, so an override keeps what it did not
+mention. `Field` gains `labelStyle`, `contentStyle` and `messageStyle`.
+
+The engine needs none of this; the tooling does. A forwarded property is not an
+attached one, so nothing about its shape says it carries classes — without
+`src/cli/stylebindings.h`, every class string in the library's part-styling
+surface would be uncompleted, undiagnosed, and unchecked by `loom lint`. Both
+scanners read that list: the AST visitor and the heuristic one that answers
+while a document will not parse. `loom_controls_partstyle` fails the build when
+a control declares a part style the list does not know, because the failure it
+prevents is silent.
+
+The list is matched by name and without context, so an unrelated
+`property string labelStyle` is diagnosed as if it carried classes. A `*Style`
+suffix rule would have claimed far more names on far less evidence.
+
 **Components.** `Loom.Controls` is a new QML module: `Box`, `Row`, `Col`,
 `Grid`, `Button`, `Field` and `ListRow`. Loom styled items and placed them but
 shipped nothing to place, so the shapes every project needs lived in the

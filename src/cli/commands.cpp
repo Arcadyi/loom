@@ -8,6 +8,7 @@
 #include "projectmanifest.h"
 #include "projectscaffolder.h"
 #include "stylecheck.h"
+#include "styleorder.h"
 #include "toolchaindoctor.h"
 
 #include <loom/loom.h>
@@ -313,6 +314,53 @@ QStringList sshArguments(const QJsonObject &profile)
         arguments.append({QStringLiteral("-p"), QString::number(port)});
     arguments.append(embeddedHost(profile));
     return arguments;
+}
+
+// Rewrites the `Lo.style` literals of one file into canonical class order.
+// Returns the number of literals changed, or -1 on an I/O failure.
+//
+// Driven off the AST literal ranges lspdocument already produces rather than a
+// regular expression, so a class string inside a comment or a comparison is
+// not touched -- and off *ranges* rather than decoded values, so the rewrite
+// is exact even for escaped content. Concatenations and ternaries are handled
+// for free: each literal fragment is its own range.
+int sortStyleLiterals(const QString &path, bool apply, bool *changed)
+{
+    QFile input(path);
+    if (!input.open(QIODevice::ReadOnly | QIODevice::Text))
+        return -1;
+    const QString source = QString::fromUtf8(input.readAll());
+    input.close();
+
+    lsp::Document document;
+    document.open(source, 1);
+    const auto literals = document.styleLiterals();
+
+    QString updated = source;
+    int rewritten = 0;
+    // Back to front, so an earlier replacement cannot shift a later offset.
+    for (auto it = literals.crbegin(); it != literals.crend(); ++it) {
+        const qsizetype length = it->content.end - it->content.start;
+        if (length <= 0)
+            continue;
+        const QString text = source.mid(it->content.start, length);
+        const QString sorted = loom::styleorder::canonicalOrder(text);
+        if (sorted == text)
+            continue;
+        updated.replace(it->content.start, length, sorted);
+        ++rewritten;
+    }
+
+    if (changed)
+        *changed = rewritten > 0;
+    if (!apply || rewritten == 0)
+        return rewritten;
+
+    QSaveFile output(path);
+    if (!output.open(QIODevice::WriteOnly | QIODevice::Text))
+        return -1;
+    output.write(updated.toUtf8());
+    return output.commit() ? rewritten : -1;
 }
 
 // Shared by `loom lint` and `loom style`. Loads the project's design tokens
@@ -1091,7 +1139,16 @@ int Commands::lint(const QStringList &arguments)
         .summary =
             QStringLiteral("Run qmllint and check Lo.style classes over the project."),
         .usage = QStringLiteral("loom lint [options]"),
-        .options = buildOptions(),
+        // `loom style` has had --json since it shipped and lint has not, so a
+        // CI job wanting structured output had to run the style half twice --
+        // once through lint for the qmllint pass, once through style to parse
+        // the result.
+        .options = buildOptions()
+            + QList<OptionSpec>{
+                {QStringLiteral("json"),
+                 {},
+                 QStringLiteral("Emit machine-readable diagnostics as JSON.")},
+            },
     };
     ParsedCommand parsed;
     switch (cli::parseCommand(spec, arguments, parsed)) {
@@ -1123,7 +1180,8 @@ int Commands::lint(const QStringList &arguments)
     // Both halves always run, and the worse status wins. Stopping at the first
     // failure would hide every utility-class typo behind one qmllint complaint,
     // which is exactly the round trip this command exists to avoid.
-    const auto styleStatus = runStyleCheck(context, qmlFilesOf(context));
+    const auto styleStatus =
+        runStyleCheck(context, qmlFilesOf(context), parsed.isSet(QStringLiteral("json")));
     return qmllintStatus != cli::Success ? qmllintStatus : styleStatus;
 }
 
@@ -1286,8 +1344,25 @@ int Commands::format(const QStringList &arguments)
     }
 
     if (!parsed.isSet(QStringLiteral("check"))) {
-        return BuildRunner::run(
-            qmlformat, QStringList{QStringLiteral("--inplace")} + files);
+        const auto status =
+            BuildRunner::run(qmlformat, QStringList{QStringLiteral("--inplace")} + files);
+        if (status != cli::Success)
+            return status;
+        // qmlformat rewrites QML; it has no idea what is inside a string. The
+        // class order is the other half of "formatted" in a loom project.
+        int sorted = 0;
+        for (const auto &file : files) {
+            const int rewritten = sortStyleLiterals(file, true, nullptr);
+            if (rewritten < 0)
+                return reportError(
+                    QStringLiteral("could not rewrite class order in %1").arg(file));
+            sorted += rewritten;
+        }
+        if (sorted > 0) {
+            cli::reportProgress(
+                QStringLiteral("reordered %1 class string(s)").arg(sorted));
+        }
+        return cli::Success;
     }
 
     // qmlformat has no check mode, so compare its output with the file. Done
@@ -1309,7 +1384,10 @@ int Commands::format(const QStringList &arguments)
         QFile original(file);
         if (!original.open(QIODevice::ReadOnly))
             return reportError(original.errorString());
-        if (original.readAll() != process.readAllStandardOutput())
+        bool classesUnsorted = false;
+        if (sortStyleLiterals(file, false, &classesUnsorted) < 0)
+            return reportError(QStringLiteral("could not read %1").arg(file));
+        if (original.readAll() != process.readAllStandardOutput() || classesUnsorted)
             unformatted.append(QDir(context.root).relativeFilePath(file));
     }
 

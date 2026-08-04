@@ -158,6 +158,49 @@ Two consequences worth knowing:
   (Note that `QJsonValue::fromVariant` maps a `QObject*` to *null* rather than to undefined,
   so a naive JSON check would accept one.)
 
+## `Router` and `RouteView`
+
+```qml
+Router.push("settings", { tab: "network" })
+Router.back()
+```
+
+`Router` is a singleton over the same process-wide store, under reserved
+`loom.route*` keys — so the current route, its params and the history survive a
+hot reload outright rather than being restored afterwards. `route`, `params`,
+`stack` and `canGoBack` are properties; `push`, `replace` and `back` are calls.
+
+`RouteView` is the rendering half:
+
+```qml
+RouteView {
+    Lo.style: "fill"
+
+    routes: ({
+        "tokens": "TokensPage.qml",
+        "utilities": "UtilitiesPage.qml"
+    })
+    fallback: "NotFound.qml"
+}
+```
+
+It replaces the idiom this repository's own gallery used: two index-aligned
+arrays, one of names and one of filenames, plus an integer and a function to
+keep them in step.
+
+**The source is assigned, not bound, and that is load-bearing.** A seam reload
+repoints a `Loader`'s `source` with a property write, and a property write
+destroys the binding on it permanently. `source: routes[Router.route]` would
+therefore navigate correctly until the first hot reload and then silently stop
+— still rendering, just no longer responding to `Router`. `RouteView` assigns
+imperatively and re-assigns when the `Loader` reports itself empty, which is
+what survives that; `tst_controls` asserts it, and a binding-based
+implementation fails that one test and nothing else.
+
+What it does not do, stated plainly: no route guards, no nested or child
+routes, no transition between routes, and no URL parsing — a route is a plain
+string. `Router.back()` restores the previous route but not its params.
+
 ### A seam reload leaves the document's URL base behind
 
 Taking the seam rebuilds the page and leaves the document that holds the `Loader` alone — which

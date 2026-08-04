@@ -263,6 +263,41 @@ qml/Main.qml:44: unknown utility class 'bg-brand-999'
 loom: 1 unknown class(es) in 1 file(s)
 ```
 
+`--json` emits the same diagnostics machine-readably, matching `loom style`.
+
+### What the class check reports
+
+| Code | Severity | Meaning |
+| --- | --- | --- |
+| `unknownUtility` | error | no such class |
+| `arbitraryValue` | per design policy | a `[...]` value where the project discourages or forbids them |
+| `duplicateClass` | warning | the same class twice in one string |
+| `conflictingClass` | warning | a class every one of whose writes a later class in the same string repeats |
+
+The last two read a whole class string rather than one class at a time, and
+what they *do not* report is the point:
+
+```qml
+Lo.style: "p-4 px-6"                      // fine: px-6 covers two of four sides
+Lo.style: "hover:bg-accent bg-surface"    // fine: different conditions
+Lo.style: cond ? "bg-accent" : "bg-surface"   // fine: separate literals
+Lo.style: "p-4 p-6"                       // reported: p-4 does nothing
+```
+
+`conflictingClass` fires only when *everything* a class writes is written again
+later. A partial overlap is the shorthand idiom, and a variant is a variant.
+Two branches of a ternary are separate strings and are supposed to set the same
+property.
+
+Suppress a code on the following line with a comment:
+
+```qml
+// loom-ignore conflictingClass
+Rectangle { Lo.style: "bg-accent bg-surface" }
+```
+
+A bare `// loom-ignore` suppresses every code on the next line.
+
 ## `loom style`
 
 ```
@@ -296,7 +331,15 @@ to Qt's `qmlls` and adds these features inside literal portions of `Lo.style`:
 - utility and chained-variant completion, including project-defined tokens;
 - live unknown-class diagnostics and confidence-gated replacement fixes;
 - hover descriptions with resolved token values and variant conditions;
-- background, text, and border color previews, including `/opacity` modifiers.
+- background, text, and border color previews, including `/opacity` modifiers;
+- **go-to-definition** into the design file, for a class naming a token your
+  project defined and for `@recipe`.
+
+Go-to-definition answers only for names the *project* declares; a built-in
+token lives in loom itself, so the request is forwarded to `qmlls` rather than
+swallowed. A colour written as a nested hue — `"brand": { "500": ... }` — never
+contains its own flat key anywhere in the file, so `bg-brand-500` lands on
+`brand`, which is where the value is declared.
 
 Configure an editor that accepts a command plus arguments to run `loom lsp`.
 Anything after `--` goes to the real `qmlls`, so its build and import
@@ -372,8 +415,31 @@ arbitrary JavaScript at run time.
 loom fmt [--check] [options]
 ```
 
-Runs `qmlformat` over the project's QML, rewriting in place. `--check` reports
-unformatted files instead, for CI.
+Runs `qmlformat` over the project's QML, rewriting in place, and then puts each
+`Lo.style` string into canonical class order. `--check` reports files that
+either step would change, for CI.
+
+Canonical order is specificity first — unconditional classes, then responsive,
+then stateful — and then by what a class writes, so a family stays together:
+
+```qml
+// before
+Lo.style: "hover:bg-blue-600 md:p-6 bg-surface rounded-lg"
+
+// after
+Lo.style: "bg-surface rounded-lg md:p-6 hover:bg-blue-600"
+```
+
+The string reads in the order the engine resolves it, which is the same axis
+`loomSpecificity()` already ranks on rather than a second one that could
+disagree.
+
+**Reordering can change meaning, so it is checked rather than assumed.** Later
+classes win at equal specificity, so `px-6 p-4` and `p-4 px-6` paint
+differently. The sorter compiles both the original and its candidate, compares
+which rule wins each condition slot, and **keeps the original when they
+differ** — as it does for any string containing a class it does not recognise.
+A string it cannot order safely is left exactly as it was.
 
 It formats QML only — it does not run `clang-format` over C++, even though
 `loom new` scaffolds a `.clang-format`.

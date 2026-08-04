@@ -5,6 +5,7 @@ import QtQuick
 // directory import would otherwise resolve the root element to this component
 // and recurse.
 import QtQuick as Quick
+import "positioning.js" as Positioning
 
 /*!
     A Row that can align its children on the cross axis.
@@ -26,6 +27,23 @@ import QtQuick as Quick
     }
     \endqml
 
+    `justify` is the other axis: where the children sit *along* the row when
+    they do not fill it. Qt Quick has no such property anywhere -- a positioner
+    packs to the start and a Layout distributes through per-child
+    `Layout.fillWidth` -- so `SpaceBetween` previously meant an invisible
+    `Item { Layout.fillWidth: true }` spacer, which is what
+    templates/app/qml/pages/HomePage.qml.in reaches for.
+
+    \qml
+    Row {
+        Lo.style: "gap-3 w-full"
+        justify: Row.SpaceBetween
+
+        Text { text: qsTr("Title") }
+        Text { text: qsTr("Edit") }
+    }
+    \endqml
+
     Deliberately a QML property rather than an `items-center` utility class.
     A class would have to enter the catalogue, the LSP completion set, the
     documentation and tst_catalogue's round-trip -- all of which are hard to
@@ -35,8 +53,53 @@ import QtQuick as Quick
 Quick.Row {
     id: root
 
+    enum Justify {
+        Start,
+        Center,
+        End,
+        SpaceBetween,
+        SpaceAround,
+        SpaceEvenly
+    }
+
     //! Qt.AlignTop (the QtQuick default), Qt.AlignVCenter, or Qt.AlignBottom.
     property int align: Qt.AlignTop
+
+    //! Where children sit along the row. Row.Start leaves positioning to the
+    //! positioner, which is the QtQuick behaviour and the default.
+    property int justify: Row.Start
+
+    // Writing `x` is writing the axis QQuickRow owns, so a write re-enters
+    // through positioningComplete. The guard makes that re-entry a no-op
+    // rather than a loop; the idempotence check below then keeps a settled
+    // layout from scheduling any further passes.
+    property bool _distributing: false
+
+    function distributeChildren(): void {
+        if (root.justify === Row.Start || root._distributing)
+            return;
+        const visible = [];
+        const sizes = [];
+        for (let i = 0; i < root.children.length; ++i) {
+            const item = root.children[i];
+            if (!item.visible)
+                continue;
+            visible.push(item);
+            sizes.push(item.width);
+        }
+        const available = root.width - root.leftPadding - root.rightPadding;
+        const offsets = Positioning.distribute(
+            sizes, available, root.spacing, root.justify);
+        if (!offsets)
+            return;
+        root._distributing = true;
+        for (let j = 0; j < visible.length; ++j) {
+            const target = root.leftPadding + offsets[j];
+            if (visible[j].x !== target)
+                visible[j].x = target;
+        }
+        root._distributing = false;
+    }
 
     // Safe to write y here: QQuickRow positions along x only and leaves y
     // untouched, so this is not fighting the positioner for the same property.
@@ -62,9 +125,14 @@ Quick.Row {
     // positioningComplete rather than childrenChanged: it fires after every
     // positioning pass, so it covers children being added, removed, shown,
     // hidden, and resized, which childrenChanged alone does not.
-    onPositioningComplete: root.alignChildren()
+    onPositioningComplete: {
+        root.alignChildren();
+        root.distributeChildren();
+    }
     onAlignChanged: root.alignChildren()
     onHeightChanged: root.alignChildren()
+    onJustifyChanged: root.distributeChildren()
+    onWidthChanged: root.distributeChildren()
     // Padding written *after* construction is ignored by QQuickBasePositioner:
     // it neither grows the implicit size nor re-offsets the children, so a bare
     // QtQuick.Row assigned topPadding from C++ keeps its children at y == 0.

@@ -468,6 +468,36 @@ void LanguageServerProxy::handleEditorMessage(const QJsonObject &message)
         sendChild(message);
         return;
     }
+    // Same shape as hover: answered locally inside a class, forwarded to qmlls
+    // everywhere else. Before this, nothing in the editor pointed at the design
+    // file at all -- which is the likeliest reason the gallery defined two
+    // recipes and used one of them in one file.
+    if (method == QStringLiteral("textDocument/definition") && request) {
+        const QString uri = params.value(QStringLiteral("textDocument"))
+                                .toObject()
+                                .value(QStringLiteral("uri"))
+                                .toString();
+        bool offsetOk = false;
+        const qsizetype offset = requestOffset(uri, params, &offsetOk);
+        if (offsetOk) {
+            StyleToken token;
+            if (m_documents.value(uri).styleTokenAt(offset, &token)) {
+                const QJsonValue location = m_intelligence.definition(
+                    localPath(uri), m_documents.value(uri), offset, m_encoding);
+                // Only answer when there is somewhere to go. A class naming a
+                // built-in token is declared in loom itself, not in the
+                // project, and forwarding lets qmlls say whatever it would
+                // have said instead of this swallowing the request.
+                if (!location.isNull()) {
+                    sendEditor(responseFor(message, location));
+                    return;
+                }
+            }
+        }
+        rememberRequest(message, PendingKind::Plain);
+        sendChild(message);
+        return;
+    }
     if (method == QStringLiteral("textDocument/documentColor") && request) {
         const QString uri = params.value(QStringLiteral("textDocument"))
                                 .toObject()
@@ -790,6 +820,12 @@ void LanguageServerProxy::augmentCapabilities(
         capabilities.insert(QStringLiteral("textDocumentSync"), 2);
     if (!capabilities.value(QStringLiteral("hoverProvider")).isObject())
         capabilities.insert(QStringLiteral("hoverProvider"), true);
+    // Advertised even when qmlls already does, because the editor asks the
+    // proxy and the proxy answers for classes; leaving it to qmlls's own
+    // answer would mean the capability is present but never reaches here for
+    // documents qmlls declines.
+    if (!capabilities.value(QStringLiteral("definitionProvider")).isObject())
+        capabilities.insert(QStringLiteral("definitionProvider"), true);
     if (!capabilities.value(QStringLiteral("colorProvider")).isObject())
         capabilities.insert(QStringLiteral("colorProvider"), true);
     if (!capabilities.value(QStringLiteral("codeActionProvider")).isObject())

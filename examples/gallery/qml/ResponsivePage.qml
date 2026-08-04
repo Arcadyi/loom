@@ -1,17 +1,18 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Loom
+import Loom.Controls
 
 Column {
     id: page
 
-    spacing: Loom.space.s3
+    Lo.style: "gap-3"
 
     SectionTitle {
         text: qsTr("Responsive breakpoints")
     }
 
-    Text {
+    Label {
         Lo.style: "text-muted text-sm"
         text: qsTr("Resize the window. Thresholds: sm %1, md %2, lg %3, xl %4 px.")
             .arg(Loom.breakpoint.sm).arg(Loom.breakpoint.md)
@@ -40,7 +41,7 @@ Column {
         text: qsTr("Adaptive card row")
     }
 
-    Text {
+    Label {
         Lo.style: "text-muted text-sm"
         text: qsTr("Cards grow their padding and gain shadows on wider windows.")
     }

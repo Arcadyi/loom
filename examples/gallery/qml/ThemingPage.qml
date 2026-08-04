@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Loom
+import Loom.Controls
 
 Column {
     id: page
@@ -11,13 +12,13 @@ Column {
         "success", "warning"
     ]
 
-    spacing: Loom.space.s3
+    Lo.style: "gap-3"
 
     SectionTitle {
         text: qsTr("Semantic tokens")
     }
 
-    Text {
+    Label {
         Lo.style: "text-muted text-sm"
         text: qsTr("Current theme: %1 (dark: %2). Semantic tokens re-resolve "
             + "live on every theme switch.").arg(Loom.theme).arg(Loom.dark)
@@ -55,7 +56,7 @@ Column {
     }
 
     Column {
-        spacing: Loom.space.s1
+        Lo.style: "gap-1"
 
         Repeater {
             model: page.semanticNames
@@ -65,7 +66,7 @@ Column {
 
                 required property string modelData
 
-                spacing: Loom.space.s3
+                Lo.style: "gap-3"
 
                 Rectangle {
                     Lo.style: "border border-outline rounded-sm size-6"
@@ -98,7 +99,7 @@ Column {
                 text: qsTr("Semantic styling")
             }
 
-            Text {
+            Label {
                 Lo.style: "text-muted text-sm"
                 text: qsTr("bg-surface, border-outline, text-foreground…")
             }

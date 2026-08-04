@@ -17,8 +17,9 @@ live when that theme changes.
 | `danger`, `on-danger`, `success`, `warning` | status and destructive actions |
 
 Utility names stay dashed (`bg-surface-alt`); generated typed properties are
-camel-cased (`Loom.color.surfaceAlt`). `Loom.color.value("brand-500")` is the
-runtime lookup for a design-defined name.
+camel-cased (`Loom.color.surfaceAlt`). A design-defined name has no generated
+property and is read from the group by key — `Loom.color["brand-500"]`, or
+`Loom.color.brand500` through the camel alias. Both track a theme switch.
 
 ## Explicit and system theme modes
 

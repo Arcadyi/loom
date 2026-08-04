@@ -3,7 +3,7 @@ import QtQuick
 import Loom
 
 Column {
-    spacing: Loom.space.s4
+    Lo.style: "gap-4"
 
     SectionTitle { text: qsTr("Recipes, arbitrary values, and typography") }
 

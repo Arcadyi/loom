@@ -18,6 +18,11 @@ public:
         PositionEncoding encoding, bool *inStyle = nullptr);
     QJsonArray diagnostics(
         const QString &filePath, const Document &document, PositionEncoding encoding);
+    //! An LSP Location for the design-file declaration a class names, or null
+    //! when the offset is not inside a class or nothing declares it.
+    QJsonValue definition(
+        const QString &filePath, const Document &document, qsizetype offset,
+        PositionEncoding encoding);
     QJsonValue hover(
         const QString &filePath, const Document &document, qsizetype offset,
         PositionEncoding encoding);

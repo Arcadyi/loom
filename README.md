@@ -76,7 +76,8 @@ loom: 1 unknown class(es) in 1 file(s)
 ```
 
 `loom lsp` wraps Qt's `qmlls` and adds context-aware utility completion,
-diagnostics and fixes, resolved-value hovers, and color previews inside those
+diagnostics and fixes, resolved-value hovers, go-to-definition into the design
+file, and color previews inside those
 same strings while preserving ordinary QML language features:
 
 ```sh

@@ -19,9 +19,9 @@ import QtQuick as Quick
         columns: width >= Loom.breakpoint.md ? 3 : 1
         verticalItemAlignment: Grid.AlignVCenter
 
-        Card { }
-        Card { }
-        Card { }
+        Box { Lo.style: "@card p-4" }
+        Box { Lo.style: "@card p-4" }
+        Box { Lo.style: "@card p-4" }
     }
     \endqml
 

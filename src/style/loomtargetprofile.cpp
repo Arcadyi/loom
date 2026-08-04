@@ -80,7 +80,16 @@ const LoomTargetProfile *LoomTargetProfile::forType(const QMetaObject *metaObjec
         set(LoomUtility::BorderWidth, "border.width");
         set(LoomUtility::BorderColor, "border.color");
     }
-    if (isTextLike)
+    // An Image that declares `color` opts in too, which is what lets `text-*`
+    // -- and every state and responsive variant on it -- reach a Loom.Controls
+    // Icon, whose colour is the tint it passes to Loom.icon(). Deliberately
+    // narrower than a bare hasProperty("color") test: BgColor already routes to
+    // `color` for a Rectangle just below, so the loose form would make
+    // `text-red-500` repaint a Rectangle's fill. Image and Rectangle cannot
+    // both match.
+    if (isTextLike
+        || (loomInheritsByName(metaObject, "QQuickImage")
+            && hasProperty(metaObject, "color")))
         set(LoomUtility::TextColor, "color");
     if (hasFont) {
         set(LoomUtility::TextSize, "font.pixelSize");

@@ -1,5 +1,7 @@
 #include "styleintelligence.h"
 
+#include <QUrl>
+
 #include <QJsonDocument>
 #include <QSet>
 #include <algorithm>
@@ -158,6 +160,36 @@ QJsonArray StyleIntelligence::diagnostics(
             });
     }
     return diagnostics;
+}
+
+QJsonValue StyleIntelligence::definition(
+    const QString &filePath, const Document &document, qsizetype offset,
+    PositionEncoding encoding)
+{
+    Q_UNUSED(encoding)
+    StyleToken token;
+    if (!m_workspace->activateForFile(filePath) || !document.styleTokenAt(offset, &token))
+        return {};
+
+    const auto found = m_workspace->definition(token.text);
+    if (!found.valid())
+        return {};
+
+    // A zero-width range at the key. Editors select the whole line themselves
+    // when the range is empty, which reads better than guessing at the extent
+    // of a JSON key.
+    const QJsonObject position{
+        {QStringLiteral("line"), found.line},
+        {QStringLiteral("character"), found.column},
+    };
+    return QJsonObject{
+        {QStringLiteral("uri"), QUrl::fromLocalFile(found.path).toString()},
+        {QStringLiteral("range"),
+         QJsonObject{
+             {QStringLiteral("start"), position},
+             {QStringLiteral("end"), position},
+         }},
+    };
 }
 
 QJsonValue StyleIntelligence::hover(

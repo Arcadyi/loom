@@ -131,6 +131,9 @@ loom_add_test(tst_statecapture
 # Everything below links loom_cli_core instead of re-listing src/cli sources, so
 # adding a test for any CLI unit costs one loom_add_test line.
 if(TARGET loom_cli_core)
+    loom_add_test(tst_styleorder LINK loom_cli_core)
+    target_include_directories(tst_styleorder PRIVATE "${CMAKE_SOURCE_DIR}/src")
+
     loom_add_test(tst_manifest LINK loom_cli_core)
     loom_add_test(tst_devserver LINK loom_cli_core)
     loom_add_test(tst_commandline LINK loom_cli_core)
@@ -195,6 +198,15 @@ if(TARGET loom_cli)
             "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/style-check"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_style_test.cmake"
     )
+    # The rules that read a whole class string rather than one class at a time,
+    # and -- more to the point -- the idioms they must leave alone.
+    add_test(
+        NAME loom_cli_lint
+        COMMAND "${CMAKE_COMMAND}"
+            "-DLOOM_EXE=$<TARGET_FILE:loom_cli>"
+            "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/lint-check"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cli_lint_test.cmake"
+    )
     add_test(
         NAME loom_cli_migrate
         COMMAND "${CMAKE_COMMAND}"
@@ -213,6 +225,25 @@ if(TARGET loom_cli)
             "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/docs-style"
             "-DDOCS_DESIGN=${CMAKE_CURRENT_SOURCE_DIR}/data/docs-design.json"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/docs_style_test.cmake"
+    )
+    # The classes in those blocks are checked above; the types around them were
+    # not, and three examples in this repository instantiated types that did
+    # not exist before anything looked.
+    add_test(
+        NAME loom_docs_types
+        COMMAND "${CMAKE_COMMAND}"
+            "-DDOCS_DIR=${CMAKE_SOURCE_DIR}/docs"
+            "-DCONTROLS_DIR=${CMAKE_SOURCE_DIR}/src/controls"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/docs_types_test.cmake"
+    )
+    # The gallery went on writing by hand what Loom.Controls exists to replace,
+    # for a whole release. This is what stops it drifting back.
+    add_test(
+        NAME loom_dogfood
+        COMMAND "${CMAKE_COMMAND}"
+            "-DGALLERY_DIR=${CMAKE_SOURCE_DIR}/examples/gallery/qml"
+            "-DTEMPLATE_DIR=${CMAKE_SOURCE_DIR}/templates"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/dogfood_test.cmake"
     )
     # The gallery is the framework's own showcase; it ships 61 Lo.style
     # literals that nothing checked until now.
@@ -315,7 +346,18 @@ if(TARGET loomcontrols)
     add_test(NAME loom_controls_qmldir
         COMMAND "${CMAKE_COMMAND}"
             "-DQMLDIR=${CMAKE_BINARY_DIR}/qml/Loom/Controls/qmldir"
+            "-DQML_ROOT=${CMAKE_BINARY_DIR}/qml/Loom/Controls"
             "-DCONTROLS_DIR=${CMAKE_SOURCE_DIR}/src/controls"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/controls_qmldir_test.cmake"
+    )
+
+    # And that every part-style property they declare is one the tooling knows
+    # to look inside. Same failure shape as the qmldir test above -- something
+    # that works at runtime and is silently invisible to lint and completion.
+    add_test(NAME loom_controls_partstyle
+        COMMAND "${CMAKE_COMMAND}"
+            "-DBINDINGS_HEADER=${CMAKE_SOURCE_DIR}/src/cli/stylebindings.h"
+            "-DCONTROLS_DIR=${CMAKE_SOURCE_DIR}/src/controls"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/controls_partstyle_test.cmake"
     )
 endif()

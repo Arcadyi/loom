@@ -1,21 +1,22 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Loom
+import Loom.Controls
 
 Column {
-    spacing: Loom.space.s3
+    Lo.style: "gap-3"
 
     SectionTitle {
         text: qsTr("Utility strings")
     }
 
-    Text {
+    Label {
         Lo.style: "text-muted text-sm"
         text: qsTr("Each card is styled by the Lo.style string shown inside it.")
     }
 
     Column {
-        spacing: Loom.space.s4
+        Lo.style: "gap-4"
 
         Repeater {
             model: [
@@ -48,7 +49,7 @@ Column {
     }
 
     Column {
-        spacing: Loom.space.s2
+        Lo.style: "gap-2"
 
         Text {
             Lo.style: "text-accent text-lg font-bold"
@@ -86,7 +87,7 @@ Column {
 
                 required property string modelData
 
-                spacing: Loom.space.s1
+                Lo.style: "gap-1"
 
                 Rectangle {
                     Lo.style: "bg-violet-500 rounded-sm h-10 w-" + spaceSample.modelData

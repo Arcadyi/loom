@@ -20,8 +20,11 @@ class LspTests final : public QObject {
 private slots:
     void framingHandlesFragmentedAndCoalescedMessages();
     void documentFindsOnlyStyleResultLiterals();
+    void documentFindsPartStyleLiterals();
+    void documentReadsMultiLineTemplateLiterals();
     void incrementalChangesHonorUtf8Positions();
     void projectTokensDriveIntelligence();
+    void definitionJumpsIntoTheDesignFile();
     void proxyMergesQmllsAndLoomFeatures();
     void qmllsShimForwardsArguments();
 };
@@ -145,6 +148,92 @@ void LspTests::documentFindsOnlyStyleResultLiterals()
              QStringLiteral("p-4")}));
 }
 
+// A Loom.Controls part-style property forwards its string onto a sub-delegate's
+// Lo.style, so it carries classes but is not an attached property and nothing
+// about its shape says so. Without the name list in src/cli/stylebindings.h the
+// entire part-styling surface of the component library is uncompleted,
+// undiagnosed, and unchecked by `loom lint`.
+void LspTests::documentFindsPartStyleLiterals()
+{
+    lsp::Document document;
+    document.open(
+        QStringLiteral(
+            "Checkbox {\n"
+            "  Lo.style: \"gap-2\"\n"
+            "  indicatorStyle: \"size-5 rounded-sm\"\n"
+            "  contentStyle: \"text-sm\"\n"
+            // Not a style binding: a name that merely ends in the same letters
+            // is not on the list, and the list is matched exactly.
+            "  borderStyle: \"solid\"\n"
+            "  property string unrelated: \"bg-nope\"\n"
+            "}\n"),
+        1);
+    QStringList names;
+    for (const auto &token : document.styleTokens())
+        names.append(token.text);
+    QCOMPARE(
+        names,
+        QStringList(
+            {QStringLiteral("gap-2"), QStringLiteral("size-5"),
+             QStringLiteral("rounded-sm"), QStringLiteral("text-sm")}));
+
+    // The same through the heuristic scanner, which is what answers while a
+    // document is mid-edit and will not parse. It matches the marker textually,
+    // so it needs the list every bit as much as the AST visitor does.
+    lsp::Document broken;
+    broken.open(
+        QStringLiteral(
+            "Checkbox {\n"
+            "  indicatorStyle: \"size-5\"\n"
+            "  onSomething: { unbalanced(\n"),
+        1);
+    QStringList brokenNames;
+    for (const auto &token : broken.styleTokens())
+        brokenNames.append(token.text);
+    QCOMPARE(brokenNames, QStringList({QStringLiteral("size-5")}));
+}
+
+// A long class list written across lines. Every example in the documentation
+// used to end each line with `+`, because a plain string cannot span lines and
+// nothing else was understood. A backtick string can, and teaching the scanner
+// about it costs one AST case -- where accepting an array would have cost the
+// property's type, the compile cache key, and the inspector's ability to edit
+// a style in place.
+void LspTests::documentReadsMultiLineTemplateLiterals()
+{
+    lsp::Document document;
+    document.open(
+        QStringLiteral(
+            "Item {\n"
+            "  Lo.style: `p-4 bg-surface\n"
+            "             hover:bg-blue-600\n"
+            "             md:p-6`\n"
+            "}\n"),
+        1);
+    QStringList names;
+    for (const auto &token : document.styleTokens())
+        names.append(token.text);
+    QCOMPARE(
+        names,
+        QStringList(
+            {QStringLiteral("p-4"), QStringLiteral("bg-surface"),
+             QStringLiteral("hover:bg-blue-600"), QStringLiteral("md:p-6")}));
+
+    // The range has to be the content, not the backticks, or every quick fix
+    // and completion would be off by one at each end.
+    const auto literals = document.styleLiterals();
+    QCOMPARE(literals.size(), 1);
+    const QString text = document.text();
+    QCOMPARE(text.at(literals.first().content.start), QLatin1Char('p'));
+    QCOMPARE(text.at(literals.first().content.end - 1), QLatin1Char('6'));
+
+    // A substitution makes it a computed string, and its parts are guesses --
+    // declined, the way a concatenation with a variable half already is.
+    lsp::Document interpolated;
+    interpolated.open(QStringLiteral("Item {\n  Lo.style: `p-4 ${extra}`\n}\n"), 1);
+    QVERIFY(interpolated.styleTokens().isEmpty());
+}
+
 void LspTests::incrementalChangesHonorUtf8Positions()
 {
     lsp::Document document;
@@ -261,6 +350,109 @@ void LspTests::projectTokensDriveIntelligence()
                              .value(QStringLiteral("alpha"))
                              .toDouble();
     QVERIFY(qAbs(alpha - 0.5) < 0.001);
+}
+
+// Nothing in the editor pointed at the design file before this, which is the
+// likeliest reason the gallery defined two recipes and reached for one of them
+// in one file. A token that a project invented is declared in exactly one
+// place, and now the editor can say where.
+void LspTests::definitionJumpsIntoTheDesignFile()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    QVERIFY(QDir().mkpath(directory.filePath(QStringLiteral("qml"))));
+
+    QFile manifest(directory.filePath(QStringLiteral("loom.json")));
+    QVERIFY(manifest.open(QIODevice::WriteOnly));
+    manifest.write(R"({
+      "schemaVersion": 2,
+      "project": {"name": "LspTest"},
+      "design": "tokens.json",
+      "qt": {"version": "6.11"},
+      "applications": {"App": {
+        "name": "App", "target": "App", "id": "dev.test.app",
+        "uri": "dev.test.App", "entry": "Main", "qmlRoots": ["qml"],
+        "assetRoots": [], "platforms": {"desktop": {}}
+      }}
+    })");
+    manifest.close();
+
+    const QString designPath = directory.filePath(QStringLiteral("tokens.json"));
+    QFile design(designPath);
+    QVERIFY(design.open(QIODevice::WriteOnly));
+    design.write(R"({
+      "schemaVersion": 2,
+      "tokens": {
+        "colors": { "brand": { "500": "#123456" } }
+      },
+      "styles": { "card": "bg-surface rounded-lg" }
+    })");
+    design.close();
+
+    const QString qmlPath = directory.filePath(QStringLiteral("qml/Main.qml"));
+    lsp::Document document;
+    document.open(
+        QStringLiteral("Item { Lo.style: \"@card hover:bg-brand-500 p-4\" }"), 1);
+    lsp::StyleWorkspace workspace;
+    lsp::StyleIntelligence intelligence(&workspace);
+
+    const auto locate = [&](const QString &needle) {
+        const qsizetype offset = document.text().indexOf(needle) + 1;
+        return intelligence
+            .definition(qmlPath, document, offset, lsp::PositionEncoding::Utf16)
+            .toObject();
+    };
+
+    // A recipe: named directly, and declared under "styles".
+    const QJsonObject recipe = locate(QStringLiteral("@card"));
+    QVERIFY(!recipe.isEmpty());
+    QCOMPARE(
+        recipe.value(QStringLiteral("uri")).toString(),
+        QUrl::fromLocalFile(designPath).toString());
+    // Derived from the file rather than hard-coded, so editing the fixture
+    // above cannot silently make this assert the wrong thing.
+    QFile written(designPath);
+    QVERIFY(written.open(QIODevice::ReadOnly));
+    const QStringList designLines =
+        QString::fromUtf8(written.readAll()).split(QLatin1Char('\n'));
+    int stylesLine = -1;
+    int brandLine = -1;
+    for (int i = 0; i < designLines.size(); ++i) {
+        if (designLines.at(i).contains(QStringLiteral("\"styles\"")))
+            stylesLine = i;
+        if (designLines.at(i).contains(QStringLiteral("\"brand\"")))
+            brandLine = i;
+    }
+    QVERIFY(stylesLine >= 0);
+    QVERIFY(brandLine >= 0);
+
+    const int recipeLine = recipe.value(QStringLiteral("range"))
+                               .toObject()
+                               .value(QStringLiteral("start"))
+                               .toObject()
+                               .value(QStringLiteral("line"))
+                               .toInt();
+    QCOMPARE(recipeLine, stylesLine);
+
+    // A token behind a variant. The variant is a condition, not a name, so
+    // only the last segment is resolved -- and the key comes from compiling
+    // the class, which is the same lookup the runtime does.
+    const QJsonObject token = locate(QStringLiteral("hover:bg-brand-500"));
+    QVERIFY(!token.isEmpty());
+    // Colours written as a nested hue never contain their own flat key, so
+    // this lands on "brand" -- which is where the value is declared.
+    QCOMPARE(
+        token.value(QStringLiteral("range"))
+            .toObject()
+            .value(QStringLiteral("start"))
+            .toObject()
+            .value(QStringLiteral("line"))
+            .toInt(),
+        brandLine);
+
+    // A built-in is declared in loom itself, not in the project. Answering
+    // would be a lie; returning null lets qmlls say whatever it would have.
+    QVERIFY(locate(QStringLiteral("p-4")).isEmpty());
 }
 
 void LspTests::proxyMergesQmllsAndLoomFeatures()

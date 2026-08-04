@@ -14,16 +14,14 @@ Item {
     // the window bound to would be pointing at the replaced instance.
     property int count: 0
 
-    Flickable {
+    // Scroll measures its own content, so the contentHeight sum this used to
+    // carry -- and the four Flickable properties around it -- are gone. The
+    // vertical padding is a class because Scroll declares the four property
+    // names the target profile duck-types on.
+    Scroll {
         id: viewport
 
-        anchors.fill: parent
-        boundsBehavior: Flickable.StopAtBounds
-        clip: true
-        contentHeight: content.implicitHeight + 2 * Loom.space.s6
-        contentWidth: width
-
-        ScrollBar.vertical: ScrollBar {}
+        Lo.style: "fill py-6"
 
         ColumnLayout {
             id: content
@@ -32,13 +30,12 @@ Item {
                 ? Loom.space.s4 : Loom.space.s6
 
             x: Math.max(edge, (viewport.width - width) / 2)
-            y: Loom.space.s6
             width: Math.min(1080, viewport.width - 2 * edge)
-            spacing: Loom.space.s5
+            Lo.style: "gap-5"
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: Loom.space.s3
+                Lo.style: "gap-3"
 
                 Rectangle {
                     Lo.style: "bg-accent rounded-lg"
@@ -65,7 +62,7 @@ Item {
                     }
                 }
 
-                Item { Layout.fillWidth: true }
+                Spacer { }
 
                 Button {
                     text: Loom.dark ? qsTr("Light mode") : qsTr("Dark mode")
@@ -94,7 +91,7 @@ Item {
                     id: heroContent
 
                     width: hero.availableWidth
-                    spacing: Loom.space.s3
+                    Lo.style: "gap-3"
 
                     Text {
                         Lo.style: "text-accent text-sm font-semibold"
@@ -118,7 +115,7 @@ Item {
 
                     RowLayout {
                         Layout.topMargin: Loom.space.s2
-                        spacing: Loom.space.s3
+                        Lo.style: "gap-3"
 
                         Button {
                             text: qsTr("Count: %1").arg(page.count)
@@ -186,7 +183,7 @@ Item {
                     id: nextSteps
 
                     width: nextStepsCard.availableWidth
-                    spacing: Loom.space.s2
+                    Lo.style: "gap-2"
 
                     Text {
                         Lo.style: "text-foreground text-sm font-semibold"
