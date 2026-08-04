@@ -193,6 +193,7 @@ if(LOOM_BUILD_CONTROLS)
         src/controls/Label.qml
         src/controls/ListRow.qml
         src/controls/Menu.qml
+        src/controls/positioning.js
         src/controls/Progress.qml
         src/controls/RadioButton.qml
         src/controls/Row.qml

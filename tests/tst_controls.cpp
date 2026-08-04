@@ -108,6 +108,8 @@ private slots:
     void progressFillFollowsItsValue();
     void badgeGrowsWithItsLabel();
     void tabIndicatorFollowsSelection();
+    void rowDistributesChildrenOnTheMainAxis();
+    void colDistributionSettlesRatherThanLooping();
 };
 
 // Box exists because `p-4` needs `topPadding`, and the Rectangle everyone
@@ -1020,6 +1022,76 @@ void ControlsTests::tabIndicatorFollowsSelection()
     item->setProperty("currentIndex", 1);
     QTRY_VERIFY(secondMarks.first()->isVisible());
     QVERIFY(!firstMarks.first()->isVisible());
+}
+
+// Qt Quick has no main-axis distribution anywhere: a positioner packs to the
+// start, and a Layout spreads through per-child Layout.fillWidth. SpaceBetween
+// previously meant an invisible `Item { Layout.fillWidth: true }` spacer, which
+// is what the app template reaches for.
+void ControlsTests::rowDistributesChildrenOnTheMainAxis()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Row {\n"
+        "    width: 300\n"
+        "    spacing: 0\n"
+        "    justify: Row.SpaceBetween\n"
+        "    Rectangle { objectName: \"a\"; width: 40; height: 10 }\n"
+        "    Rectangle { objectName: \"b\"; width: 40; height: 10 }\n"
+        "    Rectangle { objectName: \"c\"; width: 40; height: 10 }\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QQuickItem *const a = item->findChild<QQuickItem *>(QStringLiteral("a"));
+    QQuickItem *const b = item->findChild<QQuickItem *>(QStringLiteral("b"));
+    QQuickItem *const c = item->findChild<QQuickItem *>(QStringLiteral("c"));
+    QVERIFY(a);
+    QVERIFY(b);
+    QVERIFY(c);
+
+    QTRY_COMPARE(a->x(), 0.0);
+    QTRY_COMPARE(c->x(), 260.0);
+    QCOMPARE(b->x(), 130.0);
+
+    // Start hands the axis back to the positioner untouched, which is the
+    // QtQuick behaviour and has to stay the default.
+    item->setProperty("justify", 0);
+    item->setProperty("width", 300);
+    QTRY_COMPARE(a->x(), 0.0);
+}
+
+// Writing the axis the positioner owns re-enters through positioningComplete.
+// Without the guard that is a loop, and a loop here does not crash -- it burns
+// a core forever while rendering correctly, which is the kind of bug that ships.
+void ControlsTests::colDistributionSettlesRatherThanLooping()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QScopedPointer<QQuickItem> item(createItem(
+        component,
+        "import QtQuick\nimport Loom\nimport Loom.Controls\n"
+        "Col {\n"
+        "    property int passes: 0\n"
+        "    height: 300\n"
+        "    spacing: 0\n"
+        "    justify: Col.SpaceEvenly\n"
+        "    onPositioningComplete: passes++\n"
+        "    Rectangle { objectName: \"a\"; width: 10; height: 40 }\n"
+        "    Rectangle { width: 10; height: 40 }\n"
+        "}\n"));
+    QVERIFY2(item, qPrintable(component.errorString()));
+
+    QQuickItem *const a = item->findChild<QQuickItem *>(QStringLiteral("a"));
+    QVERIFY(a);
+    // free = 300 - 80 = 220, three gaps of 220/3.
+    QTRY_COMPARE_WITH_TIMEOUT(a->y(), 220.0 / 3.0, 2000);
+
+    const int settled = item->property("passes").toInt();
+    QTest::qWait(50);
+    QCOMPARE(item->property("passes").toInt(), settled);
 }
 
 QTEST_MAIN(ControlsTests)

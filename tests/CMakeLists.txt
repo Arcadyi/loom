@@ -334,6 +334,7 @@ if(TARGET loomcontrols)
     add_test(NAME loom_controls_qmldir
         COMMAND "${CMAKE_COMMAND}"
             "-DQMLDIR=${CMAKE_BINARY_DIR}/qml/Loom/Controls/qmldir"
+            "-DQML_ROOT=${CMAKE_BINARY_DIR}/qml/Loom/Controls"
             "-DCONTROLS_DIR=${CMAKE_SOURCE_DIR}/src/controls"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/controls_qmldir_test.cmake"
     )

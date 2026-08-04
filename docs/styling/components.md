@@ -201,6 +201,35 @@ Row {
 | `Col` | `Qt.AlignLeft`, `Qt.AlignHCenter`, `Qt.AlignRight` | `QtQuick.Column` |
 | `Grid` | use `horizontalItemAlignment` / `verticalItemAlignment` | `QtQuick.Grid` |
 
+`justify` is the other axis — where children sit *along* the row or column when
+they do not fill it:
+
+```qml
+Row {
+    Lo.style: "gap-3 w-full"
+    justify: Row.SpaceBetween
+
+    Label { text: qsTr("Title") }
+    Button { text: qsTr("Edit") }
+}
+```
+
+`Start` (the default), `Center`, `End`, `SpaceBetween`, `SpaceAround`,
+`SpaceEvenly`. `Start` hands the axis back to the positioner untouched, which
+is the QtQuick behaviour.
+
+Qt Quick has no such property anywhere: a positioner packs to the start, and a
+Layout distributes through per-child `Layout.fillWidth`. `SpaceBetween`
+previously meant an invisible `Item { Layout.fillWidth: true }` spacer — which
+is exactly what the app template reaches for, and what `Spacer` names.
+
+Two things to know. The property writes the axis the positioner owns, so it
+re-enters through `positioningComplete`; a guard makes that re-entry a no-op,
+and `tst_controls` asserts the layout settles rather than looping. And when
+children overflow, distribution is skipped — spreading negative free space
+would move them backwards past the container's edge, and packing to the start
+is what the positioner would have done anyway.
+
 `Grid` adds nothing — QtQuick.Grid has had item alignment since 5.1, which is
 what `Row` and `Col` were missing. It ships so the set is complete.
 

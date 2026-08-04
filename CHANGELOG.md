@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+**Main-axis distribution.** `Row` and `Col` take a `justify` property --
+`Start`, `Center`, `End`, `SpaceBetween`, `SpaceAround`, `SpaceEvenly`.
+
+Qt Quick has no such property anywhere: a positioner packs to the start, and a
+Layout distributes through per-child `Layout.fillWidth`. `SpaceBetween` meant
+an invisible `Item { Layout.fillWidth: true }` spacer, which is what
+templates/app reaches for.
+
+A property and not a class, on the rule `align` already set: a class has to
+enter the catalogue, LSP completion, the docs and `tst_catalogue`'s round-trip,
+none of which is easy to take back. The `limitations.md` row that names
+container alignment as missing vocabulary is updated rather than left stale --
+it is still not a class, and now says why.
+
+Unlike `align`, this writes the axis the positioner owns, so it re-enters
+through `positioningComplete`; a guard makes the re-entry a no-op and
+`colDistributionSettlesRatherThanLooping` asserts the layout settles. A loop
+there would not crash, it would burn a core while rendering correctly. Children
+that overflow are left to the positioner: spreading negative free space would
+move them backwards past the container's edge.
+
+The distribution arithmetic is shared through `src/controls/positioning.js`,
+the property plumbing is not -- Row writes `x` and Col writes `y`, and passing
+those in as strings would trade two readable loops for one unreadable one.
+`loom_controls_qmldir` globbed `*.qml` only, so a script in QML_FILES escaped
+the "you forgot to register it" guard; it now checks those too.
+
 **Two lint rules that read a whole class string.** `duplicateClass` for the
 same class twice, and `conflictingClass` for a class every one of whose writes
 a later class in the same string repeats. Both are warnings; `loom lint` gains

@@ -31,6 +31,21 @@ endforeach()
 # Every .qml in src/controls/ must appear. Globbing here rather than repeating
 # the list is the point: this catches the file that was never added to
 # QML_FILES, which a hardcoded list would silently share the omission with.
+#
+# The .js glob below is separate because a shared script is not a type and gets
+# no qmldir line -- what has to be checked is that it reached the module's
+# resources at all, since an unregistered one fails only at import time in a
+# built application.
+file(GLOB control_scripts "${CONTROLS_DIR}/*.js")
+foreach(control_script IN LISTS control_scripts)
+    cmake_path(GET control_script FILENAME script_name)
+    if(NOT EXISTS "${QML_ROOT}/${script_name}")
+        message(FATAL_ERROR
+            "src/controls/${script_name} is not in the built module: "
+            "add it to loom_controls_qml_files in CMakeLists.txt")
+    endif()
+endforeach()
+
 file(GLOB control_sources "${CONTROLS_DIR}/*.qml")
 foreach(control_source IN LISTS control_sources)
     cmake_path(GET control_source STEM control_type)
